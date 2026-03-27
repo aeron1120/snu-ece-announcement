@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>서울대학교 전기정보공학부 공지</title>
+  <link rel="stylesheet" href="./css/style.css" />
+</head>
+<body>
+  <header>
+    <h1>서울대학교 전기정보공학부 공지 모아보기</h1>
+  </header>
+
+  <main>
+    <section class="toolbar">
+      <input id="search-input" type="text" placeholder="공지 검색" />
+      <select id="category-filter">
+        <option value="all">전체</option>
+        <option value="학사">학사</option>
+        <option value="장학">장학</option>
+        <option value="세미나">세미나</option>
+      </select>
+    </section>
+
+    <section id="notice-list" class="notice-list"></section>
+  </main>
+
+  <div id="detail-modal" class="modal hidden">
+    <div class="modal-content">
+      <button id="close-detail">닫기</button>
+      <div id="detail-body"></div>
+    </div>
+  </div>
+
+  <script src="./js/notices.js"></script>
+  <script src="./js/ui.js"></script>
+  <script src="./js/filter.js"></script>
+  <script src="./js/api.js"></script>
+  <script src="./js/app.js"></script>
+</body>
+</html>
