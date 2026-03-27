@@ -16,6 +16,16 @@ create table if not exists public.notices (
 
 create index if not exists notices_active_created_idx on public.notices (is_deleted, created_at desc);
 
+create table if not exists public.app_settings (
+  id integer primary key,
+  admin_name text not null,
+  admin_phone text not null,
+  admin_kakao text not null,
+  banner_password text not null,
+  admin_token_hash text not null,
+  updated_at timestamptz not null default now()
+);
+
 create or replace function public.increment_notice_views(target_notice_id bigint)
 returns setof public.notices
 language plpgsql

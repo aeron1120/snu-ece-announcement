@@ -29,8 +29,6 @@ let bannerInterval = null;
 let dragSrcIdx = null;
 
 let adminInfo = { name: "ECE 학생회장 (이름 : 박지호)", phone: "010-1234-5678", kakao: "snu_ece_pres" };
-let adminPassword = "0327";
-let bannerPassword = "1234";
 let adminAuthToken = '';
 
 const defaultNotices = [{
@@ -84,8 +82,19 @@ async function apiRequest(path, options = {}) {
 
 async function loadData() {
     adminAuthToken = sessionStorage.getItem('eceAdminToken') || '';
-    try { const storedAdmin = localStorage.getItem('eceAdminInfo'); if (storedAdmin) adminInfo = JSON.parse(storedAdmin); } catch(e) {}
-    try { const sp = localStorage.getItem('ecePasswords'); if (sp) { const p = JSON.parse(sp); adminPassword = p.admin || adminPassword; bannerPassword = p.banner || bannerPassword; } } catch(e) {}
+
+    try {
+        const settings = await apiRequest('/api/settings', { method: 'GET' });
+        if (settings?.adminInfo) {
+            adminInfo = {
+                name: settings.adminInfo.name || adminInfo.name,
+                phone: settings.adminInfo.phone || adminInfo.phone,
+                kakao: settings.adminInfo.kakao || adminInfo.kakao
+            };
+        }
+    } catch (error) {
+        console.error('관리자 설정 불러오기 실패:', error);
+    }
 
     try {
         const result = await apiRequest('/api/notices', { method: 'GET' });
@@ -320,26 +329,57 @@ async function verifyPassword() {
 }
 
 function saveAdminInfo() {
-    adminInfo.name = document.getElementById('edit-admin-name').value;
-    adminInfo.phone = document.getElementById('edit-admin-phone').value;
-    adminInfo.kakao = document.getElementById('edit-admin-kakao').value;
-    localStorage.setItem('eceAdminInfo', JSON.stringify(adminInfo));
-    renderAdminInfo();
-
+    const nextAdminInfo = {
+        name: document.getElementById('edit-admin-name').value.trim(),
+        phone: document.getElementById('edit-admin-phone').value.trim(),
+        kakao: document.getElementById('edit-admin-kakao').value.trim()
+    };
     const newAdminPwd = document.getElementById('edit-admin-pwd').value.trim();
     const newBannerPwd = document.getElementById('edit-banner-pwd').value.trim();
-    let pwdChanged = [];
-    if (newAdminPwd) { adminPassword = newAdminPwd; pwdChanged.push("관리자 비밀번호"); }
-    if (newBannerPwd) { bannerPassword = newBannerPwd; pwdChanged.push("배너 모드 비밀번호"); }
-    if (pwdChanged.length > 0) {
-        try { localStorage.setItem('ecePasswords', JSON.stringify({ admin: adminPassword, banner: bannerPassword })); } catch(e) {}
-    }
-    document.getElementById('edit-admin-pwd').value = '';
-    document.getElementById('edit-banner-pwd').value = '';
 
-    cancelAdminEdit();
-    const pwdMsg = pwdChanged.length > 0 ? `\n✅ ${pwdChanged.join(', ')} 변경 완료` : '';
-    alert("관리자 설정이 업데이트되었습니다." + pwdMsg);
+    apiRequest('/api/settings', {
+        method: 'PUT',
+        headers: getAdminHeaders(),
+        body: JSON.stringify({ adminInfo: nextAdminInfo })
+    })
+        .then(async result => {
+            adminInfo = {
+                name: result?.adminInfo?.name || nextAdminInfo.name || adminInfo.name,
+                phone: result?.adminInfo?.phone || nextAdminInfo.phone || adminInfo.phone,
+                kakao: result?.adminInfo?.kakao || nextAdminInfo.kakao || adminInfo.kakao
+            };
+            renderAdminInfo();
+
+            const pwdChanged = [];
+            if (newAdminPwd || newBannerPwd) {
+                await apiRequest('/api/settings/passwords', {
+                    method: 'PUT',
+                    headers: getAdminHeaders(),
+                    body: JSON.stringify({
+                        newAdminToken: newAdminPwd || undefined,
+                        newBannerPassword: newBannerPwd || undefined
+                    })
+                });
+
+                if (newAdminPwd) {
+                    adminAuthToken = newAdminPwd;
+                    sessionStorage.setItem('eceAdminToken', adminAuthToken);
+                    pwdChanged.push('관리자 비밀번호');
+                }
+                if (newBannerPwd) {
+                    pwdChanged.push('배너 모드 비밀번호');
+                }
+            }
+
+            document.getElementById('edit-admin-pwd').value = '';
+            document.getElementById('edit-banner-pwd').value = '';
+            cancelAdminEdit();
+            const pwdMsg = pwdChanged.length > 0 ? `\n✅ ${pwdChanged.join(', ')} 변경 완료` : '';
+            alert("관리자 설정이 업데이트되었습니다." + pwdMsg);
+        })
+        .catch(error => {
+            alert(`관리자 설정 업데이트 실패: ${error.message}`);
+        });
 }
 
 function cancelAdminEdit() {
@@ -797,16 +837,22 @@ function toggleBannerModePanel() {
     chevron.style.transition = 'transform 0.2s';
 }
 
-function verifyBannerPassword() {
+async function verifyBannerPassword() {
     const pwd = document.getElementById('banner-mode-pwd').value;
     const errEl = document.getElementById('banner-pwd-error');
-    if (pwd === bannerPassword) {
+
+    try {
+        await apiRequest('/api/banner/verify', {
+            method: 'POST',
+            body: JSON.stringify({ password: pwd })
+        });
+
         errEl.style.display = 'none';
         bannerModeUnlocked = true;
         document.getElementById('banner-pwd-section').style.display = 'none';
         document.getElementById('banner-manage-panel').classList.add('open');
         renderBannerList();
-    } else {
+    } catch {
         errEl.style.display = 'block';
         document.getElementById('banner-mode-pwd').value = '';
         document.getElementById('banner-mode-pwd').focus();

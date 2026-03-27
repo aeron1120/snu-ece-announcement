@@ -43,6 +43,7 @@ ADMIN_TOKEN=your_admin_token
 SUPABASE_URL=
 SUPABASE_SERVICE_ROLE_KEY=
 SUPABASE_NOTICES_TABLE=notices
+SUPABASE_SETTINGS_TABLE=app_settings
 ```
 
 ## Cloudflare Pages + 백엔드 배포 방법
@@ -62,6 +63,7 @@ Render/Railway/Fly.io 같은 Node 배포 플랫폼에 `server/server.js`를 실�
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `SUPABASE_NOTICES_TABLE=notices`
+- `SUPABASE_SETTINGS_TABLE=app_settings`
 
 Render 무료 플랜이 슬립되어도 DB는 Supabase에 있으므로 공지 데이터는 유지됩니다.
 
@@ -90,3 +92,4 @@ npm run prepare:public
 - 공지 생성/수정/삭제는 `x-admin-token` 헤더가 있어야 동작합니다.
 - 삭제는 소프트 삭제로 처리되어, 목록에서 사라지지만 DB 원본은 남습니다.
 - 브라우저/기기가 달라도 API와 DB가 같으면 같은 공지 목록을 보게 됩니다.
+- 관리자 정보/관리자 비밀번호/배너 비밀번호 변경도 중앙 설정(`app_settings`)에 저장되어 다른 기기에도 동일 반영됩니다.

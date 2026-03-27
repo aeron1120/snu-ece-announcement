@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { promises as fs } from 'fs';
 import { createClient } from '@supabase/supabase-js';
+import crypto from 'crypto';
 
 dotenv.config();
 
@@ -11,12 +12,15 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const noticesFilePath = path.join(__dirname, 'data', 'notices.json');
+const settingsFilePath = path.join(__dirname, 'data', 'settings.json');
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || '';
 const SUPABASE_URL = process.env.SUPABASE_URL || '';
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 const SUPABASE_NOTICES_TABLE = process.env.SUPABASE_NOTICES_TABLE || 'notices';
+const SUPABASE_SETTINGS_TABLE = process.env.SUPABASE_SETTINGS_TABLE || 'app_settings';
 const useSupabase = Boolean(SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY);
 const supabase = useSupabase ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY) : null;
+const initialAdminToken = ADMIN_TOKEN || '0327';
 
 const defaultNotices = [
     {
@@ -32,6 +36,18 @@ const defaultNotices = [
         views: 124
     }
 ];
+
+const defaultAdminInfo = {
+    name: 'ECE 학생회장 (이름 : 박지호)',
+    phone: '010-1234-5678',
+    kakao: 'snu_ece_pres'
+};
+
+const defaultSecuritySettings = {
+    adminInfo: { ...defaultAdminInfo },
+    bannerPassword: '1234',
+    adminTokenHash: hashToken(initialAdminToken)
+};
 
 app.use(express.json({ limit: '10mb' }));
 
@@ -62,6 +78,15 @@ async function ensureNoticesFile() {
     }
 }
 
+async function ensureSettingsFile() {
+    try {
+        await fs.access(settingsFilePath);
+    } catch {
+        await fs.mkdir(path.dirname(settingsFilePath), { recursive: true });
+        await fs.writeFile(settingsFilePath, JSON.stringify(defaultSecuritySettings, null, 2), 'utf-8');
+    }
+}
+
 async function readNotices() {
     await ensureNoticesFile();
     const text = await fs.readFile(noticesFilePath, 'utf-8');
@@ -77,6 +102,31 @@ async function readNotices() {
 async function writeNotices(notices) {
     await fs.mkdir(path.dirname(noticesFilePath), { recursive: true });
     await fs.writeFile(noticesFilePath, JSON.stringify(notices, null, 2), 'utf-8');
+}
+
+async function readSettingsFile() {
+    await ensureSettingsFile();
+    const text = await fs.readFile(settingsFilePath, 'utf-8');
+
+    try {
+        const parsed = JSON.parse(text);
+        return {
+            adminInfo: {
+                name: String(parsed?.adminInfo?.name || defaultAdminInfo.name),
+                phone: String(parsed?.adminInfo?.phone || defaultAdminInfo.phone),
+                kakao: String(parsed?.adminInfo?.kakao || defaultAdminInfo.kakao)
+            },
+            bannerPassword: String(parsed?.bannerPassword || defaultSecuritySettings.bannerPassword),
+            adminTokenHash: String(parsed?.adminTokenHash || defaultSecuritySettings.adminTokenHash)
+        };
+    } catch {
+        return { ...defaultSecuritySettings, adminInfo: { ...defaultAdminInfo } };
+    }
+}
+
+async function writeSettingsFile(settings) {
+    await fs.mkdir(path.dirname(settingsFilePath), { recursive: true });
+    await fs.writeFile(settingsFilePath, JSON.stringify(settings, null, 2), 'utf-8');
 }
 
 function normalizeNoticeInput(body = {}) {
@@ -101,6 +151,18 @@ function normalizeNoticeInput(body = {}) {
         aiSummary,
         images
     };
+}
+
+function normalizeAdminInfo(input = {}) {
+    return {
+        name: String(input.name || '').trim() || defaultAdminInfo.name,
+        phone: String(input.phone || '').trim() || defaultAdminInfo.phone,
+        kakao: String(input.kakao || '').trim() || defaultAdminInfo.kakao
+    };
+}
+
+function hashToken(token) {
+    return crypto.createHash('sha256').update(String(token || ''), 'utf8').digest('hex');
 }
 
 function normalizeDeadline(deadline) {
@@ -129,22 +191,100 @@ function getAdminToken(req) {
     return String(req.headers['x-admin-token'] || '').trim();
 }
 
-function requireAdmin(req, res, next) {
-    if (!ADMIN_TOKEN) {
-        return res.status(500).json({ error: 'ADMIN_TOKEN이 설정되지 않았습니다.' });
+function toClientSettings(settings) {
+    return {
+        adminInfo: normalizeAdminInfo(settings?.adminInfo || {})
+    };
+}
+
+async function getSecuritySettings() {
+    if (!useSupabase) {
+        return readSettingsFile();
     }
 
-    const token = getAdminToken(req);
-    if (!token || token !== ADMIN_TOKEN) {
-        return res.status(401).json({ error: '관리자 인증 실패' });
+    const { data, error } = await supabase
+        .from(SUPABASE_SETTINGS_TABLE)
+        .select('*')
+        .eq('id', 1)
+        .single();
+
+    if (error) {
+        if (error.code === 'PGRST116') {
+            const seeded = {
+                adminInfo: { ...defaultAdminInfo },
+                bannerPassword: defaultSecuritySettings.bannerPassword,
+                adminTokenHash: defaultSecuritySettings.adminTokenHash
+            };
+            await saveSecuritySettings(seeded);
+            return seeded;
+        }
+        throw error;
     }
 
-    next();
+    return {
+        adminInfo: {
+            name: String(data.admin_name || defaultAdminInfo.name),
+            phone: String(data.admin_phone || defaultAdminInfo.phone),
+            kakao: String(data.admin_kakao || defaultAdminInfo.kakao)
+        },
+        bannerPassword: String(data.banner_password || defaultSecuritySettings.bannerPassword),
+        adminTokenHash: String(data.admin_token_hash || defaultSecuritySettings.adminTokenHash)
+    };
+}
+
+async function saveSecuritySettings(settings) {
+    const normalized = {
+        adminInfo: normalizeAdminInfo(settings?.adminInfo || {}),
+        bannerPassword: String(settings?.bannerPassword || defaultSecuritySettings.bannerPassword),
+        adminTokenHash: String(settings?.adminTokenHash || defaultSecuritySettings.adminTokenHash)
+    };
+
+    if (!useSupabase) {
+        await writeSettingsFile(normalized);
+        return normalized;
+    }
+
+    const { error } = await supabase.from(SUPABASE_SETTINGS_TABLE).upsert({
+        id: 1,
+        admin_name: normalized.adminInfo.name,
+        admin_phone: normalized.adminInfo.phone,
+        admin_kakao: normalized.adminInfo.kakao,
+        banner_password: normalized.bannerPassword,
+        admin_token_hash: normalized.adminTokenHash,
+        updated_at: new Date().toISOString()
+    });
+
+    if (error) {
+        throw error;
+    }
+
+    return normalized;
+}
+
+async function requireAdmin(req, res, next) {
+    try {
+        const token = getAdminToken(req);
+        if (!token) {
+            return res.status(401).json({ error: '관리자 인증 실패' });
+        }
+
+        const settings = await getSecuritySettings();
+        const expectedHash = settings?.adminTokenHash || defaultSecuritySettings.adminTokenHash;
+
+        if (hashToken(token) !== expectedHash) {
+            return res.status(401).json({ error: '관리자 인증 실패' });
+        }
+
+        next();
+    } catch (error) {
+        res.status(500).json({ error: error.message || '관리자 인증 처리 실패' });
+    }
 }
 
 async function ensureDefaultData() {
     if (!useSupabase) {
         await ensureNoticesFile();
+        await ensureSettingsFile();
         return;
     }
 
@@ -157,26 +297,26 @@ async function ensureDefaultData() {
         throw error;
     }
 
-    if ((count || 0) > 0) {
-        return;
+    if ((count || 0) === 0) {
+        const seedRows = defaultNotices.map(notice => ({
+            title: notice.title,
+            content: notice.content,
+            target: notice.target,
+            host: notice.host,
+            deadline: normalizeDeadline(notice.deadline),
+            ai_summary: notice.aiSummary,
+            images: notice.images,
+            views: notice.views,
+            is_deleted: false
+        }));
+
+        const { error: insertError } = await supabase.from(SUPABASE_NOTICES_TABLE).insert(seedRows);
+        if (insertError) {
+            throw insertError;
+        }
     }
 
-    const seedRows = defaultNotices.map(notice => ({
-        title: notice.title,
-        content: notice.content,
-        target: notice.target,
-        host: notice.host,
-        deadline: normalizeDeadline(notice.deadline),
-        ai_summary: notice.aiSummary,
-        images: notice.images,
-        views: notice.views,
-        is_deleted: false
-    }));
-
-    const { error: insertError } = await supabase.from(SUPABASE_NOTICES_TABLE).insert(seedRows);
-    if (insertError) {
-        throw insertError;
-    }
+    await getSecuritySettings();
 }
 
 async function listNotices() {
@@ -344,8 +484,74 @@ app.get('/api/health', (req, res) => {
     res.json({ ok: true, storage: useSupabase ? 'supabase' : 'file' });
 });
 
+app.get('/api/settings', async (req, res) => {
+    try {
+        const settings = await getSecuritySettings();
+        res.json(toClientSettings(settings));
+    } catch (error) {
+        res.status(500).json({ error: error.message || '설정 조회 실패' });
+    }
+});
+
 app.post('/api/admin/verify', requireAdmin, (req, res) => {
     res.json({ ok: true });
+});
+
+app.post('/api/banner/verify', async (req, res) => {
+    try {
+        const inputPassword = String(req.body?.password || '').trim();
+        const settings = await getSecuritySettings();
+        const ok = inputPassword && inputPassword === settings.bannerPassword;
+        if (!ok) {
+            return res.status(401).json({ error: '비밀번호가 올바르지 않습니다.' });
+        }
+
+        res.json({ ok: true });
+    } catch (error) {
+        res.status(500).json({ error: error.message || '배너 인증 실패' });
+    }
+});
+
+app.put('/api/settings', requireAdmin, async (req, res) => {
+    try {
+        const current = await getSecuritySettings();
+        const next = {
+            ...current,
+            adminInfo: normalizeAdminInfo(req.body?.adminInfo || current.adminInfo)
+        };
+
+        const saved = await saveSecuritySettings(next);
+        res.json(toClientSettings(saved));
+    } catch (error) {
+        res.status(500).json({ error: error.message || '관리자 정보 업데이트 실패' });
+    }
+});
+
+app.put('/api/settings/passwords', requireAdmin, async (req, res) => {
+    try {
+        const newAdminToken = String(req.body?.newAdminToken || '').trim();
+        const newBannerPassword = String(req.body?.newBannerPassword || '').trim();
+
+        if (!newAdminToken && !newBannerPassword) {
+            return res.status(400).json({ error: '변경할 비밀번호가 없습니다.' });
+        }
+
+        const current = await getSecuritySettings();
+        const next = {
+            ...current,
+            adminTokenHash: newAdminToken ? hashToken(newAdminToken) : current.adminTokenHash,
+            bannerPassword: newBannerPassword || current.bannerPassword
+        };
+
+        await saveSecuritySettings(next);
+        res.json({
+            ok: true,
+            adminTokenChanged: Boolean(newAdminToken),
+            bannerPasswordChanged: Boolean(newBannerPassword)
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message || '비밀번호 변경 실패' });
+    }
 });
 
 app.get('/api/notices', async (req, res) => {
