@@ -124,6 +124,81 @@ async function loadData() {
     try { const storedSaved = localStorage.getItem('eceSaved'); savedPosts = storedSaved ? JSON.parse(storedSaved) : []; if (!Array.isArray(savedPosts)) savedPosts = []; } catch (e) { savedPosts = []; }
     try { const stored = localStorage.getItem('eceBannerSlides'); if (stored) bannerSlides = JSON.parse(stored); } catch(e) {}
     if (bannerSlides.length === 0) bannerSlides = JSON.parse(JSON.stringify(defaultBannerSlides));
+
+    await loadBannerSlides();
+    startBannerPolling();
+}
+
+async function loadBannerSlides() {
+    try {
+        const result = await apiRequest('/api/banner-slides', { method: 'GET' });
+        if (Array.isArray(result?.slides) && result.slides.length > 0) {
+            bannerSlides = result.slides;
+            refreshBannerDOM();
+        }
+    } catch (error) {
+        console.error('배너 슬라이드 로드 실패:', error);
+        // 배너 로드 실패 시 기본값 유지
+    }
+}
+
+let bannerPollingInterval = null;
+
+function startBannerPolling() {
+    // 30초마다 배너 업데이트 확인
+    bannerPollingInterval = setInterval(async () => {
+        try {
+            const result = await apiRequest('/api/banner-slides', { method: 'GET' });
+            if (Array.isArray(result?.slides)) {
+                const newSlides = result.slides;
+                const oldLength = bannerSlides.length;
+                const newLength = newSlides.length;
+
+                // 배너 수가 변경되었거나 컨텐츠가 달라졌으면 업데이트
+                if (oldLength !== newLength || JSON.stringify(bannerSlides) !== JSON.stringify(newSlides)) {
+                    bannerSlides = newSlides;
+                    currentBannerIdx = 0;
+                    refreshBannerDOM();
+                }
+            }
+        } catch (error) {
+            console.error('배너 폴링 오류:', error);
+        }
+    }, 30000);
+}
+
+function stopBannerPolling() {
+    if (bannerPollingInterval) {
+        clearInterval(bannerPollingInterval);
+        bannerPollingInterval = null;
+    }
+}
+
+function refreshBannerDOM() {
+    const bannerTrack = document.getElementById('banner-track');
+    if (!bannerTrack) return;
+
+    bannerTrack.innerHTML = '';
+    bannerSlides.forEach(slide => {
+        const slideEl = document.createElement('a');
+        slideEl.href = '#';
+        slideEl.className = 'banner-slide';
+        slideEl.style.background = slide.bgStyle || '';
+        slideEl.onclick = (e) => {
+            if (isDragging) e.preventDefault();
+        };
+
+        const spanEl = document.createElement('span');
+        spanEl.style.color = slide.textColor || '#000';
+        spanEl.style.fontWeight = '700';
+        spanEl.textContent = slide.text || '';
+
+        slideEl.appendChild(spanEl);
+        bannerTrack.appendChild(slideEl);
+    });
+
+    currentBannerIdx = 0;
+    updateBannerPosition();
 }
 
 // ========================================
@@ -471,6 +546,179 @@ function saveAdminInfo() {
 function cancelAdminEdit() {
     document.getElementById('admin-edit-area').style.display = 'none';
     document.getElementById('admin-display-area').style.display = 'block';
+}
+
+// ========================================
+// 🎠 배너 관리
+// ========================================
+
+async function openBannerManager() {
+    pendingAuthAction = 'banner-admin';
+    document.getElementById('admin-pwd').value = '';
+    setPasswordModalTexts('배너 관리자 인증', '배너 관리자 비밀번호를 입력하세요.');
+    openModal('pwd-modal');
+}
+
+function triggerBannerManagerAuth() {
+    pendingAuthAction = 'banner-admin';
+    document.getElementById('admin-pwd').value = '';
+    setPasswordModalTexts('배너 관리자 인증', '배너 관리자 비밀번호를 입력하세요.');
+    openModal('pwd-modal');
+}
+
+async function verifyBannerPassword() {
+    const pwd = document.getElementById('admin-pwd').value;
+    if (!pwd) {
+        alert("배너 관리자 비밀번호를 입력해주세요.");
+        document.getElementById('admin-pwd').focus();
+        return;
+    }
+
+    try {
+        await apiRequest('/api/banner/verify', {
+            method: 'POST',
+            body: JSON.stringify({ password: pwd })
+        });
+    } catch (error) {
+        alert(`배너 비밀번호 실패: ${error.message}`);
+        document.getElementById('admin-pwd').focus();
+        return;
+    }
+
+    closeModal('pwd-modal');
+    document.getElementById('admin-pwd').value = '';
+    openBannerEditPanel();
+}
+
+function openBannerEditPanel() {
+    document.getElementById('banner-list-area').style.display = 'block';
+    renderBannerList();
+}
+
+function closeBannerEditPanel() {
+    document.getElementById('banner-list-area').style.display = 'none';
+}
+
+function renderBannerList() {
+    const container = document.getElementById('banner-slides-list');
+    if (!container) return;
+
+    container.innerHTML = '';
+
+    bannerSlides.forEach((slide, idx) => {
+        const slideItem = document.createElement('div');
+        slideItem.className = 'banner-item';
+        slideItem.innerHTML = `
+            <div class="banner-item-header">
+                <span class="banner-item-text">${slide.text || ''}</span>
+                <button class="btn btn-small btn-danger" onclick="deleteBannerSlide(${slide.id})">삭제</button>
+            </div>
+            <div class="banner-item-form">
+                <input type="text" placeholder="배너 텍스트" value="${slide.text || ''}" class="banner-input-text-${slide.id}">
+                <input type="color" placeholder="텍스트 색" value="${slide.textColor || '#000000'}" class="banner-input-color-${slide.id}">
+                <button class="btn btn-small" onclick="updateBannerSlide(${slide.id})">수정</button>
+            </div>
+        `;
+        container.appendChild(slideItem);
+    });
+
+    const addForm = document.createElement('div');
+    addForm.className = 'banner-item banner-item-add';
+    addForm.innerHTML = `
+        <div class="banner-item-header">
+            <span>새 배너 추가</span>
+        </div>
+        <div class="banner-item-form">
+            <input type="text" id="new-banner-text" placeholder="배너 텍스트" maxlength="100">
+            <input type="color" id="new-banner-color" value="#000000" placeholder="텍스트 색">
+            <input type="color" id="new-banner-bg" value="#ffffff" placeholder="배경 색">
+            <button class="btn btn-small" onclick="addNewBannerSlide()">추가</button>
+        </div>
+    `;
+    container.appendChild(addForm);
+}
+
+async function addNewBannerSlide() {
+    const text = (document.getElementById('new-banner-text').value || '').trim();
+    const textColor = document.getElementById('new-banner-color').value || '#000000';
+    const bgColor = document.getElementById('new-banner-bg').value || '#ffffff';
+
+    if (!text) {
+        alert('배너 텍스트를 입력해주세요.');
+        return;
+    }
+
+    try {
+        const result = await apiRequest('/api/banner-slides', {
+            method: 'POST',
+            headers: getNoticeAdminHeaders(),
+            body: JSON.stringify({
+                name: text.substring(0, 50),
+                text: text,
+                bgStyle: `background: ${bgColor};`,
+                textColor: textColor,
+                order: bannerSlides.length
+            })
+        });
+
+        bannerSlides.push(result.slide);
+        refreshBannerDOM();
+        renderBannerList();
+        document.getElementById('new-banner-text').value = '';
+        alert('배너가 추가되었습니다! (7일 동안 유지됩니다)');
+    } catch (error) {
+        alert(`배너 추가 실패: ${error.message}`);
+    }
+}
+
+async function updateBannerSlide(slideId) {
+    const newText = document.querySelector(`.banner-input-text-${slideId}`).value.trim();
+    const newColor = document.querySelector(`.banner-input-color-${slideId}`).value;
+
+    if (!newText) {
+        alert('배너 텍스트를 입력해주세요.');
+        return;
+    }
+
+    try {
+        const result = await apiRequest(`/api/banner-slides/${slideId}`, {
+            method: 'PUT',
+            headers: getNoticeAdminHeaders(),
+            body: JSON.stringify({
+                name: newText.substring(0, 50),
+                text: newText,
+                textColor: newColor
+            })
+        });
+
+        const idx = bannerSlides.findIndex(s => s.id === slideId);
+        if (idx !== -1) {
+            bannerSlides[idx] = result.slide;
+        }
+        refreshBannerDOM();
+        renderBannerList();
+        alert('배너가 수정되었습니다!');
+    } catch (error) {
+        alert(`배너 수정 실패: ${error.message}`);
+    }
+}
+
+async function deleteBannerSlide(slideId) {
+    if (!confirm('이 배너를 삭제하시겠습니까?')) return;
+
+    try {
+        await apiRequest(`/api/banner-slides/${slideId}`, {
+            method: 'DELETE',
+            headers: getNoticeAdminHeaders()
+        });
+
+        bannerSlides = bannerSlides.filter(s => s.id !== slideId);
+        refreshBannerDOM();
+        renderBannerList();
+        alert('배너가 삭제되었습니다!');
+    } catch (error) {
+        alert(`배너 삭제 실패: ${error.message}`);
+    }
 }
 
 // ========================================
@@ -917,10 +1165,14 @@ function saveBannerSlides() { try { localStorage.setItem('eceBannerSlides', JSON
 
 function toggleBannerModePanel() {
     const body = document.getElementById('banner-mode-body');
-    const chevron = document.getElementById('banner-mode-chevron');
-    const isOpen = body.classList.toggle('open');
-    chevron.style.transform = isOpen ? 'rotate(180deg)' : '';
-    chevron.style.transition = 'transform 0.2s';
+    const header = body.parentElement.querySelector('.banner-mode-header');
+    const chevron = header.querySelector('svg');
+    const isOpen = body.classList.toggle('show');
+    if (isOpen) {
+        header.classList.add('collapsed');
+    } else {
+        header.classList.remove('collapsed');
+    }
 }
 
 async function verifyBannerPassword() {

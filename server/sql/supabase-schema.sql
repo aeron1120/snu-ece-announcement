@@ -33,6 +33,22 @@ alter table if exists public.app_settings add column if not exists banner_admin_
 alter table if exists public.app_settings add column if not exists banner_admin_phone text not null default '010-8888-9999';
 alter table if exists public.app_settings add column if not exists banner_admin_kakao text not null default 'snu_ece_ads';
 
+create table if not exists public.banner_slides (
+  id bigint generated always as identity primary key,
+  name text not null,
+  text text not null,
+  bg_style text not null,
+  text_color text not null,
+  src text,
+  "order" integer not null default 0,
+  created_at timestamptz not null default now(),
+  expires_at timestamptz not null,
+  is_deleted boolean not null default false
+);
+
+create index if not exists banner_slides_active_order_idx on public.banner_slides (is_deleted, "order" asc);
+create index if not exists banner_slides_expires_idx on public.banner_slides (expires_at);
+
 create or replace function public.increment_notice_views(target_notice_id bigint)
 returns setof public.notices
 language plpgsql

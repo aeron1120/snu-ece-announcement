@@ -228,44 +228,24 @@
         <!-- 배너 모드 섹션 -->
         <div class="banner-mode-section">
             <div class="banner-mode-header" onclick="toggleBannerModePanel()">
-                <h3>🖼️ 배너 모드 <span style="font-size:13px; font-weight:400; color:#9a3412;">(관리자 전용)</span></h3>
+                <h3>🖼️ 배너 관리 <span style="font-size:13px; font-weight:400; color:#9a3412;">(공지 관리자 전용)</span></h3>
                 <svg id="banner-mode-chevron" width="20" height="20" fill="none" stroke="#c2410c" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path></svg>
             </div>
             <div class="banner-mode-body" id="banner-mode-body">
                 <div id="banner-pwd-section">
-                    <p style="font-size: 13.5px; color: var(--text-sub); margin: 0 0 12px 0;">배너 사진 관리를 위해 비밀번호를 입력하세요.</p>
+                    <p style="font-size: 13.5px; color: var(--text-sub); margin: 0 0 12px 0;">배너 콘텐츠를 관리하기 위해 공지 관리자 비밀번호를 입력하세요.</p>
                     <div class="banner-pwd-row">
-                        <input type="password" id="banner-mode-pwd" placeholder="••••" onkeyup="if(event.key==='Enter') verifyBannerPassword()" maxlength="10">
+                        <input type="password" id="banner-mode-pwd" placeholder="••••" onkeyup="if(event.key==='Enter') verifyBannerPassword()" maxlength="100">
                         <button class="btn btn-small" onclick="verifyBannerPassword()">인증</button>
                     </div>
                     <div id="banner-pwd-error" style="display:none; color:var(--danger); font-size:13px; margin-top:8px;">비밀번호가 올바르지 않습니다.</div>
                 </div>
                 <!-- 인증 후 노출되는 관리 패널 -->
-                <div class="banner-manage-panel" id="banner-manage-panel">
-                    <h4 style="margin: 0 0 12px 0; font-size: 15px; color: var(--text-main);">📋 현재 배너 목록 <span id="banner-count-label" style="font-weight:400; color:var(--text-sub); font-size:13px;"></span></h4>
-                    <div class="banner-list" id="banner-list-ui"></div>
-
-                    <!-- 배너 추가 폼 -->
-                    <div class="banner-add-form">
-                        <p style="margin: 0 0 10px 0; font-size: 14px; font-weight: 700; color: var(--text-main);">➕ 배너 사진 추가하기</p>
-                        <div class="form-group">
-                            <label>사진 이름 (표시용)</label>
-                            <input type="text" id="new-banner-name" placeholder="예: 스타트업 부트캠프 모집">
-                        </div>
-                        <div class="form-group" style="margin-bottom: 12px;">
-                            <label>배너 이미지 파일 등록</label>
-                            <input type="file" id="new-banner-file" accept="image/*" style="border: none; padding: 0; background: transparent; font-size: 14px;">
-                        </div>
-                        <button class="btn btn-small" style="width:100%;" onclick="addBannerImage()">배너 사진 추가</button>
-                    </div>
-
-                    <!-- 배너 크기 안내 -->
-                    <div class="banner-size-info">
-                        ℹ️ <strong>배너 권장 사이즈 안내</strong><br>
-                        현재 배너의 화면 표시 크기는 <strong>약 500 × 48 px</strong>입니다.<br>
-                        mm 환산 시 모니터 96dpi 기준 약 <strong>132mm × 13mm</strong>, 인쇄 300dpi 기준 약 <strong>42mm × 4mm</strong>입니다.<br>
-                        업로드 권장 해상도: <strong>1500 × 150 px (10:1 비율)</strong> 이상, JPG/PNG 형식.<br>
-                        이미지가 너무 세로로 길면 잘릴 수 있습니다. 가로로 긴 배너 이미지를 사용하세요.
+                <div id="banner-list-area" class="banner-manage-panel" style="display: none;">
+                    <h4 style="margin: 0 0 16px 0; font-size: 15px; color: var(--text-main);">📋 현재 배너 목록</h4>
+                    <div class="banner-slides-list" id="banner-slides-list"></div>
+                    <div style="margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border);">
+                        <button class="btn btn-outline btn-small" onclick="closeBannerEditPanel()">관리 종료</button>
                     </div>
                 </div>
             </div>

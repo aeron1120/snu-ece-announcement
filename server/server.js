@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url';
 import { promises as fs } from 'fs';
 import { createClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
+import cron from 'node-cron';
 
 dotenv.config();
 
@@ -364,6 +365,21 @@ async function ensureDefaultData() {
     await getSecuritySettings();
 }
 
+function initializeBannerCleanupCron() {
+    if (!useSupabase) {
+        console.log('배너 자동 정리 크론: Supabase 미사용 (파일 모드), 스킵됨');
+        return;
+    }
+
+    // 매일 자정에 만료된 배너 정리
+    cron.schedule('0 0 * * *', async () => {
+        console.log('[배너 크론 작업] 만료된 배너 정리 시작...');
+        await cleanupExpiredBanners();
+    });
+
+    console.log('[배너 크론 작업] 활성화됨 (매일 자정)');
+}
+
 async function listNotices() {
     if (!useSupabase) {
         const notices = await readNotices();
@@ -523,6 +539,142 @@ async function incrementViewCount(id) {
     }
 
     return toClientNotice(data[0]);
+}
+
+async function listBannerSlides() {
+    if (!useSupabase) {
+        return [];
+    }
+
+    const { data, error } = await supabase
+        .from('banner_slides')
+        .select('*')
+        .eq('is_deleted', false)
+        .gt('expires_at', new Date().toISOString())
+        .order('order', { ascending: true })
+        .order('created_at', { ascending: false });
+
+    if (error) {
+        throw error;
+    }
+
+    return Array.isArray(data) ? data.map(toClientBannerSlide) : [];
+}
+
+async function createBannerSlide(payload) {
+    if (!useSupabase) {
+        return null;
+    }
+
+    const sevenDaysLater = new Date();
+    sevenDaysLater.setDate(sevenDaysLater.getDate() + 7);
+
+    const { data, error } = await supabase
+        .from('banner_slides')
+        .insert({
+            name: String(payload.name || '').trim(),
+            text: String(payload.text || '').trim(),
+            bg_style: String(payload.bgStyle || '').trim(),
+            text_color: String(payload.textColor || '').trim(),
+            src: payload.src || null,
+            order: Number(payload.order) || 0,
+            expires_at: sevenDaysLater.toISOString(),
+            is_deleted: false
+        })
+        .select('*')
+        .single();
+
+    if (error) {
+        throw error;
+    }
+
+    return toClientBannerSlide(data);
+}
+
+async function updateBannerSlide(id, payload) {
+    if (!useSupabase) {
+        return null;
+    }
+
+    const sevenDaysLater = new Date();
+    sevenDaysLater.setDate(sevenDaysLater.getDate() + 7);
+
+    const { data, error } = await supabase
+        .from('banner_slides')
+        .update({
+            name: String(payload.name || '').trim(),
+            text: String(payload.text || '').trim(),
+            bg_style: String(payload.bgStyle || '').trim(),
+            text_color: String(payload.textColor || '').trim(),
+            src: payload.src || null,
+            order: Number(payload.order) || 0,
+            expires_at: sevenDaysLater.toISOString()
+        })
+        .eq('id', id)
+        .eq('is_deleted', false)
+        .select('*')
+        .single();
+
+    if (error && error.code !== 'PGRST116') {
+        throw error;
+    }
+
+    return data ? toClientBannerSlide(data) : null;
+}
+
+async function softDeleteBannerSlide(id) {
+    if (!useSupabase) {
+        return false;
+    }
+
+    const { data, error } = await supabase
+        .from('banner_slides')
+        .update({ is_deleted: true })
+        .eq('id', id)
+        .eq('is_deleted', false)
+        .select('id');
+
+    if (error) {
+        throw error;
+    }
+
+    return Array.isArray(data) && data.length > 0;
+}
+
+async function cleanupExpiredBanners() {
+    if (!useSupabase) {
+        return;
+    }
+
+    try {
+        const { error } = await supabase
+            .from('banner_slides')
+            .update({ is_deleted: true })
+            .lt('expires_at', new Date().toISOString())
+            .eq('is_deleted', false);
+
+        if (error) {
+            console.error('배너 자동 정리 오류:', error);
+        } else {
+            console.log('매료된 배너가 자동 정리되었습니다.');
+        }
+    } catch (error) {
+        console.error('배너 자동 정리 중 오류 발생:', error);
+    }
+}
+
+function toClientBannerSlide(row) {
+    if (!row) return null;
+    return {
+        id: Number(row.id),
+        name: row.name || '',
+        text: row.text || '',
+        bgStyle: row.bg_style || '',
+        textColor: row.text_color || '',
+        src: row.src || null,
+        order: Number(row.order) || 0,
+        expiresAt: row.expires_at || null
+    };
 }
 
 app.get('/api/health', (req, res) => {
@@ -727,8 +879,89 @@ app.post('/api/summary', async (req, res) => {
     }
 });
 
+app.get('/api/banner-slides', async (req, res) => {
+    try {
+        const slides = await listBannerSlides();
+        res.json({ slides });
+    } catch (error) {
+        res.status(500).json({ error: error.message || '배너 조회 실패' });
+    }
+});
+
+app.post('/api/banner-slides', requireNoticeAdmin, async (req, res) => {
+    try {
+        const payload = {
+            name: String(req.body?.name || '').trim(),
+            text: String(req.body?.text || '').trim(),
+            bgStyle: String(req.body?.bgStyle || '').trim(),
+            textColor: String(req.body?.textColor || '').trim(),
+            src: req.body?.src || null,
+            order: Number(req.body?.order) || 0
+        };
+
+        if (!payload.text) {
+            return res.status(400).json({ error: '배너 텍스트는 필수입니다.' });
+        }
+
+        const newSlide = await createBannerSlide(payload);
+        res.status(201).json({ slide: newSlide });
+    } catch (error) {
+        res.status(500).json({ error: error.message || '배너 등록 실패' });
+    }
+});
+
+app.put('/api/banner-slides/:id', requireNoticeAdmin, async (req, res) => {
+    try {
+        const id = Number(req.params.id);
+        if (!Number.isFinite(id)) {
+            return res.status(400).json({ error: '유효하지 않은 id입니다.' });
+        }
+
+        const payload = {
+            name: String(req.body?.name || '').trim(),
+            text: String(req.body?.text || '').trim(),
+            bgStyle: String(req.body?.bgStyle || '').trim(),
+            textColor: String(req.body?.textColor || '').trim(),
+            src: req.body?.src || null,
+            order: Number(req.body?.order) || 0
+        };
+
+        if (!payload.text) {
+            return res.status(400).json({ error: '배너 텍스트는 필수입니다.' });
+        }
+
+        const updated = await updateBannerSlide(id, payload);
+        if (!updated) {
+            return res.status(404).json({ error: '배너 없음' });
+        }
+
+        res.json({ slide: updated });
+    } catch (error) {
+        res.status(500).json({ error: error.message || '배너 수정 실패' });
+    }
+});
+
+app.delete('/api/banner-slides/:id', requireNoticeAdmin, async (req, res) => {
+    try {
+        const id = Number(req.params.id);
+        if (!Number.isFinite(id)) {
+            return res.status(400).json({ error: '유효하지 않은 id입니다.' });
+        }
+
+        const deleted = await softDeleteBannerSlide(id);
+        if (!deleted) {
+            return res.status(404).json({ error: '배너 없음' });
+        }
+
+        res.status(204).send();
+    } catch (error) {
+        res.status(500).json({ error: error.message || '배너 삭제 실패' });
+    }
+});
+
 ensureDefaultData()
     .then(() => {
+        initializeBannerCleanupCron();
         app.listen(PORT, () => {
             console.log(`Server running on http://localhost:${PORT} (storage: ${useSupabase ? 'supabase' : 'file'})`);
         });
