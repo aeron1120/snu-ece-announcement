@@ -4,6 +4,7 @@
 
 const CURRENT_DATE = new Date("2026-03-27T00:00:00");
 const GEMINI_MODEL = "gemini-2.5-flash";
+const API_BASE_URL = (window.API_BASE_URL || localStorage.getItem('eceApiBaseUrl') || '').trim().replace(/\/$/, '');
 
 let currentViewId = null;
 let editingNoticeId = null;
@@ -47,14 +48,47 @@ const filterState = {
     'deadline-status': '전체', 'host': '전체', 'has-image': '전체', 'saved': '전체', 'views': '전체', 'sort': '최신순'
 };
 
+function buildApiUrl(path) {
+    return API_BASE_URL ? `${API_BASE_URL}${path}` : path;
+}
+
+async function apiRequest(path, options = {}) {
+    const response = await fetch(buildApiUrl(path), {
+        ...options,
+        headers: {
+            'Content-Type': 'application/json',
+            ...(options.headers || {})
+        }
+    });
+
+    if (response.status === 204) {
+        return null;
+    }
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+        throw new Error(data?.error || `요청 실패 (${response.status})`);
+    }
+    return data;
+}
+
 // ========================================
 // 💾 localStorage 로드
 // ========================================
 
-function loadData() {
+async function loadData() {
     try { const storedAdmin = localStorage.getItem('eceAdminInfo'); if (storedAdmin) adminInfo = JSON.parse(storedAdmin); } catch(e) {}
     try { const sp = localStorage.getItem('ecePasswords'); if (sp) { const p = JSON.parse(sp); adminPassword = p.admin || adminPassword; bannerPassword = p.banner || bannerPassword; } } catch(e) {}
-    try { const storedNotices = localStorage.getItem('eceNotices'); notices = storedNotices ? JSON.parse(storedNotices) : defaultNotices; if (!Array.isArray(notices)) notices = defaultNotices; } catch (e) { notices = defaultNotices; }
+
+    try {
+        const result = await apiRequest('/api/notices', { method: 'GET' });
+        notices = Array.isArray(result?.notices) ? result.notices : defaultNotices;
+    } catch (error) {
+        console.error('공지 목록 불러오기 실패:', error);
+        notices = defaultNotices;
+        alert('공지 목록을 서버에서 불러오지 못해 기본 데이터로 표시합니다.');
+    }
+
     try { const storedSaved = localStorage.getItem('eceSaved'); savedPosts = storedSaved ? JSON.parse(storedSaved) : []; if (!Array.isArray(savedPosts)) savedPosts = []; } catch (e) { savedPosts = []; }
     try { const stored = localStorage.getItem('eceBannerSlides'); if (stored) bannerSlides = JSON.parse(stored); } catch(e) {}
     if (bannerSlides.length === 0) bannerSlides = JSON.parse(JSON.stringify(defaultBannerSlides));
@@ -201,7 +235,7 @@ function triggerEditNotice() { if(!currentViewId) return; pendingAuthAction = 'e
 function triggerDeletePost() { if(!currentViewId) return; pendingAuthAction = 'delete'; document.getElementById('admin-pwd').value = ''; openModal('pwd-modal'); }
 function triggerAdminEdit() { pendingAuthAction = 'admin'; document.getElementById('admin-pwd').value = ''; openModal('pwd-modal'); }
 
-function verifyPassword() {
+async function verifyPassword() {
     const pwd = document.getElementById('admin-pwd').value;
     if (pwd === adminPassword) {
         closeModal('pwd-modal');
@@ -231,8 +265,15 @@ function verifyPassword() {
             }
 
         } else if (pendingAuthAction === 'delete') {
+            try {
+                await apiRequest(`/api/notices/${currentViewId}`, { method: 'DELETE' });
+            } catch (error) {
+                alert(`삭제 실패: ${error.message}`);
+                pendingAuthAction = null;
+                return;
+            }
+
             notices = notices.filter(n => String(n.id) !== currentViewId);
-            localStorage.setItem('eceNotices', JSON.stringify(notices));
             const saveIdx = savedPosts.findIndex(savedId => String(savedId) === currentViewId);
             if(saveIdx > -1) { savedPosts.splice(saveIdx, 1); localStorage.setItem('eceSaved', JSON.stringify(savedPosts)); }
             alert("삭제되었습니다.");
@@ -289,7 +330,7 @@ async function getGeminiSummary(text) {
     const prompt = `다음 공지를 3줄로 요약해. 각 줄은 '- '로 시작. 명사형 종결.\n\n${text}`;
 
     try {
-        const response = await fetch('/api/summary', {
+        const response = await fetch(buildApiUrl('/api/summary'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ prompt, model: GEMINI_MODEL })
@@ -350,16 +391,35 @@ async function generateAIAndSave() {
         finalImages = notices[noticeIndex].images || [];
     }
 
-    const newNoticeData = { id: editingNoticeId || Date.now(), title, host, target, deadline, content, aiSummary, images: finalImages, views: noticeIndex !== -1 ? notices[noticeIndex].views : 0 };
+    const newNoticeData = {
+        title,
+        host,
+        target,
+        deadline,
+        content,
+        aiSummary,
+        images: finalImages
+    };
 
-    if (editingNoticeId && noticeIndex !== -1) {
-        notices[noticeIndex] = newNoticeData; 
-    } else {
-        notices.unshift(newNoticeData); 
+    try {
+        if (editingNoticeId && noticeIndex !== -1) {
+            const result = await apiRequest(`/api/notices/${editingNoticeId}`, {
+                method: 'PUT',
+                body: JSON.stringify(newNoticeData)
+            });
+            notices[noticeIndex] = result.notice;
+        } else {
+            const result = await apiRequest('/api/notices', {
+                method: 'POST',
+                body: JSON.stringify(newNoticeData)
+            });
+            notices.unshift(result.notice);
+        }
+    } catch (error) {
+        document.getElementById('ai-loading').style.display = 'none';
+        alert(`공지 저장 실패: ${error.message}`);
+        return;
     }
-    
-    try { localStorage.setItem('eceNotices', JSON.stringify(notices)); } 
-    catch (e) { alert("⚠️ 디바이스 저장 공간 초과!"); }
 
     document.getElementById('ai-loading').style.display = 'none';
     closeModal('add-modal');
@@ -657,8 +717,23 @@ function openDetail(idStr) {
 
     const notice = notices[noticeIndex];
     notice.views = (notice.views || 0) + 1;
-    localStorage.setItem('eceNotices', JSON.stringify(notices));
     filterCards(); 
+
+    apiRequest(`/api/notices/${currentViewId}/view`, { method: 'POST' })
+        .then(result => {
+            if (!result?.notice) return;
+            const freshIdx = notices.findIndex(n => String(n.id) === String(result.notice.id));
+            if (freshIdx !== -1) {
+                notices[freshIdx].views = result.notice.views;
+                if (String(currentViewId) === String(result.notice.id)) {
+                    document.getElementById('detail-meta').innerHTML = `마감일: ${notice.deadline ? notice.deadline : '상시'} &nbsp;|&nbsp; 조회: ${result.notice.views}`;
+                }
+                filterCards();
+            }
+        })
+        .catch(error => {
+            console.error('조회수 반영 실패:', error);
+        });
 
     const dDay = calcDDay(notice.deadline);
     document.getElementById('detail-tags').innerHTML = `
@@ -968,8 +1043,8 @@ document.addEventListener('keydown', function(e) {
     }
 });
 
-document.addEventListener('DOMContentLoaded', function () {
-    loadData();
+document.addEventListener('DOMContentLoaded', async function () {
+    await loadData();
     renderAdminInfo();
     refreshBannerDOM();
     buildHostButtons();
