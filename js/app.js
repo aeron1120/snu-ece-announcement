@@ -29,6 +29,7 @@ let bannerInterval = null;
 let dragSrcIdx = null;
 
 let adminInfo = { name: "ECE 학생회장 (이름 : 박지호)", phone: "010-1234-5678", kakao: "snu_ece_pres" };
+let bannerAdminInfo = { name: "학생회 대외협력국 (국장 : 이배너)", phone: "010-8888-9999", kakao: "snu_ece_ads" };
 let noticeAdminAuthToken = '';
 let superAdminAuthToken = '';
 
@@ -97,6 +98,14 @@ async function loadData() {
                 name: settings.adminInfo.name || adminInfo.name,
                 phone: settings.adminInfo.phone || adminInfo.phone,
                 kakao: settings.adminInfo.kakao || adminInfo.kakao
+            };
+        }
+
+        if (settings?.bannerInfo) {
+            bannerAdminInfo = {
+                name: settings.bannerInfo.name || bannerAdminInfo.name,
+                phone: settings.bannerInfo.phone || bannerAdminInfo.phone,
+                kakao: settings.bannerInfo.kakao || bannerAdminInfo.kakao
             };
         }
     } catch (error) {
@@ -253,10 +262,55 @@ function renderAdminInfo() {
     document.getElementById('admin-kakao-display').innerText = adminInfo.kakao;
 }
 
-function openAddNotice() { pendingAuthAction = 'add'; document.getElementById('admin-pwd').value = ''; openModal('pwd-modal'); }
-function triggerEditNotice() { if(!currentViewId) return; pendingAuthAction = 'edit'; document.getElementById('admin-pwd').value = ''; openModal('pwd-modal'); }
-function triggerDeletePost() { if(!currentViewId) return; pendingAuthAction = 'delete'; document.getElementById('admin-pwd').value = ''; openModal('pwd-modal'); }
-function triggerAdminEdit() { pendingAuthAction = 'admin'; document.getElementById('admin-pwd').value = ''; openModal('pwd-modal'); }
+function renderBannerAdminInfo() {
+    const nameEl = document.getElementById('banner-admin-name-display');
+    const phoneEl = document.getElementById('banner-admin-phone-display');
+    const kakaoEl = document.getElementById('banner-admin-kakao-display');
+    if (nameEl) nameEl.innerText = bannerAdminInfo.name;
+    if (phoneEl) phoneEl.innerText = bannerAdminInfo.phone;
+    if (kakaoEl) kakaoEl.innerText = bannerAdminInfo.kakao;
+}
+
+function copyBannerPhone() {
+    copyToClipboard(bannerAdminInfo.phone);
+}
+
+function setPasswordModalTexts(title, description) {
+    const titleEl = document.getElementById('pwd-modal-title');
+    const descEl = document.getElementById('pwd-modal-description');
+    if (titleEl) titleEl.innerText = title;
+    if (descEl) descEl.innerText = description;
+}
+
+function openAddNotice() {
+    pendingAuthAction = 'add';
+    document.getElementById('admin-pwd').value = '';
+    setPasswordModalTexts('공지 관리자 인증', '공지 관리자 비밀번호를 입력하세요.');
+    openModal('pwd-modal');
+}
+
+function triggerEditNotice() {
+    if(!currentViewId) return;
+    pendingAuthAction = 'edit';
+    document.getElementById('admin-pwd').value = '';
+    setPasswordModalTexts('공지 관리자 인증', '공지 관리자 비밀번호를 입력하세요.');
+    openModal('pwd-modal');
+}
+
+function triggerDeletePost() {
+    if(!currentViewId) return;
+    pendingAuthAction = 'delete';
+    document.getElementById('admin-pwd').value = '';
+    setPasswordModalTexts('공지 관리자 인증', '공지 관리자 비밀번호를 입력하세요.');
+    openModal('pwd-modal');
+}
+
+function triggerAdminEdit() {
+    pendingAuthAction = 'admin';
+    document.getElementById('admin-pwd').value = '';
+    setPasswordModalTexts('절대 관리자 인증', '절대 관리자 비밀번호를 입력하세요.');
+    openModal('pwd-modal');
+}
 
 async function verifyPassword() {
     const pwd = document.getElementById('admin-pwd').value;
@@ -339,6 +393,9 @@ async function verifyPassword() {
         document.getElementById('edit-admin-name').value = adminInfo.name;
         document.getElementById('edit-admin-phone').value = adminInfo.phone;
         document.getElementById('edit-admin-kakao').value = adminInfo.kakao;
+        document.getElementById('edit-banner-admin-name').value = bannerAdminInfo.name;
+        document.getElementById('edit-banner-admin-phone').value = bannerAdminInfo.phone;
+        document.getElementById('edit-banner-admin-kakao').value = bannerAdminInfo.kakao;
     }
 
     pendingAuthAction = null;
@@ -350,13 +407,18 @@ function saveAdminInfo() {
         phone: document.getElementById('edit-admin-phone').value.trim(),
         kakao: document.getElementById('edit-admin-kakao').value.trim()
     };
+    const nextBannerInfo = {
+        name: document.getElementById('edit-banner-admin-name').value.trim(),
+        phone: document.getElementById('edit-banner-admin-phone').value.trim(),
+        kakao: document.getElementById('edit-banner-admin-kakao').value.trim()
+    };
     const newAdminPwd = document.getElementById('edit-admin-pwd').value.trim();
     const newBannerPwd = document.getElementById('edit-banner-pwd').value.trim();
 
     apiRequest('/api/settings', {
         method: 'PUT',
         headers: getSuperAdminHeaders(),
-        body: JSON.stringify({ adminInfo: nextAdminInfo })
+        body: JSON.stringify({ adminInfo: nextAdminInfo, bannerInfo: nextBannerInfo })
     })
         .then(async result => {
             adminInfo = {
@@ -365,6 +427,13 @@ function saveAdminInfo() {
                 kakao: result?.adminInfo?.kakao || nextAdminInfo.kakao || adminInfo.kakao
             };
             renderAdminInfo();
+
+            bannerAdminInfo = {
+                name: result?.bannerInfo?.name || nextBannerInfo.name || bannerAdminInfo.name,
+                phone: result?.bannerInfo?.phone || nextBannerInfo.phone || bannerAdminInfo.phone,
+                kakao: result?.bannerInfo?.kakao || nextBannerInfo.kakao || bannerAdminInfo.kakao
+            };
+            renderBannerAdminInfo();
 
             const pwdChanged = [];
             if (newAdminPwd || newBannerPwd) {
@@ -1136,6 +1205,7 @@ document.addEventListener('keydown', function(e) {
 document.addEventListener('DOMContentLoaded', async function () {
     await loadData();
     renderAdminInfo();
+    renderBannerAdminInfo();
     refreshBannerDOM();
     buildHostButtons();
     filterCards();

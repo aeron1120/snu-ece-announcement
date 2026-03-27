@@ -182,6 +182,22 @@
                 <label>카카오톡 ID</label>
                 <input type="text" id="edit-admin-kakao">
             </div>
+
+            <div style="height:1px; background:var(--border); margin: 16px 0;"></div>
+            <p style="font-size:13px; font-weight:700; color:var(--text-sub); margin:0 0 12px 0;">📢 배너 관리자 정보</p>
+            <div class="form-group" style="margin-bottom: 12px;">
+                <label>배너 관리자 직책 및 이름</label>
+                <input type="text" id="edit-banner-admin-name" placeholder="예: 학생회 대외협력국 (국장 : 이배너)">
+            </div>
+            <div class="form-group" style="margin-bottom: 12px;">
+                <label>배너 관리자 전화번호</label>
+                <input type="text" id="edit-banner-admin-phone">
+            </div>
+            <div class="form-group" style="margin-bottom: 16px;">
+                <label>배너 관리자 카카오톡 ID</label>
+                <input type="text" id="edit-banner-admin-kakao">
+            </div>
+
             <!-- 비밀번호 변경 구분선 -->
             <div style="height:1px; background:var(--border); margin: 16px 0;"></div>
             <p style="font-size:13px; font-weight:700; color:var(--text-sub); margin:0 0 12px 0;">🔑 비밀번호 변경 <span style="font-weight:400;">(변경 원하지 않으면 비워두세요)</span></p>
@@ -202,11 +218,11 @@
         <h3 style="text-align: left; margin: 0 0 12px 4px; font-size: 17px; color: var(--primary); display: flex; align-items: center; gap: 8px;">📢 배너 광고 제휴 문의</h3>
         <div style="background: #fafafa; padding: 20px 24px; border-radius: 16px; border: 1px solid var(--border); text-align: left; margin-bottom: 28px; display: flex; justify-content: space-between; align-items: center;">
             <div>
-                <strong style="font-size: 16px; color: var(--text-main);">학생회 대외협력국 (국장 : 이배너)</strong><br>
-                <span style="color: var(--text-sub); font-size: 14.5px;">Phone: 010-8888-9999</span><br>
-                <span style="color: var(--text-sub); font-size: 14.5px;">Kakao: snu_ece_ads</span>
+                <strong style="font-size: 16px; color: var(--text-main);" id="banner-admin-name-display">학생회 대외협력국 (국장 : 이배너)</strong><br>
+                <span style="color: var(--text-sub); font-size: 14.5px;">Phone:</span> <span id="banner-admin-phone-display" style="color: var(--text-sub); font-size: 14.5px;">010-8888-9999</span><br>
+                <span style="color: var(--text-sub); font-size: 14.5px;">Kakao:</span> <span id="banner-admin-kakao-display" style="color: var(--text-sub); font-size: 14.5px;">snu_ece_ads</span>
             </div>
-            <button class="btn btn-outline btn-small" style="padding: 8px 14px; font-size: 13px; height: fit-content;" onclick="copyToClipboard('01088889999')">번호 복사</button>
+            <button class="btn btn-outline btn-small" style="padding: 8px 14px; font-size: 13px; height: fit-content;" onclick="copyBannerPhone()">번호 복사</button>
         </div>
 
         <!-- 배너 모드 섹션 -->
@@ -280,8 +296,8 @@
 <div class="overlay" id="pwd-modal" style="z-index: 1050;">
     <div class="modal" style="width: 420px; text-align: center;" onclick="event.stopPropagation()">
         <button class="close-btn" onclick="closeModal('pwd-modal')">×</button>
-        <h2 style="margin-top: 0; font-weight: 800;">공지 관리자 인증</h2>
-        <p style="color: var(--text-sub); margin-bottom: 24px; font-size: 15px;">관리자 비밀번호를 입력하세요.</p>
+        <h2 id="pwd-modal-title" style="margin-top: 0; font-weight: 800;">공지 관리자 인증</h2>
+        <p id="pwd-modal-description" style="color: var(--text-sub); margin-bottom: 24px; font-size: 15px;">공지 관리자 비밀번호를 입력하세요.</p>
         <input type="password" id="admin-pwd" onkeyup="if(event.key==='Enter') verifyPassword()" style="width: 100%; padding: 16px; border: 1px solid var(--border); border-radius: 12px; margin-bottom: 20px; text-align: center; font-size: 24px; letter-spacing: 4px;">
         <button class="btn" style="width: 100%;" onclick="verifyPassword()">인증하기</button>
     </div>

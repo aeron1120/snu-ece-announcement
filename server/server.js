@@ -44,8 +44,15 @@ const defaultAdminInfo = {
     kakao: 'snu_ece_pres'
 };
 
+const defaultBannerInfo = {
+    name: '학생회 대외협력국 (국장 : 이배너)',
+    phone: '010-8888-9999',
+    kakao: 'snu_ece_ads'
+};
+
 const defaultSecuritySettings = {
     adminInfo: { ...defaultAdminInfo },
+    bannerInfo: { ...defaultBannerInfo },
     bannerPassword: '1234',
     adminTokenHash: hashToken(initialNoticeAdminToken)
 };
@@ -117,6 +124,11 @@ async function readSettingsFile() {
                 phone: String(parsed?.adminInfo?.phone || defaultAdminInfo.phone),
                 kakao: String(parsed?.adminInfo?.kakao || defaultAdminInfo.kakao)
             },
+            bannerInfo: {
+                name: String(parsed?.bannerInfo?.name || defaultBannerInfo.name),
+                phone: String(parsed?.bannerInfo?.phone || defaultBannerInfo.phone),
+                kakao: String(parsed?.bannerInfo?.kakao || defaultBannerInfo.kakao)
+            },
             bannerPassword: String(parsed?.bannerPassword || defaultSecuritySettings.bannerPassword),
             adminTokenHash: String(parsed?.adminTokenHash || defaultSecuritySettings.adminTokenHash)
         };
@@ -162,6 +174,14 @@ function normalizeAdminInfo(input = {}) {
     };
 }
 
+function normalizeBannerInfo(input = {}) {
+    return {
+        name: String(input.name || '').trim() || defaultBannerInfo.name,
+        phone: String(input.phone || '').trim() || defaultBannerInfo.phone,
+        kakao: String(input.kakao || '').trim() || defaultBannerInfo.kakao
+    };
+}
+
 function hashToken(token) {
     return crypto.createHash('sha256').update(String(token || ''), 'utf8').digest('hex');
 }
@@ -194,7 +214,8 @@ function getHeaderToken(req, headerName) {
 
 function toClientSettings(settings) {
     return {
-        adminInfo: normalizeAdminInfo(settings?.adminInfo || {})
+        adminInfo: normalizeAdminInfo(settings?.adminInfo || {}),
+        bannerInfo: normalizeBannerInfo(settings?.bannerInfo || {})
     };
 }
 
@@ -213,6 +234,7 @@ async function getSecuritySettings() {
         if (error.code === 'PGRST116') {
             const seeded = {
                 adminInfo: { ...defaultAdminInfo },
+                bannerInfo: { ...defaultBannerInfo },
                 bannerPassword: defaultSecuritySettings.bannerPassword,
                 adminTokenHash: defaultSecuritySettings.adminTokenHash
             };
@@ -228,6 +250,11 @@ async function getSecuritySettings() {
             phone: String(data.admin_phone || defaultAdminInfo.phone),
             kakao: String(data.admin_kakao || defaultAdminInfo.kakao)
         },
+        bannerInfo: {
+            name: String(data.banner_admin_name || defaultBannerInfo.name),
+            phone: String(data.banner_admin_phone || defaultBannerInfo.phone),
+            kakao: String(data.banner_admin_kakao || defaultBannerInfo.kakao)
+        },
         bannerPassword: String(data.banner_password || defaultSecuritySettings.bannerPassword),
         adminTokenHash: String(data.admin_token_hash || defaultSecuritySettings.adminTokenHash)
     };
@@ -236,6 +263,7 @@ async function getSecuritySettings() {
 async function saveSecuritySettings(settings) {
     const normalized = {
         adminInfo: normalizeAdminInfo(settings?.adminInfo || {}),
+        bannerInfo: normalizeBannerInfo(settings?.bannerInfo || {}),
         bannerPassword: String(settings?.bannerPassword || defaultSecuritySettings.bannerPassword),
         adminTokenHash: String(settings?.adminTokenHash || defaultSecuritySettings.adminTokenHash)
     };
@@ -250,6 +278,9 @@ async function saveSecuritySettings(settings) {
         admin_name: normalized.adminInfo.name,
         admin_phone: normalized.adminInfo.phone,
         admin_kakao: normalized.adminInfo.kakao,
+        banner_admin_name: normalized.bannerInfo.name,
+        banner_admin_phone: normalized.bannerInfo.phone,
+        banner_admin_kakao: normalized.bannerInfo.kakao,
         banner_password: normalized.bannerPassword,
         admin_token_hash: normalized.adminTokenHash,
         updated_at: new Date().toISOString()
@@ -535,7 +566,8 @@ app.put('/api/settings', requireSuperAdmin, async (req, res) => {
         const current = await getSecuritySettings();
         const next = {
             ...current,
-            adminInfo: normalizeAdminInfo(req.body?.adminInfo || current.adminInfo)
+            adminInfo: normalizeAdminInfo(req.body?.adminInfo || current.adminInfo),
+            bannerInfo: normalizeBannerInfo(req.body?.bannerInfo || current.bannerInfo)
         };
 
         const saved = await saveSecuritySettings(next);

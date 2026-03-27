@@ -21,10 +21,17 @@ create table if not exists public.app_settings (
   admin_name text not null,
   admin_phone text not null,
   admin_kakao text not null,
+  banner_admin_name text not null default '학생회 대외협력국 (국장 : 이배너)',
+  banner_admin_phone text not null default '010-8888-9999',
+  banner_admin_kakao text not null default 'snu_ece_ads',
   banner_password text not null,
   admin_token_hash text not null,
   updated_at timestamptz not null default now()
 );
+
+alter table if exists public.app_settings add column if not exists banner_admin_name text not null default '학생회 대외협력국 (국장 : 이배너)';
+alter table if exists public.app_settings add column if not exists banner_admin_phone text not null default '010-8888-9999';
+alter table if exists public.app_settings add column if not exists banner_admin_kakao text not null default 'snu_ece_ads';
 
 create or replace function public.increment_notice_views(target_notice_id bigint)
 returns setof public.notices
