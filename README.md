@@ -14,6 +14,11 @@
 ## 실행
 1. `.env.example`을 복사해서 `.env` 생성
 2. `GEMINI_API_KEY` 입력
-3. `npm install express dotenv`
-4. `node server/server.js`
+3. `npm install`
+4. `npm start`
 5. 브라우저에서 `http://localhost:3000`
+
+## Cloudflare Pages 배포(프론트엔드 정적 배포)
+1. `npm run prepare:public`
+2. Cloudflare Pages 설정에서 배포 디렉터리를 `public`으로 지정
+3. `public` 폴더만 배포(서버 코드와 `node_modules` 제외)

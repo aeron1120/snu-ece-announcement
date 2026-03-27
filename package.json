@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "start": "node server/server.js"
+    "start": "node server/server.js",
+    "prepare:public": "rm -rf public && mkdir -p public/css public/js && cp index.html public/ && cp css/style.css public/css/ && cp js/*.js public/js/"
   },
   "dependencies": {
     "cors": "^2.8.5",
