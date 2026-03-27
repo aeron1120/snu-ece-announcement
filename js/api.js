@@ -1,128 +1,46 @@
-    const GEMINI_API_KEY = "AIzaSyA1P_gCwEa4RArerq6_J8EowI1DwcR80Js";
-    const GEMINI_MODEL = "gemini-2.5-flash";
-    const CURRENT_DATE = new Date("2026-03-27T00:00:00"); 
-    let currentViewId = null;
-    let editingNoticeId = null; 
-    let viewMode = 'all'; 
+const GEMINI_MODEL = "gemini-2.5-flash";
 
-    let currentImageArray = [];
-    let currentImageIndex = 0;
-    let pendingAuthAction = null; 
+async function getGeminiSummary(text) {
+    const prompt = `다음 공지를 3줄로 요약해. 각 줄은 '- '로 시작. 명사형 종결.\n\n${text}`;
 
-    // --- 🌟 배너 슬라이드 & 드래그 로직 ---
-    let currentBannerIdx = 0;
-    // ⚠️ totalBanners 하드코딩 제거 → 항상 bannerSlides.length 참조 (refreshBannerDOM 이후에도 정확)
-    const bannerTrack = document.getElementById('banner-track');
-    const headerBanner = document.getElementById('header-banner');
-    
-    let isDragging = false;
-    let startPos = 0;
-    let currentTranslate = 0;
-    let prevTranslate = 0;
-    let animationID;
-
-    // slideBanner: 항상 동적 개수 참조
-    function slideBanner() {
-        const total = bannerSlides.length || document.getElementById('banner-track').children.length;
-        if (total === 0) return;
-        currentBannerIdx = (currentBannerIdx + 1) % total;
-        updateBannerPosition();
-    }
-
-    let bannerInterval = setInterval(slideBanner, 15000); // 15초 간격
-
-    // 드래그 이벤트 리스너
-    headerBanner.addEventListener('mousedown', dragStart);
-    headerBanner.addEventListener('touchstart', dragStart, {passive: true});
-    headerBanner.addEventListener('mouseup', dragEnd);
-    headerBanner.addEventListener('touchend', dragEnd);
-    headerBanner.addEventListener('mouseleave', dragEnd);
-    headerBanner.addEventListener('mousemove', drag);
-    headerBanner.addEventListener('touchmove', drag, {passive: true});
-
-    function dragStart(event) {
-        if (headerBanner.classList.contains('hidden')) return;
-        isDragging = true;
-        startPos = getPositionX(event);
-        clearInterval(bannerInterval); 
-        bannerTrack.classList.add('dragging');
-        animationID = requestAnimationFrame(animation);
-    }
-
-    function drag(event) {
-        if (isDragging) {
-            const currentPosition = getPositionX(event);
-            const diff = currentPosition - startPos;
-            const slideWidth = headerBanner.clientWidth;
-            const percentageMove = (diff / slideWidth) * 100;
-            currentTranslate = prevTranslate + percentageMove;
-        }
-    }
-
-    function getPositionX(event) {
-        return event.type.includes('mouse') ? event.pageX : event.touches[0].clientX;
-    }
-
-    function dragEnd() {
-        if (!isDragging) return;
-        isDragging = false;
-        cancelAnimationFrame(animationID);
-        bannerTrack.classList.remove('dragging');
-        
-        const movedBy = currentTranslate - prevTranslate;
-        // ⚠️ 항상 동적 개수 참조 — 빈 배너 버그 원인이었던 하드코딩 제거
-        const total = bannerSlides.length || document.getElementById('banner-track').children.length;
-
-        if (movedBy < -20) {
-            currentBannerIdx = (currentBannerIdx + 1) % total;
-        } else if (movedBy > 20) {
-            currentBannerIdx = (currentBannerIdx - 1 + total) % total;
-        }
-        
-        updateBannerPosition();
-        bannerInterval = setInterval(slideBanner, 15000); 
-    }
-
-    function animation() {
-        if (isDragging) {
-            bannerTrack.style.transform = `translateX(${currentTranslate}%)`;
-            requestAnimationFrame(animation);
-        }
-    }
-
-    function updateBannerPosition() {
-        currentTranslate = currentBannerIdx * -100;
-        prevTranslate = currentTranslate;
-        bannerTrack.style.transform = `translateX(${currentTranslate}%)`;
-    }
-
-    function toggleBanner() {
-        const iconClose = document.getElementById('icon-close-banner');
-        const iconOpen = document.getElementById('icon-open-banner');
-        const isHidden = headerBanner.classList.toggle('hidden');
-
-        if(isHidden) {
-            iconClose.style.display = 'none';
-            iconOpen.style.display = 'block';
-            clearInterval(bannerInterval); 
-        } else {
-            iconClose.style.display = 'block';
-            iconOpen.style.display = 'none';
-            bannerInterval = setInterval(slideBanner, 15000); 
-        }
-    }
-    // --- 배너 로직 끝 ---
-
-    let adminInfo = { name: "ECE 학생회장 (이름 : 박지호)", phone: "010-1234-5678", kakao: "snu_ece_pres" };
     try {
-        const storedAdmin = localStorage.getItem('eceAdminInfo');
-        if (storedAdmin) adminInfo = JSON.parse(storedAdmin);
-    } catch(e) {}
+        const response = await fetch('/api/summary', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prompt, model: GEMINI_MODEL })
+        });
 
-    // 비밀번호는 별도 키로 관리 (기본값 유지)
-    let adminPassword = "0327";
-    let bannerPassword = "1234";
-    try {
-        const sp = localStorage.getItem('ecePasswords');
-        if (sp) { const p = JSON.parse(sp); adminPassword = p.admin || adminPassword; bannerPassword = p.banner || bannerPassword; }
-    } catch(e) {}
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data?.error || 'AI 요약 요청 실패');
+        }
+
+        const resultText = data?.text || '';
+        const lines = resultText
+            .split('\n')
+            .map(line => line.trim())
+            .filter(line => line.startsWith('-'))
+            .map(line => line.replace(/^-+\s*/, '').trim());
+
+        return lines.length > 0
+            ? lines.slice(0, 3)
+            : ['AI 요약을 생성하지 못했습니다.', '본문을 직접 확인해주세요.', ''];
+    } catch (error) {
+        console.error('Gemini 요약 실패:', error);
+        return [
+            'AI 요약 생성 실패',
+            error.message || '서버 또는 API 호출 오류',
+            '본문을 직접 확인해주세요.'
+        ];
+    }
+}
+
+function getBase64(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+    });
+}
