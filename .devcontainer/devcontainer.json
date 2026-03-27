@@ -1,0 +1,20 @@
+{
+  "name": "ai-tools",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:20",
+  "postCreateCommand": "npm install -g @google/gemini-cli @anthropic-ai/claude-code",
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "bash"
+      }
+    }
+  },
+  "secrets": {
+    "GEMINI_API_KEY": {
+      "description": "Gemini API key"
+    },
+    "ANTHROPIC_API_KEY": {
+      "description": "Anthropic API key"
+    }
+  }
+}
