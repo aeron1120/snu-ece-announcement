@@ -1,0 +1,9 @@
+{
+  "adminInfo": {
+    "name": "ECE 학생회장 (이름 : 박지호)",
+    "phone": "010-1234-5678",
+    "kakao": "snu_ece_pres"
+  },
+  "bannerPassword": "1234",
+  "adminTokenHash": "55b4b48f529c3d2daa027cbffa6cfb6a03690424550f22109e39917406c8243b"
+}
