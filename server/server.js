@@ -67,7 +67,7 @@ app.use((req, res, next) => {
     } else {
         res.header('Access-Control-Allow-Origin', '*');
     }
-    res.header('Access-Control-Allow-Headers', 'Content-Type, x-admin-token, x-super-admin-token');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, x-admin-token, x-super-admin-token, x-banner-token');
     res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
 
     if (req.method === 'OPTIONS') {
@@ -311,6 +311,26 @@ async function requireNoticeAdmin(req, res, next) {
         next();
     } catch (error) {
         res.status(500).json({ error: error.message || '관리자 인증 처리 실패' });
+    }
+}
+
+async function requireBannerAdmin(req, res, next) {
+    try {
+        const token = getHeaderToken(req, 'x-banner-token');
+        if (!token) {
+            return res.status(401).json({ error: '배너 관리자 인증 실패' });
+        }
+
+        const settings = await getSecuritySettings();
+        const expected = String(settings?.bannerPassword || defaultSecuritySettings.bannerPassword);
+
+        if (token !== expected) {
+            return res.status(401).json({ error: '배너 관리자 인증 실패' });
+        }
+
+        next();
+    } catch (error) {
+        res.status(500).json({ error: error.message || '배너 관리자 인증 처리 실패' });
     }
 }
 
@@ -622,6 +642,36 @@ async function updateBannerSlide(id, payload) {
     return data ? toClientBannerSlide(data) : null;
 }
 
+async function reorderBannerSlides(items) {
+    if (!useSupabase) {
+        return [];
+    }
+
+    const normalized = Array.isArray(items)
+        ? items
+            .map(item => ({ id: Number(item?.id), order: Number(item?.order) }))
+            .filter(item => Number.isFinite(item.id) && Number.isFinite(item.order))
+        : [];
+
+    if (normalized.length === 0) {
+        return [];
+    }
+
+    for (const item of normalized) {
+        const { error } = await supabase
+            .from('banner_slides')
+            .update({ order: item.order })
+            .eq('id', item.id)
+            .eq('is_deleted', false);
+
+        if (error) {
+            throw error;
+        }
+    }
+
+    return listBannerSlides();
+}
+
 async function softDeleteBannerSlide(id) {
     if (!useSupabase) {
         return false;
@@ -888,7 +938,7 @@ app.get('/api/banner-slides', async (req, res) => {
     }
 });
 
-app.post('/api/banner-slides', requireNoticeAdmin, async (req, res) => {
+app.post('/api/banner-slides', requireBannerAdmin, async (req, res) => {
     try {
         const payload = {
             name: String(req.body?.name || '').trim(),
@@ -910,7 +960,21 @@ app.post('/api/banner-slides', requireNoticeAdmin, async (req, res) => {
     }
 });
 
-app.put('/api/banner-slides/:id', requireNoticeAdmin, async (req, res) => {
+app.put('/api/banner-slides/reorder', requireBannerAdmin, async (req, res) => {
+    try {
+        const items = Array.isArray(req.body?.items) ? req.body.items : [];
+        if (items.length === 0) {
+            return res.status(400).json({ error: '순서 변경 항목이 없습니다.' });
+        }
+
+        const slides = await reorderBannerSlides(items);
+        res.json({ slides });
+    } catch (error) {
+        res.status(500).json({ error: error.message || '배너 순서 변경 실패' });
+    }
+});
+
+app.put('/api/banner-slides/:id', requireBannerAdmin, async (req, res) => {
     try {
         const id = Number(req.params.id);
         if (!Number.isFinite(id)) {
@@ -941,7 +1005,7 @@ app.put('/api/banner-slides/:id', requireNoticeAdmin, async (req, res) => {
     }
 });
 
-app.delete('/api/banner-slides/:id', requireNoticeAdmin, async (req, res) => {
+app.delete('/api/banner-slides/:id', requireBannerAdmin, async (req, res) => {
     try {
         const id = Number(req.params.id);
         if (!Number.isFinite(id)) {

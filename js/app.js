@@ -32,6 +32,7 @@ let adminInfo = { name: "ECE 학생회장 (이름 : 박지호)", phone: "010-123
 let bannerAdminInfo = { name: "학생회 대외협력국 (국장 : 이배너)", phone: "010-8888-9999", kakao: "snu_ece_ads" };
 let noticeAdminAuthToken = '';
 let superAdminAuthToken = '';
+let bannerManageAuthToken = '';
 
 const defaultNotices = [{
     id: 1, title: "2026 만우절 사전 이벤트 'ㄴr ㅅr실 할말 있øł...'", host: "문화소통국", target: "전체", deadline: "2026-03-28",
@@ -63,6 +64,11 @@ function getSuperAdminHeaders(tokenOverride = '') {
     return token ? { 'x-super-admin-token': token } : {};
 }
 
+function getBannerManageHeaders(tokenOverride = '') {
+    const token = (tokenOverride || bannerManageAuthToken || '').trim();
+    return token ? { 'x-banner-token': token } : {};
+}
+
 async function apiRequest(path, options = {}) {
     const response = await fetch(buildApiUrl(path), {
         ...options,
@@ -90,6 +96,7 @@ async function apiRequest(path, options = {}) {
 async function loadData() {
     noticeAdminAuthToken = sessionStorage.getItem('eceNoticeAdminToken') || sessionStorage.getItem('eceAdminToken') || '';
     superAdminAuthToken = sessionStorage.getItem('eceSuperAdminToken') || '';
+    bannerManageAuthToken = sessionStorage.getItem('eceBannerManageToken') || '';
 
     try {
         const settings = await apiRequest('/api/settings', { method: 'GET' });
@@ -567,10 +574,11 @@ function triggerBannerManagerAuth() {
 }
 
 async function verifyBannerPassword() {
-    const pwd = document.getElementById('admin-pwd').value;
+    const pwd = document.getElementById('banner-mode-pwd').value;
+    const errEl = document.getElementById('banner-pwd-error');
     if (!pwd) {
         alert("배너 관리자 비밀번호를 입력해주세요.");
-        document.getElementById('admin-pwd').focus();
+        document.getElementById('banner-mode-pwd').focus();
         return;
     }
 
@@ -580,13 +588,16 @@ async function verifyBannerPassword() {
             body: JSON.stringify({ password: pwd })
         });
     } catch (error) {
+        if (errEl) errEl.style.display = 'block';
         alert(`배너 비밀번호 실패: ${error.message}`);
-        document.getElementById('admin-pwd').focus();
+        document.getElementById('banner-mode-pwd').focus();
         return;
     }
 
-    closeModal('pwd-modal');
-    document.getElementById('admin-pwd').value = '';
+    bannerManageAuthToken = pwd;
+    sessionStorage.setItem('eceBannerManageToken', bannerManageAuthToken);
+    if (errEl) errEl.style.display = 'none';
+    document.getElementById('banner-pwd-section').style.display = 'none';
     openBannerEditPanel();
 }
 
@@ -597,6 +608,17 @@ function openBannerEditPanel() {
 
 function closeBannerEditPanel() {
     document.getElementById('banner-list-area').style.display = 'none';
+    document.getElementById('banner-pwd-section').style.display = 'block';
+    document.getElementById('banner-mode-pwd').value = '';
+}
+
+function toggleBannerModePanel() {
+    const body = document.getElementById('banner-mode-body');
+    const header = body?.previousElementSibling;
+    if (!body || !header) return;
+
+    const isOpen = body.classList.toggle('show');
+    header.classList.toggle('collapsed', isOpen);
 }
 
 function renderBannerList() {
@@ -606,17 +628,22 @@ function renderBannerList() {
     container.innerHTML = '';
 
     bannerSlides.forEach((slide, idx) => {
+        const safeId = Number(slide.id);
         const slideItem = document.createElement('div');
         slideItem.className = 'banner-item';
         slideItem.innerHTML = `
             <div class="banner-item-header">
                 <span class="banner-item-text">${slide.text || ''}</span>
-                <button class="btn btn-small btn-danger" onclick="deleteBannerSlide(${slide.id})">삭제</button>
+                <div class="banner-item-actions">
+                    <button class="btn btn-outline btn-small" onclick="moveBanner(${idx}, -1)" ${idx === 0 ? 'disabled' : ''}>↑</button>
+                    <button class="btn btn-outline btn-small" onclick="moveBanner(${idx}, 1)" ${idx === bannerSlides.length - 1 ? 'disabled' : ''}>↓</button>
+                    <button class="btn btn-small btn-danger" onclick="deleteBannerSlide(${safeId})">삭제</button>
+                </div>
             </div>
             <div class="banner-item-form">
-                <input type="text" placeholder="배너 텍스트" value="${slide.text || ''}" class="banner-input-text-${slide.id}">
-                <input type="color" placeholder="텍스트 색" value="${slide.textColor || '#000000'}" class="banner-input-color-${slide.id}">
-                <button class="btn btn-small" onclick="updateBannerSlide(${slide.id})">수정</button>
+                <input type="text" placeholder="배너 텍스트" value="${slide.text || ''}" class="banner-input-text-${safeId}">
+                <input type="color" value="${slide.textColor || '#000000'}" class="banner-input-color-${safeId}">
+                <button class="btn btn-small" onclick="updateBannerSlide(${safeId})">수정</button>
             </div>
         `;
         container.appendChild(slideItem);
@@ -651,7 +678,7 @@ async function addNewBannerSlide() {
     try {
         const result = await apiRequest('/api/banner-slides', {
             method: 'POST',
-            headers: getNoticeAdminHeaders(),
+            headers: getBannerManageHeaders(),
             body: JSON.stringify({
                 name: text.substring(0, 50),
                 text: text,
@@ -683,7 +710,7 @@ async function updateBannerSlide(slideId) {
     try {
         const result = await apiRequest(`/api/banner-slides/${slideId}`, {
             method: 'PUT',
-            headers: getNoticeAdminHeaders(),
+            headers: getBannerManageHeaders(),
             body: JSON.stringify({
                 name: newText.substring(0, 50),
                 text: newText,
@@ -709,7 +736,7 @@ async function deleteBannerSlide(slideId) {
     try {
         await apiRequest(`/api/banner-slides/${slideId}`, {
             method: 'DELETE',
-            headers: getNoticeAdminHeaders()
+            headers: getBannerManageHeaders()
         });
 
         bannerSlides = bannerSlides.filter(s => s.id !== slideId);
@@ -718,6 +745,37 @@ async function deleteBannerSlide(slideId) {
         alert('배너가 삭제되었습니다!');
     } catch (error) {
         alert(`배너 삭제 실패: ${error.message}`);
+    }
+}
+
+async function moveBanner(idx, dir) {
+    const nextIdx = idx + dir;
+    if (nextIdx < 0 || nextIdx >= bannerSlides.length) return;
+
+    const reordered = [...bannerSlides];
+    const [moved] = reordered.splice(idx, 1);
+    reordered.splice(nextIdx, 0, moved);
+
+    const items = reordered
+        .filter(slide => Number.isFinite(Number(slide.id)))
+        .map((slide, order) => ({ id: Number(slide.id), order }));
+
+    try {
+        const result = await apiRequest('/api/banner-slides/reorder', {
+            method: 'PUT',
+            headers: getBannerManageHeaders(),
+            body: JSON.stringify({ items })
+        });
+
+        if (Array.isArray(result?.slides)) {
+            bannerSlides = result.slides;
+        } else {
+            bannerSlides = reordered;
+        }
+        refreshBannerDOM();
+        renderBannerList();
+    } catch (error) {
+        alert(`배너 순서 변경 실패: ${error.message}`);
     }
 }
 
@@ -1158,153 +1216,6 @@ function openDetail(idStr) {
     
     openModal('detail-modal');
     setTimeout(() => { if(typeof updateCompareButton === 'function') updateCompareButton(String(idStr)); }, 30);
-}
-
-// 배너 관리
-function saveBannerSlides() { try { localStorage.setItem('eceBannerSlides', JSON.stringify(bannerSlides)); } catch(e) {} }
-
-function toggleBannerModePanel() {
-    const body = document.getElementById('banner-mode-body');
-    const header = body.parentElement.querySelector('.banner-mode-header');
-    const chevron = header.querySelector('svg');
-    const isOpen = body.classList.toggle('show');
-    if (isOpen) {
-        header.classList.add('collapsed');
-    } else {
-        header.classList.remove('collapsed');
-    }
-}
-
-async function verifyBannerPassword() {
-    const pwd = document.getElementById('banner-mode-pwd').value;
-    const errEl = document.getElementById('banner-pwd-error');
-
-    try {
-        await apiRequest('/api/banner/verify', {
-            method: 'POST',
-            body: JSON.stringify({ password: pwd })
-        });
-
-        errEl.style.display = 'none';
-        bannerModeUnlocked = true;
-        document.getElementById('banner-pwd-section').style.display = 'none';
-        document.getElementById('banner-list-area').style.display = 'block';
-        renderBannerList();
-    } catch {
-        errEl.style.display = 'block';
-        document.getElementById('banner-mode-pwd').value = '';
-        document.getElementById('banner-mode-pwd').focus();
-    }
-}
-
-function renderBannerList() {
-    const container = document.getElementById('banner-slides-list');
-    if (!container) return;
-
-    container.innerHTML = '';
-
-    bannerSlides.forEach(slide => {
-        const safeId = Number(slide.id);
-        const slideItem = document.createElement('div');
-        slideItem.className = 'banner-item';
-        slideItem.innerHTML = `
-            <div class="banner-item-header">
-                <span class="banner-item-text">${slide.text || ''}</span>
-                <button class="btn btn-small btn-danger" onclick="deleteBannerSlide(${safeId})">삭제</button>
-            </div>
-            <div class="banner-item-form">
-                <input type="text" placeholder="배너 텍스트" value="${slide.text || ''}" class="banner-input-text-${safeId}">
-                <input type="color" value="${slide.textColor || '#000000'}" class="banner-input-color-${safeId}">
-                <button class="btn btn-small" onclick="updateBannerSlide(${safeId})">수정</button>
-            </div>
-        `;
-        container.appendChild(slideItem);
-    });
-
-    const addForm = document.createElement('div');
-    addForm.className = 'banner-item banner-item-add';
-    addForm.innerHTML = `
-        <div class="banner-item-header">
-            <span>새 배너 추가</span>
-        </div>
-        <div class="banner-item-form">
-            <input type="text" id="new-banner-text" placeholder="배너 텍스트" maxlength="100">
-            <input type="color" id="new-banner-color" value="#000000">
-            <input type="color" id="new-banner-bg" value="#ffffff">
-            <button class="btn btn-small" onclick="addNewBannerSlide()">추가</button>
-        </div>
-    `;
-    container.appendChild(addForm);
-}
-
-function bannerDragStart(e) { dragSrcIdx = parseInt(e.currentTarget.dataset.idx); e.dataTransfer.effectAllowed = 'move'; }
-function bannerDragOver(e) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }
-function bannerDrop(e) {
-    e.preventDefault();
-    const targetIdx = parseInt(e.currentTarget.dataset.idx);
-    if (dragSrcIdx === null || dragSrcIdx === targetIdx) return;
-    const moved = bannerSlides.splice(dragSrcIdx, 1)[0];
-    bannerSlides.splice(targetIdx, 0, moved);
-    saveBannerSlides();
-    refreshBannerDOM();
-    renderBannerList();
-    dragSrcIdx = null;
-}
-
-function moveBanner(idx, dir) {
-    const newIdx = idx + dir;
-    if (newIdx < 0 || newIdx >= bannerSlides.length) return;
-    [bannerSlides[idx], bannerSlides[newIdx]] = [bannerSlides[newIdx], bannerSlides[idx]];
-    saveBannerSlides();
-    refreshBannerDOM();
-    renderBannerList();
-}
-
-function deleteBanner(idx) {
-    if (bannerSlides.length <= 1) { alert("배너는 최소 1개 이상 유지해야 합니다."); return; }
-    if (!confirm(`"${bannerSlides[idx].name}" 배너를 삭제하시겠습니까?`)) return;
-    bannerSlides.splice(idx, 1);
-    saveBannerSlides();
-    refreshBannerDOM();
-    renderBannerList();
-}
-
-async function addBannerImage() {
-    const nameInput = document.getElementById('new-banner-name');
-    const fileInput = document.getElementById('new-banner-file');
-    const name = nameInput.value.trim();
-    if (!name) { alert("사진 이름을 입력하세요."); nameInput.focus(); return; }
-    if (!fileInput.files || fileInput.files.length === 0) { alert("이미지 파일을 선택하세요."); return; }
-    const src = await getBase64(fileInput.files[0]);
-    bannerSlides.push({ name, src, bgStyle: '', textColor: '', text: '' });
-    saveBannerSlides();
-    refreshBannerDOM();
-    renderBannerList();
-    nameInput.value = '';
-    fileInput.value = '';
-    alert(`"${name}" 배너가 추가되었습니다!`);
-}
-
-function refreshBannerDOM() {
-    const track = document.getElementById('banner-track');
-    if (!track) return;
-    track.innerHTML = '';
-    bannerSlides.forEach(slide => {
-        const a = document.createElement('a');
-        a.href = '#';
-        a.className = 'banner-slide';
-        a.setAttribute('onclick', "if(isDragging) event.preventDefault();");
-        if (slide.src) {
-            a.style.cssText = 'padding: 0;';
-            a.innerHTML = `<img src="${slide.src}" style="width:100%; height:100%; object-fit:cover; border-radius:12px; display:block;" alt="${slide.name}">`;
-        } else {
-            a.style.cssText = slide.bgStyle;
-            a.innerHTML = `<span style="color:${slide.textColor}; font-weight:700;">${slide.text}</span>`;
-        }
-        track.appendChild(a);
-    });
-    currentBannerIdx = 0;
-    updateBannerPosition();
 }
 
 // 공지 비교
