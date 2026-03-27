@@ -3,6 +3,7 @@ import path from 'path';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { promises as fs } from 'fs';
+import { createClient } from '@supabase/supabase-js';
 
 dotenv.config();
 
@@ -10,6 +11,12 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const noticesFilePath = path.join(__dirname, 'data', 'notices.json');
+const ADMIN_TOKEN = process.env.ADMIN_TOKEN || '';
+const SUPABASE_URL = process.env.SUPABASE_URL || '';
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+const SUPABASE_NOTICES_TABLE = process.env.SUPABASE_NOTICES_TABLE || 'notices';
+const useSupabase = Boolean(SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY);
+const supabase = useSupabase ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY) : null;
 
 const defaultNotices = [
     {
@@ -35,7 +42,7 @@ app.use((req, res, next) => {
     } else {
         res.header('Access-Control-Allow-Origin', '*');
     }
-    res.header('Access-Control-Allow-Headers', 'Content-Type');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, x-admin-token');
     res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
 
     if (req.method === 'OPTIONS') {
@@ -96,58 +103,142 @@ function normalizeNoticeInput(body = {}) {
     };
 }
 
-app.get('/api/health', (req, res) => {
-    res.json({ ok: true });
-});
+function normalizeDeadline(deadline) {
+    const value = String(deadline || '').trim();
+    return value ? value : null;
+}
 
-app.get('/api/notices', async (req, res) => {
-    try {
-        const notices = await readNotices();
-        notices.sort((a, b) => Number(b.id) - Number(a.id));
-        res.json({ notices });
-    } catch (error) {
-        res.status(500).json({ error: error.message || '공지 조회 실패' });
+function toClientNotice(row) {
+    if (!row) return null;
+    return {
+        id: Number(row.id),
+        title: row.title || '',
+        content: row.content || '',
+        target: row.target || '전체',
+        host: row.host || '기타',
+        deadline: row.deadline || '',
+        aiSummary: Array.isArray(row.ai_summary) ? row.ai_summary : [],
+        images: Array.isArray(row.images) ? row.images : [],
+        views: Number(row.views) || 0,
+        createdAt: row.created_at || null,
+        updatedAt: row.updated_at || null
+    };
+}
+
+function getAdminToken(req) {
+    return String(req.headers['x-admin-token'] || '').trim();
+}
+
+function requireAdmin(req, res, next) {
+    if (!ADMIN_TOKEN) {
+        return res.status(500).json({ error: 'ADMIN_TOKEN이 설정되지 않았습니다.' });
     }
-});
 
-app.post('/api/notices', async (req, res) => {
-    try {
-        const payload = normalizeNoticeInput(req.body || {});
+    const token = getAdminToken(req);
+    if (!token || token !== ADMIN_TOKEN) {
+        return res.status(401).json({ error: '관리자 인증 실패' });
+    }
 
-        if (!payload.title || !payload.content) {
-            return res.status(400).json({ error: 'title과 content는 필수입니다.' });
-        }
+    next();
+}
 
+async function ensureDefaultData() {
+    if (!useSupabase) {
+        await ensureNoticesFile();
+        return;
+    }
+
+    const { count, error } = await supabase
+        .from(SUPABASE_NOTICES_TABLE)
+        .select('id', { count: 'exact', head: true })
+        .eq('is_deleted', false);
+
+    if (error) {
+        throw error;
+    }
+
+    if ((count || 0) > 0) {
+        return;
+    }
+
+    const seedRows = defaultNotices.map(notice => ({
+        title: notice.title,
+        content: notice.content,
+        target: notice.target,
+        host: notice.host,
+        deadline: normalizeDeadline(notice.deadline),
+        ai_summary: notice.aiSummary,
+        images: notice.images,
+        views: notice.views,
+        is_deleted: false
+    }));
+
+    const { error: insertError } = await supabase.from(SUPABASE_NOTICES_TABLE).insert(seedRows);
+    if (insertError) {
+        throw insertError;
+    }
+}
+
+async function listNotices() {
+    if (!useSupabase) {
         const notices = await readNotices();
-        const newNotice = {
-            id: Date.now(),
-            ...payload,
-            views: 0
-        };
+        return notices
+            .filter(notice => !notice.isDeleted)
+            .sort((a, b) => Number(b.id) - Number(a.id));
+    }
+
+    const { data, error } = await supabase
+        .from(SUPABASE_NOTICES_TABLE)
+        .select('*')
+        .eq('is_deleted', false)
+        .order('created_at', { ascending: false })
+        .order('id', { ascending: false });
+
+    if (error) {
+        throw error;
+    }
+
+    return (data || []).map(toClientNotice);
+}
+
+async function createNotice(payload) {
+    if (!useSupabase) {
+        const notices = await readNotices();
+        const newNotice = { id: Date.now(), ...payload, views: 0 };
         notices.unshift(newNotice);
         await writeNotices(notices);
-        res.status(201).json({ notice: newNotice });
-    } catch (error) {
-        res.status(500).json({ error: error.message || '공지 등록 실패' });
+        return newNotice;
     }
-});
 
-app.put('/api/notices/:id', async (req, res) => {
-    try {
-        const id = Number(req.params.id);
-        if (!Number.isFinite(id)) {
-            return res.status(400).json({ error: '유효하지 않은 id입니다.' });
-        }
+    const { data, error } = await supabase
+        .from(SUPABASE_NOTICES_TABLE)
+        .insert({
+            title: payload.title,
+            content: payload.content,
+            target: payload.target,
+            host: payload.host,
+            deadline: normalizeDeadline(payload.deadline),
+            ai_summary: payload.aiSummary,
+            images: payload.images,
+            views: 0,
+            is_deleted: false
+        })
+        .select('*')
+        .single();
 
-        const payload = normalizeNoticeInput(req.body || {});
-        if (!payload.title || !payload.content) {
-            return res.status(400).json({ error: 'title과 content는 필수입니다.' });
-        }
+    if (error) {
+        throw error;
+    }
 
+    return toClientNotice(data);
+}
+
+async function updateNotice(id, payload) {
+    if (!useSupabase) {
         const notices = await readNotices();
         const idx = notices.findIndex(n => Number(n.id) === id);
         if (idx === -1) {
-            return res.status(404).json({ error: '공지 없음' });
+            return null;
         }
 
         const prev = notices[idx];
@@ -159,27 +250,163 @@ app.put('/api/notices/:id', async (req, res) => {
         };
         notices[idx] = updated;
         await writeNotices(notices);
-        res.json({ notice: updated });
+        return updated;
+    }
+
+    const { data, error } = await supabase
+        .from(SUPABASE_NOTICES_TABLE)
+        .update({
+            title: payload.title,
+            content: payload.content,
+            target: payload.target,
+            host: payload.host,
+            deadline: normalizeDeadline(payload.deadline),
+            ai_summary: payload.aiSummary,
+            images: payload.images,
+            updated_at: new Date().toISOString()
+        })
+        .eq('id', id)
+        .eq('is_deleted', false)
+        .select('*')
+        .single();
+
+    if (error && error.code !== 'PGRST116') {
+        throw error;
+    }
+
+    return data ? toClientNotice(data) : null;
+}
+
+async function softDeleteNotice(id) {
+    if (!useSupabase) {
+        const notices = await readNotices();
+        const idx = notices.findIndex(n => Number(n.id) === id);
+        if (idx === -1) {
+            return false;
+        }
+
+        notices[idx] = {
+            ...notices[idx],
+            isDeleted: true,
+            deletedAt: new Date().toISOString()
+        };
+        await writeNotices(notices);
+        return true;
+    }
+
+    const { data, error } = await supabase
+        .from(SUPABASE_NOTICES_TABLE)
+        .update({
+            is_deleted: true,
+            deleted_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+        })
+        .eq('id', id)
+        .eq('is_deleted', false)
+        .select('id');
+
+    if (error) {
+        throw error;
+    }
+
+    return Array.isArray(data) && data.length > 0;
+}
+
+async function incrementViewCount(id) {
+    if (!useSupabase) {
+        const notices = await readNotices();
+        const idx = notices.findIndex(n => Number(n.id) === id && !n.isDeleted);
+        if (idx === -1) {
+            return null;
+        }
+
+        notices[idx].views = (Number(notices[idx].views) || 0) + 1;
+        await writeNotices(notices);
+        return notices[idx];
+    }
+
+    const { data, error } = await supabase.rpc('increment_notice_views', {
+        target_notice_id: id
+    });
+
+    if (error) {
+        throw error;
+    }
+
+    if (!Array.isArray(data) || data.length === 0) {
+        return null;
+    }
+
+    return toClientNotice(data[0]);
+}
+
+app.get('/api/health', (req, res) => {
+    res.json({ ok: true, storage: useSupabase ? 'supabase' : 'file' });
+});
+
+app.post('/api/admin/verify', requireAdmin, (req, res) => {
+    res.json({ ok: true });
+});
+
+app.get('/api/notices', async (req, res) => {
+    try {
+        const notices = await listNotices();
+        res.json({ notices });
     } catch (error) {
-        res.status(500).json({ error: error.message || '공지 수정 실패' });
+        res.status(500).json({ error: error.message || '공지 조회 실패' });
     }
 });
 
-app.delete('/api/notices/:id', async (req, res) => {
+app.post('/api/notices', requireAdmin, async (req, res) => {
+    try {
+        const payload = normalizeNoticeInput(req.body || {});
+
+        if (!payload.title || !payload.content) {
+            return res.status(400).json({ error: 'title과 content는 필수입니다.' });
+        }
+
+        const newNotice = await createNotice(payload);
+        res.status(201).json({ notice: newNotice });
+    } catch (error) {
+        res.status(500).json({ error: error.message || '공지 등록 실패' });
+    }
+});
+
+app.put('/api/notices/:id', requireAdmin, async (req, res) => {
     try {
         const id = Number(req.params.id);
         if (!Number.isFinite(id)) {
             return res.status(400).json({ error: '유효하지 않은 id입니다.' });
         }
 
-        const notices = await readNotices();
-        const next = notices.filter(n => Number(n.id) !== id);
+        const payload = normalizeNoticeInput(req.body || {});
+        if (!payload.title || !payload.content) {
+            return res.status(400).json({ error: 'title과 content는 필수입니다.' });
+        }
 
-        if (next.length === notices.length) {
+        const updated = await updateNotice(id, payload);
+        if (!updated) {
             return res.status(404).json({ error: '공지 없음' });
         }
 
-        await writeNotices(next);
+        res.json({ notice: updated });
+    } catch (error) {
+        res.status(500).json({ error: error.message || '공지 수정 실패' });
+    }
+});
+
+app.delete('/api/notices/:id', requireAdmin, async (req, res) => {
+    try {
+        const id = Number(req.params.id);
+        if (!Number.isFinite(id)) {
+            return res.status(400).json({ error: '유효하지 않은 id입니다.' });
+        }
+
+        const deleted = await softDeleteNotice(id);
+        if (!deleted) {
+            return res.status(404).json({ error: '공지 없음' });
+        }
+
         res.status(204).send();
     } catch (error) {
         res.status(500).json({ error: error.message || '공지 삭제 실패' });
@@ -193,15 +420,12 @@ app.post('/api/notices/:id/view', async (req, res) => {
             return res.status(400).json({ error: '유효하지 않은 id입니다.' });
         }
 
-        const notices = await readNotices();
-        const idx = notices.findIndex(n => Number(n.id) === id);
-        if (idx === -1) {
+        const notice = await incrementViewCount(id);
+        if (!notice) {
             return res.status(404).json({ error: '공지 없음' });
         }
 
-        notices[idx].views = (Number(notices[idx].views) || 0) + 1;
-        await writeNotices(notices);
-        res.json({ notice: notices[idx] });
+        res.json({ notice });
     } catch (error) {
         res.status(500).json({ error: error.message || '조회수 반영 실패' });
     }
@@ -247,6 +471,13 @@ app.post('/api/summary', async (req, res) => {
     }
 });
 
-app.listen(PORT, () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-});
+ensureDefaultData()
+    .then(() => {
+        app.listen(PORT, () => {
+            console.log(`Server running on http://localhost:${PORT} (storage: ${useSupabase ? 'supabase' : 'file'})`);
+        });
+    })
+    .catch(error => {
+        console.error('초기화 실패:', error);
+        process.exit(1);
+    });

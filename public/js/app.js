@@ -31,6 +31,7 @@ let dragSrcIdx = null;
 let adminInfo = { name: "ECE 학생회장 (이름 : 박지호)", phone: "010-1234-5678", kakao: "snu_ece_pres" };
 let adminPassword = "0327";
 let bannerPassword = "1234";
+let adminAuthToken = '';
 
 const defaultNotices = [{
     id: 1, title: "2026 만우절 사전 이벤트 'ㄴr ㅅr실 할말 있øł...'", host: "문화소통국", target: "전체", deadline: "2026-03-28",
@@ -50,6 +51,11 @@ const filterState = {
 
 function buildApiUrl(path) {
     return API_BASE_URL ? `${API_BASE_URL}${path}` : path;
+}
+
+function getAdminHeaders(tokenOverride = '') {
+    const token = (tokenOverride || adminAuthToken || '').trim();
+    return token ? { 'x-admin-token': token } : {};
 }
 
 async function apiRequest(path, options = {}) {
@@ -77,6 +83,7 @@ async function apiRequest(path, options = {}) {
 // ========================================
 
 async function loadData() {
+    adminAuthToken = sessionStorage.getItem('eceAdminToken') || '';
     try { const storedAdmin = localStorage.getItem('eceAdminInfo'); if (storedAdmin) adminInfo = JSON.parse(storedAdmin); } catch(e) {}
     try { const sp = localStorage.getItem('ecePasswords'); if (sp) { const p = JSON.parse(sp); adminPassword = p.admin || adminPassword; bannerPassword = p.banner || bannerPassword; } } catch(e) {}
 
@@ -237,61 +244,79 @@ function triggerAdminEdit() { pendingAuthAction = 'admin'; document.getElementBy
 
 async function verifyPassword() {
     const pwd = document.getElementById('admin-pwd').value;
-    if (pwd === adminPassword) {
-        closeModal('pwd-modal');
-        document.getElementById('admin-pwd').value = ''; 
-
-        if (pendingAuthAction === 'add') {
-            editingNoticeId = null; 
-            document.getElementById('modal-title-text').innerText = "새 공지 등록";
-            document.getElementById('submit-btn-text').innerText = "공지 등록 및 AI 요약 실행";
-            ['post-title', 'post-host', 'post-deadline', 'post-content', 'post-images'].forEach(id => document.getElementById(id).value = '');
-            openModal('add-modal');
-
-        } else if (pendingAuthAction === 'edit') {
-            const notice = notices.find(n => String(n.id) === currentViewId);
-            if (notice) {
-                editingNoticeId = notice.id; 
-                document.getElementById('post-title').value = notice.title || "";
-                document.getElementById('post-target').value = notice.target || "전체";
-                document.getElementById('post-host').value = notice.host || "";
-                document.getElementById('post-deadline').value = notice.deadline || "";
-                document.getElementById('post-content').value = notice.content || "";
-                document.getElementById('post-images').value = ''; 
-                document.getElementById('modal-title-text').innerText = "공지 수정";
-                document.getElementById('submit-btn-text').innerText = "수정 완료 (AI 요약 업데이트)";
-                closeModal('detail-modal');
-                openModal('add-modal');
-            }
-
-        } else if (pendingAuthAction === 'delete') {
-            try {
-                await apiRequest(`/api/notices/${currentViewId}`, { method: 'DELETE' });
-            } catch (error) {
-                alert(`삭제 실패: ${error.message}`);
-                pendingAuthAction = null;
-                return;
-            }
-
-            notices = notices.filter(n => String(n.id) !== currentViewId);
-            const saveIdx = savedPosts.findIndex(savedId => String(savedId) === currentViewId);
-            if(saveIdx > -1) { savedPosts.splice(saveIdx, 1); localStorage.setItem('eceSaved', JSON.stringify(savedPosts)); }
-            alert("삭제되었습니다.");
-            closeModal('detail-modal');
-            filterCards(); 
-
-        } else if (pendingAuthAction === 'admin') {
-            document.getElementById('admin-display-area').style.display = 'none';
-            document.getElementById('admin-edit-area').style.display = 'block';
-            document.getElementById('edit-admin-name').value = adminInfo.name;
-            document.getElementById('edit-admin-phone').value = adminInfo.phone;
-            document.getElementById('edit-admin-kakao').value = adminInfo.kakao;
-        }
-        pendingAuthAction = null;
-    } else { 
-        alert("비밀번호가 일치하지 않습니다."); 
+    if (!pwd) {
+        alert("관리자 비밀번호를 입력해주세요.");
         document.getElementById('admin-pwd').focus();
+        return;
     }
+
+    try {
+        await apiRequest('/api/admin/verify', {
+            method: 'POST',
+            headers: getAdminHeaders(pwd)
+        });
+    } catch (error) {
+        alert(`관리자 인증 실패: ${error.message}`);
+        document.getElementById('admin-pwd').focus();
+        return;
+    }
+
+    adminAuthToken = pwd;
+    sessionStorage.setItem('eceAdminToken', adminAuthToken);
+    closeModal('pwd-modal');
+    document.getElementById('admin-pwd').value = '';
+
+    if (pendingAuthAction === 'add') {
+        editingNoticeId = null;
+        document.getElementById('modal-title-text').innerText = "새 공지 등록";
+        document.getElementById('submit-btn-text').innerText = "공지 등록 및 AI 요약 실행";
+        ['post-title', 'post-host', 'post-deadline', 'post-content', 'post-images'].forEach(id => document.getElementById(id).value = '');
+        openModal('add-modal');
+
+    } else if (pendingAuthAction === 'edit') {
+        const notice = notices.find(n => String(n.id) === currentViewId);
+        if (notice) {
+            editingNoticeId = notice.id;
+            document.getElementById('post-title').value = notice.title || "";
+            document.getElementById('post-target').value = notice.target || "전체";
+            document.getElementById('post-host').value = notice.host || "";
+            document.getElementById('post-deadline').value = notice.deadline || "";
+            document.getElementById('post-content').value = notice.content || "";
+            document.getElementById('post-images').value = '';
+            document.getElementById('modal-title-text').innerText = "공지 수정";
+            document.getElementById('submit-btn-text').innerText = "수정 완료 (AI 요약 업데이트)";
+            closeModal('detail-modal');
+            openModal('add-modal');
+        }
+
+    } else if (pendingAuthAction === 'delete') {
+        try {
+            await apiRequest(`/api/notices/${currentViewId}`, {
+                method: 'DELETE',
+                headers: getAdminHeaders()
+            });
+        } catch (error) {
+            alert(`삭제 실패: ${error.message}`);
+            pendingAuthAction = null;
+            return;
+        }
+
+        notices = notices.filter(n => String(n.id) !== currentViewId);
+        const saveIdx = savedPosts.findIndex(savedId => String(savedId) === currentViewId);
+        if(saveIdx > -1) { savedPosts.splice(saveIdx, 1); localStorage.setItem('eceSaved', JSON.stringify(savedPosts)); }
+        alert("삭제되었습니다.");
+        closeModal('detail-modal');
+        filterCards();
+
+    } else if (pendingAuthAction === 'admin') {
+        document.getElementById('admin-display-area').style.display = 'none';
+        document.getElementById('admin-edit-area').style.display = 'block';
+        document.getElementById('edit-admin-name').value = adminInfo.name;
+        document.getElementById('edit-admin-phone').value = adminInfo.phone;
+        document.getElementById('edit-admin-kakao').value = adminInfo.kakao;
+    }
+
+    pendingAuthAction = null;
 }
 
 function saveAdminInfo() {
@@ -405,12 +430,14 @@ async function generateAIAndSave() {
         if (editingNoticeId && noticeIndex !== -1) {
             const result = await apiRequest(`/api/notices/${editingNoticeId}`, {
                 method: 'PUT',
+                headers: getAdminHeaders(),
                 body: JSON.stringify(newNoticeData)
             });
             notices[noticeIndex] = result.notice;
         } else {
             const result = await apiRequest('/api/notices', {
                 method: 'POST',
+                headers: getAdminHeaders(),
                 body: JSON.stringify(newNoticeData)
             });
             notices.unshift(result.notice);
