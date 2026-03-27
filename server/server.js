@@ -14,6 +14,7 @@ const PORT = process.env.PORT || 3000;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const noticesFilePath = path.join(__dirname, 'data', 'notices.json');
 const settingsFilePath = path.join(__dirname, 'data', 'settings.json');
+const bannerFilePath = path.join(__dirname, 'data', 'banner-slides.json');
 const SUPER_ADMIN_TOKEN = process.env.SUPER_ADMIN_TOKEN || process.env.ADMIN_TOKEN || '';
 const NOTICE_ADMIN_TOKEN = process.env.NOTICE_ADMIN_TOKEN || '0327';
 const SUPABASE_URL = process.env.SUPABASE_URL || '';
@@ -22,6 +23,7 @@ const SUPABASE_NOTICES_TABLE = process.env.SUPABASE_NOTICES_TABLE || 'notices';
 const SUPABASE_SETTINGS_TABLE = process.env.SUPABASE_SETTINGS_TABLE || 'app_settings';
 const useSupabase = Boolean(SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY);
 const supabase = useSupabase ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY) : null;
+let bannerStorageMode = useSupabase ? 'supabase' : 'file';
 const initialNoticeAdminToken = NOTICE_ADMIN_TOKEN;
 
 const defaultNotices = [
@@ -168,6 +170,62 @@ async function readSettingsFile() {
 async function writeSettingsFile(settings) {
     await fs.mkdir(path.dirname(settingsFilePath), { recursive: true });
     await fs.writeFile(settingsFilePath, JSON.stringify(settings, null, 2), 'utf-8');
+}
+
+function isMissingBannerTableError(error) {
+    if (!error) return false;
+    const message = String(error?.message || '');
+    return error.code === 'PGRST205' || message.includes('banner_slides');
+}
+
+function createDefaultBannerFileRows() {
+    const now = Date.now();
+    const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
+    return defaultBannerSlides.map((slide, index) => ({
+        id: index + 1,
+        name: slide.name,
+        text: slide.text,
+        bgStyle: slide.bgStyle,
+        textColor: slide.textColor,
+        src: slide.src,
+        order: Number.isFinite(Number(slide.order)) ? Number(slide.order) : index,
+        createdAt: new Date(now + index).toISOString(),
+        expiresAt: new Date(now + sevenDaysMs).toISOString(),
+        isDeleted: false
+    }));
+}
+
+async function ensureBannerFile() {
+    try {
+        await fs.access(bannerFilePath);
+    } catch {
+        await fs.mkdir(path.dirname(bannerFilePath), { recursive: true });
+        await fs.writeFile(bannerFilePath, JSON.stringify(createDefaultBannerFileRows(), null, 2), 'utf-8');
+    }
+}
+
+async function readBannerFile() {
+    await ensureBannerFile();
+    const text = await fs.readFile(bannerFilePath, 'utf-8');
+
+    try {
+        const parsed = JSON.parse(text);
+        return Array.isArray(parsed) ? parsed : [];
+    } catch {
+        return [];
+    }
+}
+
+async function writeBannerFile(slides) {
+    await fs.mkdir(path.dirname(bannerFilePath), { recursive: true });
+    await fs.writeFile(bannerFilePath, JSON.stringify(slides, null, 2), 'utf-8');
+}
+
+async function switchBannerStorageToFile(error) {
+    if (bannerStorageMode === 'file') return;
+    bannerStorageMode = 'file';
+    await ensureBannerFile();
+    console.warn('banner_slides 테이블을 찾지 못해 파일 저장소로 전환:', error?.message || error);
 }
 
 function normalizeNoticeInput(body = {}) {
@@ -378,6 +436,7 @@ async function ensureDefaultData() {
     if (!useSupabase) {
         await ensureNoticesFile();
         await ensureSettingsFile();
+        await ensureBannerFile();
         return;
     }
 
@@ -416,7 +475,11 @@ async function ensureDefaultData() {
         .gt('expires_at', new Date().toISOString());
 
     if (bannerCountError) {
-        console.warn('기본 배너 시딩 스킵:', bannerCountError.message || bannerCountError);
+        if (isMissingBannerTableError(bannerCountError)) {
+            await switchBannerStorageToFile(bannerCountError);
+        } else {
+            console.warn('기본 배너 시딩 스킵:', bannerCountError.message || bannerCountError);
+        }
     }
 
     if (!bannerCountError && (bannerCount || 0) === 0) {
@@ -620,8 +683,17 @@ async function incrementViewCount(id) {
 }
 
 async function listBannerSlides() {
-    if (!useSupabase) {
-        return [];
+    if (!useSupabase || bannerStorageMode === 'file') {
+        const rows = await readBannerFile();
+        const nowIso = new Date().toISOString();
+        return rows
+            .filter(row => !row?.isDeleted && (!row?.expiresAt || row.expiresAt > nowIso))
+            .sort((a, b) => {
+                const orderDiff = (Number(a?.order) || 0) - (Number(b?.order) || 0);
+                if (orderDiff !== 0) return orderDiff;
+                return String(b?.createdAt || '').localeCompare(String(a?.createdAt || ''));
+            })
+            .map(toClientBannerSlide);
     }
 
     const { data, error } = await supabase
@@ -633,6 +705,10 @@ async function listBannerSlides() {
         .order('created_at', { ascending: false });
 
     if (error) {
+        if (isMissingBannerTableError(error)) {
+            await switchBannerStorageToFile(error);
+            return listBannerSlides();
+        }
         throw error;
     }
 
@@ -640,8 +716,28 @@ async function listBannerSlides() {
 }
 
 async function createBannerSlide(payload) {
-    if (!useSupabase) {
-        return null;
+    if (!useSupabase || bannerStorageMode === 'file') {
+        const rows = await readBannerFile();
+        const nextId = rows.reduce((max, row) => Math.max(max, Number(row?.id) || 0), 0) + 1;
+        const sevenDaysLater = new Date();
+        sevenDaysLater.setDate(sevenDaysLater.getDate() + 7);
+
+        const row = {
+            id: nextId,
+            name: String(payload.name || '').trim(),
+            text: String(payload.text || '').trim(),
+            bgStyle: String(payload.bgStyle || '').trim(),
+            textColor: String(payload.textColor || '').trim(),
+            src: payload.src || null,
+            order: Number(payload.order) || 0,
+            createdAt: new Date().toISOString(),
+            expiresAt: sevenDaysLater.toISOString(),
+            isDeleted: false
+        };
+
+        rows.push(row);
+        await writeBannerFile(rows);
+        return toClientBannerSlide(row);
     }
 
     const sevenDaysLater = new Date();
@@ -663,6 +759,10 @@ async function createBannerSlide(payload) {
         .single();
 
     if (error) {
+        if (isMissingBannerTableError(error)) {
+            await switchBannerStorageToFile(error);
+            return createBannerSlide(payload);
+        }
         throw error;
     }
 
@@ -670,8 +770,27 @@ async function createBannerSlide(payload) {
 }
 
 async function updateBannerSlide(id, payload) {
-    if (!useSupabase) {
-        return null;
+    if (!useSupabase || bannerStorageMode === 'file') {
+        const rows = await readBannerFile();
+        const idx = rows.findIndex(row => Number(row?.id) === id && !row?.isDeleted);
+        if (idx === -1) return null;
+
+        const sevenDaysLater = new Date();
+        sevenDaysLater.setDate(sevenDaysLater.getDate() + 7);
+
+        rows[idx] = {
+            ...rows[idx],
+            name: String(payload.name || '').trim(),
+            text: String(payload.text || '').trim(),
+            bgStyle: String(payload.bgStyle || '').trim() || rows[idx].bgStyle || '',
+            textColor: String(payload.textColor || '').trim(),
+            src: payload.src || null,
+            order: Number(payload.order) || 0,
+            expiresAt: sevenDaysLater.toISOString()
+        };
+
+        await writeBannerFile(rows);
+        return toClientBannerSlide(rows[idx]);
     }
 
     const sevenDaysLater = new Date();
@@ -694,6 +813,10 @@ async function updateBannerSlide(id, payload) {
         .single();
 
     if (error && error.code !== 'PGRST116') {
+        if (isMissingBannerTableError(error)) {
+            await switchBannerStorageToFile(error);
+            return updateBannerSlide(id, payload);
+        }
         throw error;
     }
 
@@ -701,8 +824,27 @@ async function updateBannerSlide(id, payload) {
 }
 
 async function reorderBannerSlides(items) {
-    if (!useSupabase) {
-        return [];
+    if (!useSupabase || bannerStorageMode === 'file') {
+        const rows = await readBannerFile();
+        const normalized = Array.isArray(items)
+            ? items
+                .map(item => ({ id: Number(item?.id), order: Number(item?.order) }))
+                .filter(item => Number.isFinite(item.id) && Number.isFinite(item.order))
+            : [];
+
+        if (normalized.length === 0) {
+            return listBannerSlides();
+        }
+
+        const orderMap = new Map(normalized.map(item => [item.id, item.order]));
+        const nextRows = rows.map(row => {
+            const id = Number(row?.id);
+            if (!orderMap.has(id)) return row;
+            return { ...row, order: orderMap.get(id) };
+        });
+
+        await writeBannerFile(nextRows);
+        return listBannerSlides();
     }
 
     const normalized = Array.isArray(items)
@@ -723,6 +865,10 @@ async function reorderBannerSlides(items) {
             .eq('is_deleted', false);
 
         if (error) {
+            if (isMissingBannerTableError(error)) {
+                await switchBannerStorageToFile(error);
+                return reorderBannerSlides(items);
+            }
             throw error;
         }
     }
@@ -731,8 +877,13 @@ async function reorderBannerSlides(items) {
 }
 
 async function softDeleteBannerSlide(id) {
-    if (!useSupabase) {
-        return false;
+    if (!useSupabase || bannerStorageMode === 'file') {
+        const rows = await readBannerFile();
+        const idx = rows.findIndex(row => Number(row?.id) === id && !row?.isDeleted);
+        if (idx === -1) return false;
+        rows[idx] = { ...rows[idx], isDeleted: true };
+        await writeBannerFile(rows);
+        return true;
     }
 
     const { data, error } = await supabase
@@ -743,6 +894,10 @@ async function softDeleteBannerSlide(id) {
         .select('id');
 
     if (error) {
+        if (isMissingBannerTableError(error)) {
+            await switchBannerStorageToFile(error);
+            return softDeleteBannerSlide(id);
+        }
         throw error;
     }
 
@@ -750,7 +905,16 @@ async function softDeleteBannerSlide(id) {
 }
 
 async function cleanupExpiredBanners() {
-    if (!useSupabase) {
+    if (!useSupabase || bannerStorageMode === 'file') {
+        const rows = await readBannerFile();
+        const nowIso = new Date().toISOString();
+        const nextRows = rows.map(row => {
+            if (row?.isDeleted) return row;
+            if (!row?.expiresAt) return row;
+            if (String(row.expiresAt) > nowIso) return row;
+            return { ...row, isDeleted: true };
+        });
+        await writeBannerFile(nextRows);
         return;
     }
 
@@ -762,6 +926,11 @@ async function cleanupExpiredBanners() {
             .eq('is_deleted', false);
 
         if (error) {
+            if (isMissingBannerTableError(error)) {
+                await switchBannerStorageToFile(error);
+                await cleanupExpiredBanners();
+                return;
+            }
             console.error('배너 자동 정리 오류:', error);
         } else {
             console.log('매료된 배너가 자동 정리되었습니다.');
@@ -777,16 +946,16 @@ function toClientBannerSlide(row) {
         id: Number(row.id),
         name: row.name || '',
         text: row.text || '',
-        bgStyle: row.bg_style || '',
-        textColor: row.text_color || '',
+        bgStyle: row.bg_style || row.bgStyle || '',
+        textColor: row.text_color || row.textColor || '',
         src: row.src || null,
         order: Number(row.order) || 0,
-        expiresAt: row.expires_at || null
+        expiresAt: row.expires_at || row.expiresAt || null
     };
 }
 
 app.get('/api/health', (req, res) => {
-    res.json({ ok: true, storage: useSupabase ? 'supabase' : 'file' });
+    res.json({ ok: true, storage: useSupabase ? 'supabase' : 'file', bannerStorage: bannerStorageMode });
 });
 
 app.get('/api/settings', async (req, res) => {
