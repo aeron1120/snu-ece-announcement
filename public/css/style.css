@@ -19,7 +19,7 @@
         /* Header & Navigation */
         .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 32px; flex-wrap: wrap; gap: 16px; }
         .header-title-area { display: flex; align-items: center; gap: 16px; flex: 1; min-width: 0; }
-        .header h1 { color: var(--primary); margin: 0; font-size: 34px; font-weight: 800; letter-spacing: -0.8px; }
+        .header h1 { color: var(--primary); margin: 0; font-size: 34px; font-weight: 800; letter-spacing: -0.8px; white-space: nowrap; }
         
         .btn { background: var(--primary); color: white; border: none; padding: 12px 24px; border-radius: 12px; cursor: pointer; font-weight: 600; font-size: 15px; transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); white-space: nowrap; }
         .btn:hover { background: var(--primary-hover); transform: translateY(-2px); box-shadow: 0 4px 12px rgba(26, 92, 154, 0.2); }
@@ -199,14 +199,22 @@
         @media (max-width: 768px) {
             body { padding: 16px; }
             .header { flex-direction: column; align-items: flex-start; gap: 16px; }
-            .header-title-area, .header-actions { width: 100%; flex-wrap: wrap; justify-content: flex-start; }
-            .header h1 { font-size: 28px; }
+            .header-title-area { width: 100%; flex-wrap: wrap; justify-content: flex-start; row-gap: 10px; }
+            .header-title-area h1 { flex: 1 1 100%; }
+            .header-actions { width: 100%; flex-wrap: wrap; justify-content: flex-end; }
+            .header h1 { font-size: 34px; }
             .btn { min-height: 42px; }
+            .header-actions .btn { min-width: 120px; }
             .header-banner { height: 44px; }
             .grid { grid-template-columns: 1fr; gap: 16px; }
             .search-container { flex-direction: column; padding: 20px; }
             .search-container select { width: 100%; }
             .search-container input { min-width: 0; width: 100%; }
+            .search-container .btn { width: 100%; }
+            .filter-toggle-bar { padding: 0 14px; height: auto; min-height: 44px; }
+            .filter-active-chips { padding: 6px 8px; }
+            .card { padding: 22px; }
+            .view-count { right: 16px; bottom: 16px; }
             .modal { padding: 32px 24px; }
             .compare-modal-grid { grid-template-columns: 1fr !important; }
             .compare-bar { padding: 10px 16px; }
