@@ -1188,7 +1188,7 @@ async function verifyBannerPassword() {
         errEl.style.display = 'none';
         bannerModeUnlocked = true;
         document.getElementById('banner-pwd-section').style.display = 'none';
-        document.getElementById('banner-manage-panel').classList.add('open');
+        document.getElementById('banner-list-area').style.display = 'block';
         renderBannerList();
     } catch {
         errEl.style.display = 'block';
@@ -1198,30 +1198,43 @@ async function verifyBannerPassword() {
 }
 
 function renderBannerList() {
-    const list = document.getElementById('banner-list-ui');
-    const label = document.getElementById('banner-count-label');
-    label.textContent = `(총 ${bannerSlides.length}개)`;
-    list.innerHTML = '';
-    bannerSlides.forEach((slide, idx) => {
-        const item = document.createElement('div');
-        item.className = 'banner-item';
-        item.setAttribute('draggable', 'true');
-        item.dataset.idx = idx;
-        item.innerHTML = `
-            <span class="drag-handle" title="드래그하여 순서 변경">⠿</span>
-            ${slide.src ? `<img class="banner-item-preview" src="${slide.src}" alt="${slide.name}">` : `<div class="banner-item-preview" style="${slide.bgStyle} border-radius:6px;"></div>`}
-            <span class="banner-item-name" title="${slide.name}">${slide.name}</span>
-            <div class="banner-item-btns">
-                <button class="btn btn-outline btn-small" onclick="moveBanner(${idx}, -1)" ${idx === 0 ? 'disabled style="opacity:0.4"' : ''} style="padding:6px 10px;">↑</button>
-                <button class="btn btn-outline btn-small" onclick="moveBanner(${idx}, 1)" ${idx === bannerSlides.length-1 ? 'disabled style="opacity:0.4"' : ''} style="padding:6px 10px;">↓</button>
-                <button class="btn btn-danger btn-small" onclick="deleteBanner(${idx})" style="padding:6px 10px; font-size:13px;">삭제</button>
+    const container = document.getElementById('banner-slides-list');
+    if (!container) return;
+
+    container.innerHTML = '';
+
+    bannerSlides.forEach(slide => {
+        const safeId = Number(slide.id);
+        const slideItem = document.createElement('div');
+        slideItem.className = 'banner-item';
+        slideItem.innerHTML = `
+            <div class="banner-item-header">
+                <span class="banner-item-text">${slide.text || ''}</span>
+                <button class="btn btn-small btn-danger" onclick="deleteBannerSlide(${safeId})">삭제</button>
+            </div>
+            <div class="banner-item-form">
+                <input type="text" placeholder="배너 텍스트" value="${slide.text || ''}" class="banner-input-text-${safeId}">
+                <input type="color" value="${slide.textColor || '#000000'}" class="banner-input-color-${safeId}">
+                <button class="btn btn-small" onclick="updateBannerSlide(${safeId})">수정</button>
             </div>
         `;
-        item.addEventListener('dragstart', bannerDragStart);
-        item.addEventListener('dragover', bannerDragOver);
-        item.addEventListener('drop', bannerDrop);
-        list.appendChild(item);
+        container.appendChild(slideItem);
     });
+
+    const addForm = document.createElement('div');
+    addForm.className = 'banner-item banner-item-add';
+    addForm.innerHTML = `
+        <div class="banner-item-header">
+            <span>새 배너 추가</span>
+        </div>
+        <div class="banner-item-form">
+            <input type="text" id="new-banner-text" placeholder="배너 텍스트" maxlength="100">
+            <input type="color" id="new-banner-color" value="#000000">
+            <input type="color" id="new-banner-bg" value="#ffffff">
+            <button class="btn btn-small" onclick="addNewBannerSlide()">추가</button>
+        </div>
+    `;
+    container.appendChild(addForm);
 }
 
 function bannerDragStart(e) { dragSrcIdx = parseInt(e.currentTarget.dataset.idx); e.dataTransfer.effectAllowed = 'move'; }
