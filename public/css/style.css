@@ -17,9 +17,9 @@
         body { background-color: var(--bg-color); margin: 0 auto; padding: 40px; color: var(--text-main); transition: background-color 0.3s; max-width: 1400px; }
         
         /* Header & Navigation */
-        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 32px; flex-wrap: wrap; gap: 16px; }
-        .header-title-area { display: flex; align-items: center; gap: 16px; flex: 1; min-width: 0; }
-        .header h1 { color: var(--primary); margin: 0; font-size: 34px; font-weight: 800; letter-spacing: -0.8px; white-space: nowrap; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 32px; flex-wrap: nowrap; gap: 16px; }
+        .header-title-area { display: flex; align-items: center; gap: 16px; flex: 0 0 auto; min-width: max-content; }
+        .header h1 { color: var(--primary); margin: 0; font-size: 34px; font-weight: 800; letter-spacing: -0.8px; white-space: nowrap; word-break: keep-all; }
         
         .btn { background: var(--primary); color: white; border: none; padding: 12px 24px; border-radius: 12px; cursor: pointer; font-weight: 600; font-size: 15px; transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); white-space: nowrap; }
         .btn:hover { background: var(--primary-hover); transform: translateY(-2px); box-shadow: 0 4px 12px rgba(26, 92, 154, 0.2); }
@@ -28,10 +28,10 @@
         .btn-small { padding: 8px 16px; font-size: 14px; border-radius: 10px; }
         .btn-danger { background: var(--danger-bg); color: var(--danger); }
         .btn-danger:hover { background: #fee2e2; }
-        .header-actions { display: flex; gap: 12px; flex: 1; justify-content: flex-end; min-width: 0; }
+        .header-actions { display: flex; gap: 12px; flex: 0 0 auto; justify-content: flex-end; min-width: max-content; }
 
         /* 🌟 상단 슬라이딩 배너 스타일 */
-        .header-banner-wrapper { display: flex; align-items: center; justify-content: center; gap: 10px; flex: 2; transition: all 0.4s ease; min-width: 250px; }
+        .header-banner-wrapper { display: flex; align-items: center; justify-content: center; gap: 10px; flex: 0 1 560px; transition: all 0.4s ease; min-width: 280px; max-width: 620px; }
         .header-banner { width: 100%; max-width: 500px; height: 48px; border-radius: 12px; overflow: hidden; position: relative; box-shadow: 0 4px 12px rgba(0,0,0,0.06); transition: max-width 0.5s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease; cursor: grab; user-select: none; }
         .header-banner:active { cursor: grabbing; }
         .header-banner.hidden { max-width: 0; opacity: 0; margin: 0; border: none; }
@@ -193,15 +193,24 @@
         .compare-content-area:active { cursor: grabbing; }
         .compare-content-area.text-pane { font-size: 13.5px; line-height: 1.75; white-space: pre-wrap; word-break: break-all; color: #3f3f46; }
 
+        #contact-modal .contact-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+        #contact-modal .contact-copy-btn { flex-shrink: 0; }
+
+        @media (max-width: 1400px) {
+            .header { flex-wrap: wrap; }
+            .header-banner-wrapper { order: 3; width: 100%; max-width: 100%; flex: 1 1 100%; }
+            .header-actions { margin-left: auto; }
+        }
+
         @media (max-width: 1024px) {
             .header-banner-wrapper { order: 3; width: 100%; margin-top: 10px; flex: unset; }
         }
         @media (max-width: 768px) {
             body { padding: 16px; }
             .header { flex-direction: column; align-items: flex-start; gap: 16px; }
-            .header-title-area { width: 100%; flex-wrap: wrap; justify-content: flex-start; row-gap: 10px; }
+            .header-title-area { width: 100%; flex-wrap: wrap; justify-content: flex-start; row-gap: 10px; min-width: 0; }
             .header-title-area h1 { flex: 1 1 100%; }
-            .header-actions { width: 100%; flex-wrap: wrap; justify-content: flex-end; }
+            .header-actions { width: 100%; flex-wrap: wrap; justify-content: flex-end; min-width: 0; }
             .header h1 { font-size: 34px; }
             .btn { min-height: 42px; }
             .header-actions .btn { min-width: 120px; }
@@ -216,6 +225,10 @@
             .card { padding: 22px; }
             .view-count { right: 16px; bottom: 16px; }
             .modal { padding: 32px 24px; }
+            #contact-modal .modal { width: 100%; max-width: 100%; }
+            #contact-modal .contact-row { flex-direction: column; align-items: stretch; }
+            #contact-modal .contact-copy-btn { width: 100%; }
+            #contact-modal strong { word-break: keep-all; }
             .compare-modal-grid { grid-template-columns: 1fr !important; }
             .compare-bar { padding: 10px 16px; }
         }

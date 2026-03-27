@@ -10,7 +10,7 @@
 <body>
 <div class="header">
     <div class="header-title-area">
-        <h1>SNU ECE 공지방</h1>
+        <h1 class="site-title">SNU ECE 공지방</h1>
         <button class="btn btn-outline btn-small" onclick="openModal('contact-modal')">문의</button>
         <button id="btn-starred" class="btn btn-outline btn-small" onclick="toggleViewMode()">⭐ 찜 게시물</button>
     </div>
@@ -158,13 +158,13 @@
         
         <h3 style="text-align: left; margin: 0 0 12px 4px; font-size: 17px; color: var(--primary); display: flex; align-items: center; gap: 8px;">👤 관리자 문의</h3>
         <div id="admin-display-area" style="background: #fafafa; padding: 24px; border-radius: 16px; border: 1px solid var(--border); text-align: left; line-height: 1.8; margin-bottom: 28px;">
-            <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+            <div class="contact-row" style="display: flex; justify-content: space-between; align-items: flex-start;">
                 <div>
                     <strong style="font-size: 17px; color: var(--text-main);" id="admin-name-display">ECE 학생회장 (이름 : 박지호)</strong><br>
                     <span style="color: var(--text-sub);">Phone:</span> <span id="admin-phone-display">010-1234-5678</span><br>
                     <span style="color: var(--text-sub);">Kakao:</span> <span id="admin-kakao-display">snu_ece_pres</span>
                 </div>
-                <button class="btn btn-outline btn-small" style="padding: 8px 14px; font-size: 13px; height: fit-content;" onclick="copyAdminPhone()">번호 복사</button>
+                <button class="btn btn-outline btn-small contact-copy-btn" style="padding: 8px 14px; font-size: 13px; height: fit-content;" onclick="copyAdminPhone()">번호 복사</button>
             </div>
             <button class="btn btn-outline btn-small" style="width: 100%; margin-top: 20px;" onclick="triggerAdminEdit()">관리자 설정 업데이트</button>
         </div>
@@ -216,13 +216,13 @@
         </div>
 
         <h3 style="text-align: left; margin: 0 0 12px 4px; font-size: 17px; color: var(--primary); display: flex; align-items: center; gap: 8px;">📢 배너 광고 제휴 문의</h3>
-        <div style="background: #fafafa; padding: 20px 24px; border-radius: 16px; border: 1px solid var(--border); text-align: left; margin-bottom: 28px; display: flex; justify-content: space-between; align-items: center;">
+        <div class="contact-row" style="background: #fafafa; padding: 20px 24px; border-radius: 16px; border: 1px solid var(--border); text-align: left; margin-bottom: 28px; display: flex; justify-content: space-between; align-items: center;">
             <div>
                 <strong style="font-size: 16px; color: var(--text-main);" id="banner-admin-name-display">학생회 대외협력국 (국장 : 이배너)</strong><br>
                 <span style="color: var(--text-sub); font-size: 14.5px;">Phone:</span> <span id="banner-admin-phone-display" style="color: var(--text-sub); font-size: 14.5px;">010-8888-9999</span><br>
                 <span style="color: var(--text-sub); font-size: 14.5px;">Kakao:</span> <span id="banner-admin-kakao-display" style="color: var(--text-sub); font-size: 14.5px;">snu_ece_ads</span>
             </div>
-            <button class="btn btn-outline btn-small" style="padding: 8px 14px; font-size: 13px; height: fit-content;" onclick="copyBannerPhone()">번호 복사</button>
+            <button class="btn btn-outline btn-small contact-copy-btn" style="padding: 8px 14px; font-size: 13px; height: fit-content;" onclick="copyBannerPhone()">번호 복사</button>
         </div>
 
         <!-- 배너 모드 섹션 -->
@@ -274,20 +274,20 @@
 
         <h3 style="text-align: left; margin: 0 0 12px 4px; font-size: 17px; color: var(--primary); display: flex; align-items: center; gap: 8px;">💻 시스템/오류 문의 (개발팀)</h3>
         <div style="background: #fafafa; padding: 20px 24px; border-radius: 16px; border: 1px solid var(--border); text-align: left; display: flex; flex-direction: column; gap: 16px;">
-            <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div class="contact-row" style="display: flex; justify-content: space-between; align-items: center;">
                 <div>
                     <strong style="font-size: 16px; color: var(--text-main);">최재원</strong><br>
                     <span style="color: var(--text-sub); font-size: 14.5px;">010-4095-3346</span>
                 </div>
-                <button class="btn btn-outline btn-small" style="padding: 8px 14px; font-size: 13px;" onclick="copyToClipboard('01040953346')">번호 복사</button>
+                <button class="btn btn-outline btn-small contact-copy-btn" style="padding: 8px 14px; font-size: 13px;" onclick="copyToClipboard('01040953346')">번호 복사</button>
             </div>
             <div style="height: 1px; background: var(--border); width: 100%;"></div>
-            <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div class="contact-row" style="display: flex; justify-content: space-between; align-items: center;">
                 <div>
                     <strong style="font-size: 16px; color: var(--text-main);">김태현</strong><br>
                     <span style="color: var(--text-sub); font-size: 14.5px;">010-8551-9047</span>
                 </div>
-                <button class="btn btn-outline btn-small" style="padding: 8px 14px; font-size: 13px;" onclick="copyToClipboard('01085519047')">번호 복사</button>
+                <button class="btn btn-outline btn-small contact-copy-btn" style="padding: 8px 14px; font-size: 13px;" onclick="copyToClipboard('01085519047')">번호 복사</button>
             </div>
         </div>
     </div>
