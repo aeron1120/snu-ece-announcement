@@ -37,7 +37,8 @@ GEMINI_API_KEY=your_gemini_api_key
 FRONTEND_ORIGIN=
 
 # 관리자 인증 토큰 (공지 추가/수정/삭제 시 필요)
-ADMIN_TOKEN=your_admin_token
+SUPER_ADMIN_TOKEN=your_super_admin_token
+NOTICE_ADMIN_TOKEN=your_notice_admin_token
 
 # Supabase (영구 저장)
 SUPABASE_URL=
@@ -89,7 +90,8 @@ npm run prepare:public
 배포 후에는 Cloudflare Pages URL에서 공지 추가/수정/삭제가 백엔드에 저장되고, 다른 사용자도 동일 데이터가 보입니다.
 
 ## 운영 체크 포인트
-- 공지 생성/수정/삭제는 `x-admin-token` 헤더가 있어야 동작합니다.
+- 공지 생성/수정/삭제는 공지 관리자 비밀번호(`x-admin-token`)가 있어야 동작합니다.
+- 절대 관리자 비밀번호(`x-super-admin-token`)는 문의 > 관리자 설정 업데이트에서만 사용되며, 프론트에서 변경되지 않습니다.
 - 삭제는 소프트 삭제로 처리되어, 목록에서 사라지지만 DB 원본은 남습니다.
 - 브라우저/기기가 달라도 API와 DB가 같으면 같은 공지 목록을 보게 됩니다.
-- 관리자 정보/관리자 비밀번호/배너 비밀번호 변경도 중앙 설정(`app_settings`)에 저장되어 다른 기기에도 동일 반영됩니다.
+- 관리자 정보/공지 관리자 비밀번호/배너 비밀번호 변경은 중앙 설정(`app_settings`)에 저장되어 다른 기기에도 동일 반영됩니다.

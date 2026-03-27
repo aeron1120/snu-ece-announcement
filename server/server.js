@@ -13,14 +13,15 @@ const PORT = process.env.PORT || 3000;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const noticesFilePath = path.join(__dirname, 'data', 'notices.json');
 const settingsFilePath = path.join(__dirname, 'data', 'settings.json');
-const ADMIN_TOKEN = process.env.ADMIN_TOKEN || '';
+const SUPER_ADMIN_TOKEN = process.env.SUPER_ADMIN_TOKEN || process.env.ADMIN_TOKEN || '';
+const NOTICE_ADMIN_TOKEN = process.env.NOTICE_ADMIN_TOKEN || '0327';
 const SUPABASE_URL = process.env.SUPABASE_URL || '';
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 const SUPABASE_NOTICES_TABLE = process.env.SUPABASE_NOTICES_TABLE || 'notices';
 const SUPABASE_SETTINGS_TABLE = process.env.SUPABASE_SETTINGS_TABLE || 'app_settings';
 const useSupabase = Boolean(SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY);
 const supabase = useSupabase ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY) : null;
-const initialAdminToken = ADMIN_TOKEN || '0327';
+const initialNoticeAdminToken = NOTICE_ADMIN_TOKEN;
 
 const defaultNotices = [
     {
@@ -46,7 +47,7 @@ const defaultAdminInfo = {
 const defaultSecuritySettings = {
     adminInfo: { ...defaultAdminInfo },
     bannerPassword: '1234',
-    adminTokenHash: hashToken(initialAdminToken)
+    adminTokenHash: hashToken(initialNoticeAdminToken)
 };
 
 app.use(express.json({ limit: '10mb' }));
@@ -58,7 +59,7 @@ app.use((req, res, next) => {
     } else {
         res.header('Access-Control-Allow-Origin', '*');
     }
-    res.header('Access-Control-Allow-Headers', 'Content-Type, x-admin-token');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, x-admin-token, x-super-admin-token');
     res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
 
     if (req.method === 'OPTIONS') {
@@ -187,8 +188,8 @@ function toClientNotice(row) {
     };
 }
 
-function getAdminToken(req) {
-    return String(req.headers['x-admin-token'] || '').trim();
+function getHeaderToken(req, headerName) {
+    return String(req.headers[headerName] || '').trim();
 }
 
 function toClientSettings(settings) {
@@ -261,9 +262,9 @@ async function saveSecuritySettings(settings) {
     return normalized;
 }
 
-async function requireAdmin(req, res, next) {
+async function requireNoticeAdmin(req, res, next) {
     try {
-        const token = getAdminToken(req);
+        const token = getHeaderToken(req, 'x-admin-token');
         if (!token) {
             return res.status(401).json({ error: '관리자 인증 실패' });
         }
@@ -279,6 +280,19 @@ async function requireAdmin(req, res, next) {
     } catch (error) {
         res.status(500).json({ error: error.message || '관리자 인증 처리 실패' });
     }
+}
+
+function requireSuperAdmin(req, res, next) {
+    if (!SUPER_ADMIN_TOKEN) {
+        return res.status(500).json({ error: 'SUPER_ADMIN_TOKEN이 설정되지 않았습니다.' });
+    }
+
+    const token = getHeaderToken(req, 'x-super-admin-token');
+    if (!token || token !== SUPER_ADMIN_TOKEN) {
+        return res.status(401).json({ error: '절대 관리자 인증 실패' });
+    }
+
+    next();
 }
 
 async function ensureDefaultData() {
@@ -493,7 +507,11 @@ app.get('/api/settings', async (req, res) => {
     }
 });
 
-app.post('/api/admin/verify', requireAdmin, (req, res) => {
+app.post('/api/admin/verify', requireNoticeAdmin, (req, res) => {
+    res.json({ ok: true });
+});
+
+app.post('/api/super-admin/verify', requireSuperAdmin, (req, res) => {
     res.json({ ok: true });
 });
 
@@ -512,7 +530,7 @@ app.post('/api/banner/verify', async (req, res) => {
     }
 });
 
-app.put('/api/settings', requireAdmin, async (req, res) => {
+app.put('/api/settings', requireSuperAdmin, async (req, res) => {
     try {
         const current = await getSecuritySettings();
         const next = {
@@ -527,26 +545,26 @@ app.put('/api/settings', requireAdmin, async (req, res) => {
     }
 });
 
-app.put('/api/settings/passwords', requireAdmin, async (req, res) => {
+app.put('/api/settings/passwords', requireSuperAdmin, async (req, res) => {
     try {
-        const newAdminToken = String(req.body?.newAdminToken || '').trim();
+        const newNoticeAdminToken = String(req.body?.newNoticeAdminToken || req.body?.newAdminToken || '').trim();
         const newBannerPassword = String(req.body?.newBannerPassword || '').trim();
 
-        if (!newAdminToken && !newBannerPassword) {
+        if (!newNoticeAdminToken && !newBannerPassword) {
             return res.status(400).json({ error: '변경할 비밀번호가 없습니다.' });
         }
 
         const current = await getSecuritySettings();
         const next = {
             ...current,
-            adminTokenHash: newAdminToken ? hashToken(newAdminToken) : current.adminTokenHash,
+            adminTokenHash: newNoticeAdminToken ? hashToken(newNoticeAdminToken) : current.adminTokenHash,
             bannerPassword: newBannerPassword || current.bannerPassword
         };
 
         await saveSecuritySettings(next);
         res.json({
             ok: true,
-            adminTokenChanged: Boolean(newAdminToken),
+            noticeAdminTokenChanged: Boolean(newNoticeAdminToken),
             bannerPasswordChanged: Boolean(newBannerPassword)
         });
     } catch (error) {
@@ -563,7 +581,7 @@ app.get('/api/notices', async (req, res) => {
     }
 });
 
-app.post('/api/notices', requireAdmin, async (req, res) => {
+app.post('/api/notices', requireNoticeAdmin, async (req, res) => {
     try {
         const payload = normalizeNoticeInput(req.body || {});
 
@@ -578,7 +596,7 @@ app.post('/api/notices', requireAdmin, async (req, res) => {
     }
 });
 
-app.put('/api/notices/:id', requireAdmin, async (req, res) => {
+app.put('/api/notices/:id', requireNoticeAdmin, async (req, res) => {
     try {
         const id = Number(req.params.id);
         if (!Number.isFinite(id)) {
@@ -601,7 +619,7 @@ app.put('/api/notices/:id', requireAdmin, async (req, res) => {
     }
 });
 
-app.delete('/api/notices/:id', requireAdmin, async (req, res) => {
+app.delete('/api/notices/:id', requireNoticeAdmin, async (req, res) => {
     try {
         const id = Number(req.params.id);
         if (!Number.isFinite(id)) {

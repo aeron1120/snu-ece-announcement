@@ -29,7 +29,8 @@ let bannerInterval = null;
 let dragSrcIdx = null;
 
 let adminInfo = { name: "ECE 학생회장 (이름 : 박지호)", phone: "010-1234-5678", kakao: "snu_ece_pres" };
-let adminAuthToken = '';
+let noticeAdminAuthToken = '';
+let superAdminAuthToken = '';
 
 const defaultNotices = [{
     id: 1, title: "2026 만우절 사전 이벤트 'ㄴr ㅅr실 할말 있øł...'", host: "문화소통국", target: "전체", deadline: "2026-03-28",
@@ -51,9 +52,14 @@ function buildApiUrl(path) {
     return API_BASE_URL ? `${API_BASE_URL}${path}` : path;
 }
 
-function getAdminHeaders(tokenOverride = '') {
-    const token = (tokenOverride || adminAuthToken || '').trim();
+function getNoticeAdminHeaders(tokenOverride = '') {
+    const token = (tokenOverride || noticeAdminAuthToken || '').trim();
     return token ? { 'x-admin-token': token } : {};
+}
+
+function getSuperAdminHeaders(tokenOverride = '') {
+    const token = (tokenOverride || superAdminAuthToken || '').trim();
+    return token ? { 'x-super-admin-token': token } : {};
 }
 
 async function apiRequest(path, options = {}) {
@@ -81,7 +87,8 @@ async function apiRequest(path, options = {}) {
 // ========================================
 
 async function loadData() {
-    adminAuthToken = sessionStorage.getItem('eceAdminToken') || '';
+    noticeAdminAuthToken = sessionStorage.getItem('eceNoticeAdminToken') || sessionStorage.getItem('eceAdminToken') || '';
+    superAdminAuthToken = sessionStorage.getItem('eceSuperAdminToken') || '';
 
     try {
         const settings = await apiRequest('/api/settings', { method: 'GET' });
@@ -259,10 +266,12 @@ async function verifyPassword() {
         return;
     }
 
+    const isSuperAdminAction = pendingAuthAction === 'admin';
+
     try {
-        await apiRequest('/api/admin/verify', {
+        await apiRequest(isSuperAdminAction ? '/api/super-admin/verify' : '/api/admin/verify', {
             method: 'POST',
-            headers: getAdminHeaders(pwd)
+            headers: isSuperAdminAction ? getSuperAdminHeaders(pwd) : getNoticeAdminHeaders(pwd)
         });
     } catch (error) {
         alert(`관리자 인증 실패: ${error.message}`);
@@ -270,8 +279,15 @@ async function verifyPassword() {
         return;
     }
 
-    adminAuthToken = pwd;
-    sessionStorage.setItem('eceAdminToken', adminAuthToken);
+    if (isSuperAdminAction) {
+        superAdminAuthToken = pwd;
+        sessionStorage.setItem('eceSuperAdminToken', superAdminAuthToken);
+    } else {
+        noticeAdminAuthToken = pwd;
+        sessionStorage.setItem('eceNoticeAdminToken', noticeAdminAuthToken);
+        sessionStorage.setItem('eceAdminToken', noticeAdminAuthToken);
+    }
+
     closeModal('pwd-modal');
     document.getElementById('admin-pwd').value = '';
 
@@ -302,7 +318,7 @@ async function verifyPassword() {
         try {
             await apiRequest(`/api/notices/${currentViewId}`, {
                 method: 'DELETE',
-                headers: getAdminHeaders()
+                headers: getNoticeAdminHeaders()
             });
         } catch (error) {
             alert(`삭제 실패: ${error.message}`);
@@ -339,7 +355,7 @@ function saveAdminInfo() {
 
     apiRequest('/api/settings', {
         method: 'PUT',
-        headers: getAdminHeaders(),
+        headers: getSuperAdminHeaders(),
         body: JSON.stringify({ adminInfo: nextAdminInfo })
     })
         .then(async result => {
@@ -354,16 +370,17 @@ function saveAdminInfo() {
             if (newAdminPwd || newBannerPwd) {
                 await apiRequest('/api/settings/passwords', {
                     method: 'PUT',
-                    headers: getAdminHeaders(),
+                    headers: getSuperAdminHeaders(),
                     body: JSON.stringify({
-                        newAdminToken: newAdminPwd || undefined,
+                        newNoticeAdminToken: newAdminPwd || undefined,
                         newBannerPassword: newBannerPwd || undefined
                     })
                 });
 
                 if (newAdminPwd) {
-                    adminAuthToken = newAdminPwd;
-                    sessionStorage.setItem('eceAdminToken', adminAuthToken);
+                    noticeAdminAuthToken = newAdminPwd;
+                    sessionStorage.setItem('eceNoticeAdminToken', noticeAdminAuthToken);
+                    sessionStorage.setItem('eceAdminToken', noticeAdminAuthToken);
                     pwdChanged.push('관리자 비밀번호');
                 }
                 if (newBannerPwd) {
@@ -470,14 +487,14 @@ async function generateAIAndSave() {
         if (editingNoticeId && noticeIndex !== -1) {
             const result = await apiRequest(`/api/notices/${editingNoticeId}`, {
                 method: 'PUT',
-                headers: getAdminHeaders(),
+                headers: getNoticeAdminHeaders(),
                 body: JSON.stringify(newNoticeData)
             });
             notices[noticeIndex] = result.notice;
         } else {
             const result = await apiRequest('/api/notices', {
                 method: 'POST',
-                headers: getAdminHeaders(),
+                headers: getNoticeAdminHeaders(),
                 body: JSON.stringify(newNoticeData)
             });
             notices.unshift(result.notice);
