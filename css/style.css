@@ -211,6 +211,8 @@
             .banner-item-form input[type="text"] { min-width: 0; width: 100%; }
             .banner-item-actions { width: auto; }
         }
+
+        @media (max-width: 1300px) {
             .header { grid-template-columns: 1fr auto; }
             .header-banner-wrapper { grid-column: 1 / -1; justify-self: stretch; max-width: 100%; }
             .header-banner { max-width: 100%; }
@@ -249,28 +251,3 @@
             .compare-modal-grid { grid-template-columns: 1fr !important; }
             .compare-bar { padding: 10px 16px; }
         }
-
-        /* 배너 관리 스타일 */
-        .banner-mode-section { background: white; border: 1px solid #fed7aa; border-radius: 16px; overflow: hidden; margin-bottom: 20px; }
-        .banner-mode-header { padding: 16px 20px; background: #fffbeb; cursor: pointer; display: flex; justify-content: space-between; align-items: center; transition: 0.2s; }
-        .banner-mode-header:hover { background: #fef3c7; }
-        .banner-mode-header h3 { margin: 0; font-size: 16px; color: #92400e; font-weight: 700; display: flex; align-items: center; gap: 8px; }
-        .banner-mode-header svg { transition: transform 0.3s; }
-        .banner-mode-header.collapsed svg { transform: rotate(-90deg); }
-        .banner-mode-body { padding: 20px; background: white; display: none; border-top: 1px solid #fed7aa; }
-        .banner-mode-body.show { display: block; }
-        .banner-pwd-row { display: flex; gap: 10px; align-items: center; }
-        .banner-pwd-row input { flex: 1; padding: 10px 14px; border: 1px solid var(--border); border-radius: 10px; font-size: 14px; }
-        .banner-pwd-row .btn { margin: 0; }
-        .banner-manage-panel { background: #fafafa; padding: 16px; border-radius: 12px; border: 1px solid var(--border); }
-        .banner-slides-list { display: flex; flex-direction: column; gap: 12px; margin-bottom: 12px; }
-        .banner-item { background: white; border: 1px solid var(--border); border-radius: 10px; padding: 12px; }
-        .banner-item-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
-        .banner-item-text { font-size: 14px; font-weight: 600; color: var(--text-main); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
-        .banner-item-form { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-        .banner-input-text { flex: 1; min-width: 150px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; }
-        .banner-input-color { width: 50px; height: 36px; border: 1px solid var(--border); border-radius: 8px; cursor: pointer; }
-        .banner-item-add { background: var(--primary-light); }
-        .banner-item-add .banner-item-header { color: var(--primary); font-weight: 700; }
-        .banner-item-form input { padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; }
-        .banner-item-form input[type="color"] { width: 50px; height: 36px; padding: 2px; }

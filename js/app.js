@@ -699,6 +699,13 @@ async function addNewBannerSlide() {
 }
 
 async function updateBannerSlide(slideId) {
+    if (!Number.isFinite(Number(slideId))) {
+        await loadBannerSlides();
+        renderBannerList();
+        alert('서버 배너와 동기화 중입니다. 잠시 후 다시 시도해주세요.');
+        return;
+    }
+
     const newText = document.querySelector(`.banner-input-text-${slideId}`).value.trim();
     const newColor = document.querySelector(`.banner-input-color-${slideId}`).value;
 
@@ -731,6 +738,13 @@ async function updateBannerSlide(slideId) {
 }
 
 async function deleteBannerSlide(slideId) {
+    if (!Number.isFinite(Number(slideId))) {
+        await loadBannerSlides();
+        renderBannerList();
+        alert('서버 배너와 동기화 중입니다. 잠시 후 다시 시도해주세요.');
+        return;
+    }
+
     if (!confirm('이 배너를 삭제하시겠습니까?')) return;
 
     try {
@@ -759,6 +773,13 @@ async function moveBanner(idx, dir) {
     const items = reordered
         .filter(slide => Number.isFinite(Number(slide.id)))
         .map((slide, order) => ({ id: Number(slide.id), order }));
+
+    if (items.length === 0) {
+        bannerSlides = reordered;
+        refreshBannerDOM();
+        renderBannerList();
+        return;
+    }
 
     try {
         const result = await apiRequest('/api/banner-slides/reorder', {

@@ -39,6 +39,33 @@ const defaultNotices = [
     }
 ];
 
+const defaultBannerSlides = [
+    {
+        name: '스타트업 부트캠프 모집',
+        text: '📢 [광고] 교내 스타트업 부트캠프 참가자 모집 (~4/7)',
+        bgStyle: 'background: linear-gradient(90deg, #eff6ff, #dbeafe);',
+        textColor: '#1e40af',
+        src: null,
+        order: 0
+    },
+    {
+        name: '글로벌 교환학생 설명회',
+        text: '🎓 글로벌 교환학생 설명회 안내 D-5 (신청필수)',
+        bgStyle: 'background: linear-gradient(90deg, #fdf4ff, #fae8ff);',
+        textColor: '#86198f',
+        src: null,
+        order: 1
+    },
+    {
+        name: 'AI 아이디어톤 모집',
+        text: '💻 [홍보] 총학생회 주관 AI 아이디어톤 2026 모집중!',
+        bgStyle: 'background: linear-gradient(90deg, #ecfdf5, #d1fae5);',
+        textColor: '#065f46',
+        src: null,
+        order: 2
+    }
+];
+
 const defaultAdminInfo = {
     name: 'ECE 학생회장 (이름 : 박지호)',
     phone: '010-1234-5678',
@@ -379,6 +406,37 @@ async function ensureDefaultData() {
         const { error: insertError } = await supabase.from(SUPABASE_NOTICES_TABLE).insert(seedRows);
         if (insertError) {
             throw insertError;
+        }
+    }
+
+    const { count: bannerCount, error: bannerCountError } = await supabase
+        .from('banner_slides')
+        .select('id', { count: 'exact', head: true })
+        .eq('is_deleted', false)
+        .gt('expires_at', new Date().toISOString());
+
+    if (bannerCountError) {
+        console.warn('기본 배너 시딩 스킵:', bannerCountError.message || bannerCountError);
+    }
+
+    if (!bannerCountError && (bannerCount || 0) === 0) {
+        const sevenDaysLater = new Date();
+        sevenDaysLater.setDate(sevenDaysLater.getDate() + 7);
+
+        const bannerSeedRows = defaultBannerSlides.map(slide => ({
+            name: slide.name,
+            text: slide.text,
+            bg_style: slide.bgStyle,
+            text_color: slide.textColor,
+            src: slide.src,
+            order: slide.order,
+            expires_at: sevenDaysLater.toISOString(),
+            is_deleted: false
+        }));
+
+        const { error: bannerInsertError } = await supabase.from('banner_slides').insert(bannerSeedRows);
+        if (bannerInsertError) {
+            throw bannerInsertError;
         }
     }
 
