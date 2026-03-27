@@ -190,17 +190,25 @@ function refreshBannerDOM() {
         const slideEl = document.createElement('a');
         slideEl.href = '#';
         slideEl.className = 'banner-slide';
-        slideEl.style.background = slide.bgStyle || '';
+        slideEl.style.background = slide.bgStyle || '#f8fafc';
         slideEl.onclick = (e) => {
             if (isDragging) e.preventDefault();
         };
 
-        const spanEl = document.createElement('span');
-        spanEl.style.color = slide.textColor || '#000';
-        spanEl.style.fontWeight = '700';
-        spanEl.textContent = slide.text || '';
+        if (slide.src) {
+            const imgEl = document.createElement('img');
+            imgEl.src = slide.src;
+            imgEl.alt = slide.name || '배너 이미지';
+            imgEl.className = 'banner-slide-image';
+            slideEl.appendChild(imgEl);
+        } else {
+            const spanEl = document.createElement('span');
+            spanEl.style.color = slide.textColor || '#000';
+            spanEl.style.fontWeight = '700';
+            spanEl.textContent = slide.text || '';
+            slideEl.appendChild(spanEl);
+        }
 
-        slideEl.appendChild(spanEl);
         bannerTrack.appendChild(slideEl);
     });
 
@@ -643,6 +651,7 @@ function renderBannerList() {
             <div class="banner-item-form">
                 <input type="text" placeholder="배너 텍스트" value="${slide.text || ''}" class="banner-input-text-${safeId}">
                 <input type="color" value="${slide.textColor || '#000000'}" class="banner-input-color-${safeId}">
+                <input type="file" accept="image/*" class="banner-input-file-${safeId}">
                 <button class="btn btn-small" onclick="updateBannerSlide(${safeId})">수정</button>
             </div>
         `;
@@ -659,6 +668,7 @@ function renderBannerList() {
             <input type="text" id="new-banner-text" placeholder="배너 텍스트" maxlength="100">
             <input type="color" id="new-banner-color" value="#000000" placeholder="텍스트 색">
             <input type="color" id="new-banner-bg" value="#ffffff" placeholder="배경 색">
+            <input type="file" id="new-banner-image" accept="image/*">
             <button class="btn btn-small" onclick="addNewBannerSlide()">추가</button>
         </div>
     `;
@@ -669,21 +679,27 @@ async function addNewBannerSlide() {
     const text = (document.getElementById('new-banner-text').value || '').trim();
     const textColor = document.getElementById('new-banner-color').value || '#000000';
     const bgColor = document.getElementById('new-banner-bg').value || '#ffffff';
+    const imageInput = document.getElementById('new-banner-image');
+    const imageFile = imageInput?.files?.[0] || null;
 
-    if (!text) {
-        alert('배너 텍스트를 입력해주세요.');
+    if (!text && !imageFile) {
+        alert('배너 텍스트 또는 이미지를 입력해주세요.');
         return;
     }
+
+    const imageSrc = imageFile ? await getBase64(imageFile) : null;
+    const normalizedText = text || '이미지 배너';
 
     try {
         const result = await apiRequest('/api/banner-slides', {
             method: 'POST',
             headers: getBannerManageHeaders(),
             body: JSON.stringify({
-                name: text.substring(0, 50),
-                text: text,
+                name: normalizedText.substring(0, 50),
+                text: normalizedText,
                 bgStyle: `background: ${bgColor};`,
                 textColor: textColor,
+                src: imageSrc,
                 order: bannerSlides.length
             })
         });
@@ -692,6 +708,7 @@ async function addNewBannerSlide() {
         refreshBannerDOM();
         renderBannerList();
         document.getElementById('new-banner-text').value = '';
+        if (imageInput) imageInput.value = '';
         alert('배너가 추가되었습니다! (7일 동안 유지됩니다)');
     } catch (error) {
         alert(`배너 추가 실패: ${error.message}`);
@@ -708,9 +725,13 @@ async function updateBannerSlide(slideId) {
 
     const newText = document.querySelector(`.banner-input-text-${slideId}`).value.trim();
     const newColor = document.querySelector(`.banner-input-color-${slideId}`).value;
+    const imageInput = document.querySelector(`.banner-input-file-${slideId}`);
+    const imageFile = imageInput?.files?.[0] || null;
+    const imageSrc = imageFile ? await getBase64(imageFile) : null;
+    const prevSlide = bannerSlides.find(s => Number(s.id) === Number(slideId));
 
-    if (!newText) {
-        alert('배너 텍스트를 입력해주세요.');
+    if (!newText && !imageSrc && !prevSlide?.src) {
+        alert('배너 텍스트 또는 이미지를 입력해주세요.');
         return;
     }
 
@@ -719,9 +740,12 @@ async function updateBannerSlide(slideId) {
             method: 'PUT',
             headers: getBannerManageHeaders(),
             body: JSON.stringify({
-                name: newText.substring(0, 50),
-                text: newText,
-                textColor: newColor
+                name: (newText || prevSlide?.name || '이미지 배너').substring(0, 50),
+                text: newText || prevSlide?.text || '이미지 배너',
+                textColor: newColor,
+                bgStyle: prevSlide?.bgStyle || 'background: #ffffff;',
+                src: imageSrc || prevSlide?.src || null,
+                order: Number(prevSlide?.order) || 0
             })
         });
 

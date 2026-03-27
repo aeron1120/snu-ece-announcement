@@ -1176,8 +1176,8 @@ app.post('/api/banner-slides', requireBannerAdmin, async (req, res) => {
             order: Number(req.body?.order) || 0
         };
 
-        if (!payload.text) {
-            return res.status(400).json({ error: '배너 텍스트는 필수입니다.' });
+        if (!payload.text && !payload.src) {
+            return res.status(400).json({ error: '배너 텍스트 또는 이미지는 필수입니다.' });
         }
 
         const newSlide = await createBannerSlide(payload);
@@ -1217,8 +1217,8 @@ app.put('/api/banner-slides/:id', requireBannerAdmin, async (req, res) => {
             order: Number(req.body?.order) || 0
         };
 
-        if (!payload.text) {
-            return res.status(400).json({ error: '배너 텍스트는 필수입니다.' });
+        if (!payload.text && !payload.src) {
+            return res.status(400).json({ error: '배너 텍스트 또는 이미지는 필수입니다.' });
         }
 
         const updated = await updateBannerSlide(id, payload);
