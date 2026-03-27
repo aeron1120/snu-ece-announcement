@@ -1,2 +1,5 @@
 # snu-ece-announcement
-practice vibe_coding with cloudflare &amp; github
+Make SNU ECE Announcement Website
+We've already done : 
+
+We need to do : 
