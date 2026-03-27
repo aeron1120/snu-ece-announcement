@@ -1,4 +1,4 @@
- <style>
+
         :root {
             --primary: #1a5c9a; 
             --primary-hover: #134677;
@@ -206,4 +206,3 @@
             .compare-modal-grid { grid-template-columns: 1fr !important; }
             .compare-bar { padding: 10px 16px; }
         }
-    </style>
