@@ -4,3 +4,4 @@ node_modules
 # 런타임 데이터. 파일 모드 폴백에서 서버가 생성/갱신한다.
 # settings.json에는 배너 비밀번호와 관리자 토큰 해시가 들어가므로 커밋하지 않는다.
 server/data/
+.worktrees/
