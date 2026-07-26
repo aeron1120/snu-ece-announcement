@@ -197,5 +197,8 @@ test('admin can approve a threshold category candidate and expose it publicly', 
 
     const categoriesResponse = await fetch(`${fixture.baseUrl}/api/categories`);
     assert.equal(categoriesResponse.status, 200);
-    assert.equal((await categoriesResponse.json()).categories[0].slug, 'scholarships');
+    const categories = (await categoriesResponse.json()).categories;
+    assert.equal(categories[0].slug, 'scholarships');
+    const published = await fixture.store.listPublishedNotices();
+    assert.ok(published.every(notice => notice.categoryIds.includes(categories[0].id)));
 });

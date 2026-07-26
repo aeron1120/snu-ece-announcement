@@ -50,6 +50,7 @@ test('PWA manifest and service worker include install and push contracts', async
     assert.match(worker, /addEventListener\('push'/);
     assert.match(worker, /showNotification/);
     assert.match(worker, /notificationclick/);
+    assert.match(worker, /!APP_SHELL\.includes\(url\.pathname\)/);
 });
 
 test('Cloudflare scheduled worker triggers the protected crawl endpoint', async () => {

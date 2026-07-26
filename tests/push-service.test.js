@@ -138,11 +138,11 @@ test('notification worker sends each matching delivery only once', async () => {
     });
     await service.createSubscription(browserSubscription('worker-one'), {
         admissionYear: '25학번',
-        categoryIds: [2]
+        allNotices: true
     });
     await service.createSubscription(browserSubscription('worker-two'), {
         admissionYear: '25학번',
-        categoryIds: [2]
+        allNotices: true
     });
 
     await service.processPendingJobs();
@@ -152,6 +152,81 @@ test('notification worker sends each matching delivery only once', async () => {
     assert.ok((await store.listNotificationDeliveries()).every(item =>
         item.status === 'sent'
     ));
+});
+
+test('concurrent notification workers claim a job only once', async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), 'ece-push-claim-'));
+    const store = createAutomationStore({
+        useSupabase: false,
+        filePath: path.join(directory, 'automation.json')
+    });
+    await publishedNotice(store, 'worker-claim');
+    let sends = 0;
+    const service = createPushService({
+        store,
+        webPushClient: {
+            setVapidDetails() {},
+            async sendNotification() {
+                sends += 1;
+                await new Promise(resolve => setTimeout(resolve, 10));
+            }
+        },
+        config: {
+            enabled: true,
+            subject: 'mailto:ece@example.com',
+            publicKey: 'public',
+            privateKey: 'private'
+        }
+    });
+    await service.createSubscription(browserSubscription('claim'), {
+        admissionYear: '25학번',
+        allNotices: true
+    });
+
+    await Promise.all([
+        service.processPendingJobs(),
+        service.processPendingJobs()
+    ]);
+
+    assert.equal(sends, 1);
+});
+
+test('manual notices are delivered from their queued snapshot', async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), 'ece-push-manual-'));
+    const store = createAutomationStore({
+        useSupabase: false,
+        filePath: path.join(directory, 'automation.json')
+    });
+    let sends = 0;
+    const service = createPushService({
+        store,
+        webPushClient: {
+            setVapidDetails() {},
+            async sendNotification() {
+                sends += 1;
+            }
+        },
+        config: {
+            enabled: true,
+            subject: 'mailto:ece@example.com',
+            publicKey: 'public',
+            privateKey: 'private'
+        }
+    });
+    await service.createSubscription(browserSubscription('manual'), {
+        admissionYear: '25학번',
+        allNotices: true
+    });
+    await store.createManualNotice({
+        title: '관리자 직접 등록 공지',
+        content: '본문',
+        target: '25학번'
+    });
+
+    await service.processPendingJobs();
+
+    assert.equal(sends, 1);
+    assert.equal((await store.listNotificationJobs())[0].status, 'completed');
 });
 
 test('notification worker deactivates gone subscriptions and schedules transient retries', async () => {
@@ -184,7 +259,7 @@ test('notification worker deactivates gone subscriptions and schedules transient
     await publishedNotice(store, 'worker-gone');
     await service.createSubscription(browserSubscription('gone'), {
         admissionYear: '25학번',
-        categoryIds: [2]
+        allNotices: true
     });
     await service.processPendingJobs();
     assert.equal((await store.listPushSubscriptions())[0].status, 'inactive');
@@ -192,7 +267,7 @@ test('notification worker deactivates gone subscriptions and schedules transient
     await publishedNotice(store, 'worker-retry');
     await service.createSubscription(browserSubscription('retry'), {
         admissionYear: '25학번',
-        categoryIds: [2]
+        allNotices: true
     });
     await service.processPendingJobs();
     let retry = (await store.listNotificationDeliveries())

@@ -107,6 +107,19 @@ async function apiRequest(path, options = {}) {
     return data;
 }
 
+async function fetchAllPublishedNotices() {
+    const collected = [];
+    let page = 1;
+    let totalPages = 1;
+    do {
+        const result = await apiRequest(`/api/notices?page=${page}&limit=50`, { method: 'GET' });
+        collected.push(...(Array.isArray(result?.notices) ? result.notices : []));
+        totalPages = Math.max(1, Number(result?.pagination?.totalPages) || 1);
+        page += 1;
+    } while (page <= totalPages && page <= 100);
+    return collected;
+}
+
 // ========================================
 // 💾 localStorage 로드
 // ========================================
@@ -138,8 +151,7 @@ async function loadData() {
     }
 
     try {
-        const result = await apiRequest('/api/notices', { method: 'GET' });
-        notices = Array.isArray(result?.notices) ? result.notices : [];
+        notices = await fetchAllPublishedNotices();
     } catch (error) {
         console.error('공지 목록 불러오기 실패:', error);
         // 가짜 공지를 대신 보여주면 안 되므로 빈 목록으로 두고 실패 사실만 알린다.
@@ -320,15 +332,29 @@ function clearNoticeUrl() {
 }
 
 // 최초 진입 시 ?id=... 가 있으면 그 공지를 연다.
-function openNoticeFromUrl() {
+async function openNoticeFromUrl() {
     const requestedId = new URLSearchParams(location.search).get(NOTICE_URL_PARAM);
     if (!requestedId) return;
 
-    const exists = notices.some(n => String(n.id) === String(requestedId));
+    let exists = notices.some(n => String(n.id) === String(requestedId));
     if (!exists) {
-        alert('링크에 해당하는 공지를 찾을 수 없습니다.\n삭제되었거나 주소가 잘못되었습니다.');
-        clearNoticeUrl();
-        return;
+        try {
+            const result = await apiRequest(
+                `/api/notices/${encodeURIComponent(requestedId)}`,
+                { method: 'GET' }
+            );
+            if (result?.notice) {
+                notices.push(result.notice);
+                exists = true;
+            }
+        } catch {
+            // 아래의 사용자 안내로 통합한다.
+        }
+        if (!exists) {
+            alert('링크에 해당하는 공지를 찾을 수 없습니다.\n삭제되었거나 주소가 잘못되었습니다.');
+            clearNoticeUrl();
+            return;
+        }
     }
 
     openDetail(requestedId);
@@ -481,6 +507,15 @@ function openAddNotice() {
     document.getElementById('admin-pwd').value = '';
     setPasswordModalTexts('공지 관리자 인증', '공지 관리자 비밀번호를 입력하세요.');
     openModal('pwd-modal');
+}
+
+function safeHttpUrl(value) {
+    try {
+        const url = new URL(String(value || ''), window.location.origin);
+        return ['http:', 'https:'].includes(url.protocol) ? url.href : '#';
+    } catch {
+        return '#';
+    }
 }
 
 function openReviewManager() {
@@ -1476,6 +1511,17 @@ function openDetail(idStr) {
     document.getElementById('detail-meta').innerHTML = `마감일: ${escapeHtml(notice.deadline || '상시')} &nbsp;|&nbsp; 조회: ${Number(notice.views) || 0}`;
     document.getElementById('detail-summary').innerHTML = (notice.aiSummary || []).map(item => `<li>${escapeHtml(item)}</li>`).join('');
     document.getElementById('detail-content').innerHTML = linkify(notice.content || "");
+    const sourceArea = document.getElementById('detail-source-area');
+    const source = document.getElementById('detail-source');
+    const attachmentList = document.getElementById('detail-attachments');
+    const attachments = Array.isArray(notice.attachments) ? notice.attachments : [];
+    source.innerHTML = notice.sourceUrl
+        ? `<a href="${escapeHtml(safeHttpUrl(notice.sourceUrl))}" target="_blank" rel="noopener noreferrer">ECE 원문 열기</a>`
+        : '';
+    attachmentList.innerHTML = attachments.map(file =>
+        `<li><a href="${escapeHtml(safeHttpUrl(file.url))}" target="_blank" rel="noopener noreferrer">${escapeHtml(file.name || '첨부파일')}</a></li>`
+    ).join('');
+    sourceArea.hidden = !notice.sourceUrl && attachments.length === 0;
 
     const gallery = document.getElementById('detail-gallery');
     gallery.innerHTML = '';
@@ -1856,8 +1902,7 @@ function collectReviewEdits() {
 }
 
 async function refreshPublishedNotices() {
-    const result = await apiRequest('/api/notices', { method: 'GET' });
-    notices = Array.isArray(result?.notices) ? result.notices : [];
+    notices = await fetchAllPublishedNotices();
     filterCards();
 }
 

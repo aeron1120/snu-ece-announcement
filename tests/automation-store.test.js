@@ -54,6 +54,12 @@ test('Supabase schema contains automation tables, constraints, and RLS', async (
     assert.match(schema, /unique\s*\(job_id,\s*subscription_id\)/);
     assert.match(schema, /pending_review/);
     assert.match(schema, /analysis_status/);
+    assert.match(schema, /crawl_runs_one_running_per_source/);
+    assert.match(schema, /publish_review_notice/);
+    assert.match(schema, /create_manual_notice/);
+    assert.match(schema, /decide_category_candidate/);
+    assert.match(schema, /claimed_at/);
+    assert.match(schema, /claim_token/);
 });
 
 test('JSON automation store creates one pending notice per external source', async () => {
@@ -103,6 +109,27 @@ test('JSON automation store records crawl completion', async () => {
     assert.equal(completed.status, 'partial');
     assert.equal(completed.createdCount, 2);
     assert.ok(completed.finishedAt);
+});
+
+test('JSON automation store allows only one running crawl per source', async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), 'ece-store-lock-'));
+    const store = createAutomationStore({
+        useSupabase: false,
+        filePath: path.join(directory, 'automation.json')
+    });
+    const running = await store.beginCrawlRun('ece_academics');
+
+    await assert.rejects(
+        () => store.beginCrawlRun('ece_academics'),
+        error => error.code === 'CRAWL_ALREADY_RUNNING'
+    );
+    await store.finishCrawlRun(running.id, {
+        status: 'succeeded',
+        discoveredCount: 0,
+        createdCount: 0,
+        failedCount: 0
+    });
+    assert.equal((await store.beginCrawlRun('ece_academics')).status, 'running');
 });
 
 test('JSON automation store publishes only reviewed notices and queues notification once', async () => {
@@ -157,4 +184,52 @@ test('JSON automation store rejects a pending notice without a notification job'
     assert.equal(rejected.rejectionReason, '대상이 아님');
     assert.equal((await store.listPublishedNotices()).length, 0);
     assert.equal((await store.listNotificationJobs()).length, 0);
+});
+
+test('JSON automation store atomically creates and manages manual notices with outbox jobs', async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), 'ece-store-manual-'));
+    const store = createAutomationStore({
+        useSupabase: false,
+        filePath: path.join(directory, 'automation.json')
+    });
+
+    const created = await store.createManualNotice({
+        title: '직접 등록',
+        content: '본문',
+        target: '전체'
+    });
+
+    assert.equal((await store.listPublishedNotices()).length, 1);
+    assert.equal((await store.listNotificationJobs()).length, 1);
+    const updated = await store.updateManualNotice(created.id, {
+        title: '수정된 직접 등록',
+        content: '수정 본문',
+        target: '25학번'
+    });
+    assert.equal(updated.title, '수정된 직접 등록');
+    assert.deepEqual(updated.targets, ['25학번']);
+    assert.equal(await store.deleteManualNotice(created.id), true);
+    assert.equal((await store.listPublishedNotices()).length, 0);
+});
+
+test('JSON notification job renewals are fenced by a unique claim token', async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), 'ece-store-claim-token-'));
+    const store = createAutomationStore({
+        useSupabase: false,
+        filePath: path.join(directory, 'automation.json')
+    });
+    await store.createManualNotice({
+        title: '알림 임대',
+        content: '본문',
+        target: '전체'
+    });
+    const [pending] = await store.listPendingNotificationJobs();
+    const claimed = await store.claimNotificationJob(pending.id);
+
+    assert.match(claimed.claimToken, /^[0-9a-f-]{36}$/);
+    assert.equal(await store.renewNotificationJobClaim(claimed.id, 'wrong-token'), false);
+    assert.equal(
+        await store.renewNotificationJobClaim(claimed.id, claimed.claimToken),
+        true
+    );
 });

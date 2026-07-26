@@ -100,12 +100,14 @@ export function createPushService({ store, webPushClient, config, now = () => ne
     }
 
     async function processJob(job) {
-        const notice = await store.getAutomationNotice(job.noticeId);
+        const notice = job.noticeSnapshot || await store.getAutomationNotice(job.noticeId);
         if (!notice || notice.status !== 'published') {
             await store.updateNotificationJob(job.id, {
                 status: 'completed',
-                completedAt: now().toISOString()
-            });
+                completedAt: now().toISOString(),
+                claimedAt: null,
+                claimToken: null
+            }, job.claimToken);
             return { sent: 0, failed: 0 };
         }
         const subscriptions = (await store.listPushSubscriptions())
@@ -128,6 +130,8 @@ export function createPushService({ store, webPushClient, config, now = () => ne
         for (const delivery of deliveries) {
             if (delivery.status === 'sent' || delivery.status === 'permanent_failure') continue;
             if (delivery.nextAttemptAt && new Date(delivery.nextAttemptAt) > timestamp) continue;
+            const renewed = await store.renewNotificationJobClaim(job.id, job.claimToken);
+            if (!renewed) throw new Error('notification job claim lost');
             const subscription = subscriptionById.get(String(delivery.subscriptionId));
             if (!subscription) {
                 await store.updateNotificationDelivery(delivery.id, {
@@ -150,7 +154,7 @@ export function createPushService({ store, webPushClient, config, now = () => ne
                     body: (notice.aiSummary?.[0] || notice.content || '').slice(0, 180),
                     url: `/?id=${encodeURIComponent(notice.id)}`,
                     tag: `notice-${notice.id}`
-                }));
+                }), { TTL: 300, timeout: 30_000 });
                 await store.updateNotificationDelivery(delivery.id, {
                     status: 'sent',
                     attempts: Number(delivery.attempts || 0) + 1,
@@ -192,8 +196,17 @@ export function createPushService({ store, webPushClient, config, now = () => ne
         if (terminal) {
             await store.updateNotificationJob(job.id, {
                 status: 'completed',
-                completedAt: now().toISOString()
-            });
+                completedAt: now().toISOString(),
+                claimedAt: null,
+                claimToken: null
+            }, job.claimToken);
+        } else {
+            await store.updateNotificationJob(job.id, {
+                status: 'pending',
+                completedAt: null,
+                claimedAt: null,
+                claimToken: null
+            }, job.claimToken);
         }
         return { sent, failed };
     }
@@ -238,11 +251,24 @@ export function createPushService({ store, webPushClient, config, now = () => ne
         async processPendingJobs({ batchSize = 50 } = {}) {
             if (!config.enabled) return { jobs: 0, sent: 0, failed: 0 };
             const jobs = await store.listPendingNotificationJobs(batchSize);
-            const summary = { jobs: jobs.length, sent: 0, failed: 0 };
+            const summary = { jobs: 0, sent: 0, failed: 0 };
             for (const job of jobs) {
-                const result = await processJob(job);
-                summary.sent += result.sent;
-                summary.failed += result.failed;
+                const claimed = await store.claimNotificationJob(job.id);
+                if (!claimed) continue;
+                summary.jobs += 1;
+                try {
+                    const result = await processJob(claimed);
+                    summary.sent += result.sent;
+                    summary.failed += result.failed;
+                } catch (error) {
+                    await store.updateNotificationJob(job.id, {
+                        status: 'pending',
+                        completedAt: null,
+                        claimedAt: null,
+                        claimToken: null
+                    }, claimed.claimToken);
+                    throw error;
+                }
             }
             return summary;
         }

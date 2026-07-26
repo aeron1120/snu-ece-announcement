@@ -2,6 +2,9 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 
+const STALE_CRAWL_RUN_MS = 15 * 60 * 1000;
+const STALE_NOTIFICATION_JOB_MS = 5 * 60 * 1000;
+
 function emptyDocument() {
     return {
         version: 1,
@@ -33,6 +36,12 @@ function duplicateSourceError() {
 function noticeNotPendingError() {
     const error = new Error('notice is not pending review');
     error.code = 'NOTICE_NOT_PENDING';
+    return error;
+}
+
+function crawlAlreadyRunningError() {
+    const error = new Error('crawl is already running');
+    error.code = 'CRAWL_ALREADY_RUNNING';
     return error;
 }
 
@@ -139,6 +148,22 @@ function createJsonStore(filePath) {
     return {
         async beginCrawlRun(sourceType) {
             return mutate(document => {
+                const now = new Date();
+                for (const run of document.crawlRuns) {
+                    if (
+                        run.status === 'running'
+                        && now.getTime() - new Date(run.startedAt).getTime() >= STALE_CRAWL_RUN_MS
+                    ) {
+                        run.status = 'failed';
+                        run.errorMessage = 'stale crawl run recovered automatically';
+                        run.finishedAt = now.toISOString();
+                    }
+                }
+                if (document.crawlRuns.some(run =>
+                    run.sourceType === sourceType && run.status === 'running'
+                )) {
+                    throw crawlAlreadyRunningError();
+                }
                 const run = {
                     id: nextId(document.crawlRuns),
                     sourceType,
@@ -204,6 +229,19 @@ function createJsonStore(filePath) {
                     updatedAt: now
                 };
                 document.notices.push(notice);
+                for (const categoryId of Array.from(new Set(
+                    (input.existingCategoryIds || []).map(Number)
+                ))) {
+                    if (document.categories.some(category =>
+                        Number(category.id) === categoryId && category.isActive !== false
+                    )) {
+                        document.noticeCategories.push({
+                            noticeId: notice.id,
+                            categoryId,
+                            createdAt: now
+                        });
+                    }
+                }
                 return { ...notice };
             });
         },
@@ -241,7 +279,28 @@ function createJsonStore(filePath) {
                 );
                 if (!notice) throw noticeNotPendingError();
                 Object.assign(notice, analysis, { updatedAt: new Date().toISOString() });
-                return { ...notice };
+                if (Array.isArray(analysis.categoryIds)) {
+                    document.noticeCategories = document.noticeCategories.filter(item =>
+                        Number(item.noticeId) !== Number(notice.id)
+                    );
+                    for (const categoryId of Array.from(new Set(analysis.categoryIds.map(Number)))) {
+                        if (document.categories.some(category =>
+                            Number(category.id) === categoryId && category.isActive !== false
+                        )) {
+                            document.noticeCategories.push({
+                                noticeId: notice.id,
+                                categoryId,
+                                createdAt: new Date().toISOString()
+                            });
+                        }
+                    }
+                }
+                return {
+                    ...notice,
+                    categoryIds: document.noticeCategories
+                        .filter(item => Number(item.noticeId) === Number(notice.id))
+                        .map(item => Number(item.categoryId))
+                };
             });
         },
 
@@ -322,13 +381,18 @@ function createJsonStore(filePath) {
         async listPublishedNotices() {
             const document = await readDocument();
             return document.notices
-                .filter(notice => notice.status === 'published')
+                .filter(notice => notice.status === 'published' && !notice.isDeleted)
                 .sort((a, b) =>
                     String(b.publishedAt || b.createdAt).localeCompare(
                         String(a.publishedAt || a.createdAt)
                     )
                 )
-                .map(notice => ({ ...notice }));
+                .map(notice => ({
+                    ...notice,
+                    categoryIds: document.noticeCategories
+                        .filter(item => Number(item.noticeId) === Number(notice.id))
+                        .map(item => Number(item.categoryId))
+                }));
         },
 
         async listNotificationJobs() {
@@ -336,18 +400,139 @@ function createJsonStore(filePath) {
             return document.notificationJobs.map(job => ({ ...job }));
         },
 
+        async createManualNotice(payload, { notify = true } = {}) {
+            return mutate(document => {
+                const now = new Date().toISOString();
+                const notice = {
+                    id: Date.now(),
+                    ...payload,
+                    status: 'published',
+                    sourceType: 'manual',
+                    targets: Array.isArray(payload.targets)
+                        ? payload.targets
+                        : [payload.target].filter(Boolean),
+                    categoryIds: [],
+                    views: 0,
+                    isDeleted: false,
+                    publishedAt: now,
+                    createdAt: now,
+                    updatedAt: now
+                };
+                while (document.notices.some(item => Number(item.id) === notice.id)) {
+                    notice.id += 1;
+                }
+                document.notices.push(notice);
+                if (notify) {
+                    document.notificationJobs.push({
+                        id: nextId(document.notificationJobs),
+                        noticeId: notice.id,
+                        status: 'pending',
+                        attemptCount: 0,
+                        createdAt: now,
+                        updatedAt: now
+                    });
+                }
+                return { ...notice };
+            });
+        },
+
+        async updateManualNotice(id, payload) {
+            return mutate(document => {
+                const notice = document.notices.find(item =>
+                    Number(item.id) === Number(id)
+                    && item.sourceType === 'manual'
+                    && item.status === 'published'
+                    && !item.isDeleted
+                );
+                if (!notice) return null;
+                Object.assign(notice, payload, {
+                    targets: Array.isArray(payload.targets)
+                        ? payload.targets
+                        : [payload.target].filter(Boolean),
+                    updatedAt: new Date().toISOString()
+                });
+                return { ...notice };
+            });
+        },
+
+        async deleteManualNotice(id) {
+            return mutate(document => {
+                const notice = document.notices.find(item =>
+                    Number(item.id) === Number(id)
+                    && item.sourceType === 'manual'
+                    && item.status === 'published'
+                    && !item.isDeleted
+                );
+                if (!notice) return false;
+                notice.isDeleted = true;
+                notice.deletedAt = new Date().toISOString();
+                notice.updatedAt = notice.deletedAt;
+                return true;
+            });
+        },
+
         async listPendingNotificationJobs(batchSize = 50) {
-            const document = await readDocument();
-            return document.notificationJobs
-                .filter(job => job.status === 'pending')
-                .slice(0, batchSize)
-                .map(job => ({ ...job }));
+            return mutate(document => {
+                const now = new Date();
+                for (const job of document.notificationJobs) {
+                    if (
+                        job.status === 'processing'
+                        && job.claimedAt
+                        && now.getTime() - new Date(job.claimedAt).getTime()
+                            >= STALE_NOTIFICATION_JOB_MS
+                    ) {
+                        job.status = 'pending';
+                        job.claimedAt = null;
+                        job.claimToken = null;
+                        job.updatedAt = now.toISOString();
+                    }
+                }
+                return document.notificationJobs
+                    .filter(job => job.status === 'pending')
+                    .slice(0, batchSize)
+                    .map(job => ({ ...job }));
+            });
+        },
+
+        async claimNotificationJob(id) {
+            return mutate(document => {
+                const job = document.notificationJobs.find(item =>
+                    Number(item.id) === Number(id) && item.status === 'pending'
+                );
+                if (!job) return null;
+                job.status = 'processing';
+                job.claimToken = crypto.randomUUID();
+                job.claimedAt = new Date().toISOString();
+                job.updatedAt = job.claimedAt;
+                return { ...job };
+            });
+        },
+
+        async renewNotificationJobClaim(id, claimToken) {
+            return mutate(document => {
+                const job = document.notificationJobs.find(item =>
+                    Number(item.id) === Number(id)
+                    && item.status === 'processing'
+                    && item.claimToken === claimToken
+                );
+                if (!job) return false;
+                job.claimedAt = new Date().toISOString();
+                job.updatedAt = job.claimedAt;
+                return true;
+            });
         },
 
         async getAutomationNotice(id) {
             const document = await readDocument();
-            const notice = document.notices.find(item => Number(item.id) === Number(id));
-            return notice ? { ...notice } : null;
+            const notice = document.notices.find(item =>
+                Number(item.id) === Number(id) && !item.isDeleted
+            );
+            return notice ? {
+                ...notice,
+                categoryIds: document.noticeCategories
+                    .filter(item => Number(item.noticeId) === Number(notice.id))
+                    .map(item => Number(item.categoryId))
+            } : null;
         },
 
         async ensureNotificationDeliveries(jobId, subscriptionIds) {
@@ -397,9 +582,12 @@ function createJsonStore(filePath) {
             });
         },
 
-        async updateNotificationJob(id, changes) {
+        async updateNotificationJob(id, changes, claimToken = null) {
             return mutate(document => {
-                const job = document.notificationJobs.find(item => Number(item.id) === Number(id));
+                const job = document.notificationJobs.find(item =>
+                    Number(item.id) === Number(id)
+                    && (!claimToken || item.claimToken === claimToken)
+                );
                 if (!job) throw new Error('notification job not found');
                 Object.assign(job, changes, { updatedAt: new Date().toISOString() });
                 return { ...job };
@@ -484,6 +672,25 @@ function createJsonStore(filePath) {
                         .filter(alias => Number(alias.categoryId) === Number(category.id))
                         .map(alias => alias.alias)
                 }));
+        },
+
+        async incrementAutomationNoticeView(id) {
+            return mutate(document => {
+                const notice = document.notices.find(item =>
+                    Number(item.id) === Number(id)
+                    && item.status === 'published'
+                    && !item.isDeleted
+                );
+                if (!notice) return null;
+                notice.views = Number(notice.views || 0) + 1;
+                notice.updatedAt = new Date().toISOString();
+                return {
+                    ...notice,
+                    categoryIds: document.noticeCategories
+                        .filter(item => Number(item.noticeId) === Number(notice.id))
+                        .map(item => Number(item.categoryId))
+                };
+            });
         },
 
         async getCategoryEvaluationData() {
@@ -661,11 +868,24 @@ function createJsonStore(filePath) {
 function createSupabaseStore(supabase) {
     return {
         async beginCrawlRun(sourceType) {
+            const staleBefore = new Date(Date.now() - STALE_CRAWL_RUN_MS).toISOString();
+            const { error: recoveryError } = await supabase
+                .from('crawl_runs')
+                .update({
+                    status: 'failed',
+                    error_message: 'stale crawl run recovered automatically',
+                    finished_at: new Date().toISOString()
+                })
+                .eq('source_type', sourceType)
+                .eq('status', 'running')
+                .lt('started_at', staleBefore);
+            if (recoveryError) throw recoveryError;
             const { data, error } = await supabase
                 .from('crawl_runs')
                 .insert({ source_type: sourceType, status: 'running' })
                 .select('*')
                 .single();
+            if (error?.code === '23505') throw crawlAlreadyRunningError();
             if (error) throw error;
             return {
                 id: Number(data.id),
@@ -736,6 +956,21 @@ function createSupabaseStore(supabase) {
                 .single();
             if (error?.code === '23505') throw duplicateSourceError();
             if (error) throw error;
+            if ((input.existingCategoryIds || []).length > 0) {
+                const { error: categoryError } = await supabase
+                    .from('notice_categories')
+                    .upsert(input.existingCategoryIds.map(categoryId => ({
+                        notice_id: data.id,
+                        category_id: Number(categoryId)
+                    })), {
+                        onConflict: 'notice_id,category_id',
+                        ignoreDuplicates: true
+                    });
+                if (categoryError) throw categoryError;
+                data.notice_categories = input.existingCategoryIds.map(categoryId => ({
+                    category_id: Number(categoryId)
+                }));
+            }
             return toSupabaseNotice(data);
         },
 
@@ -784,6 +1019,25 @@ function createSupabaseStore(supabase) {
                 .maybeSingle();
             if (error) throw error;
             if (!data) throw noticeNotPendingError();
+            if (Array.isArray(analysis.categoryIds)) {
+                const deleteResult = await supabase
+                    .from('notice_categories')
+                    .delete()
+                    .eq('notice_id', id);
+                if (deleteResult.error) throw deleteResult.error;
+                if (analysis.categoryIds.length > 0) {
+                    const insertResult = await supabase
+                        .from('notice_categories')
+                        .insert(analysis.categoryIds.map(categoryId => ({
+                            notice_id: id,
+                            category_id: Number(categoryId)
+                        })));
+                    if (insertResult.error) throw insertResult.error;
+                }
+                data.notice_categories = analysis.categoryIds.map(categoryId => ({
+                    category_id: Number(categoryId)
+                }));
+            }
             return toSupabaseNotice(data);
         },
 
@@ -836,6 +1090,13 @@ function createSupabaseStore(supabase) {
         },
 
         async listPendingNotificationJobs(batchSize = 50) {
+            const staleBefore = new Date(Date.now() - STALE_NOTIFICATION_JOB_MS).toISOString();
+            const { error: recoveryError } = await supabase
+                .from('notification_jobs')
+                .update({ status: 'pending', claimed_at: null, claim_token: null })
+                .eq('status', 'processing')
+                .lt('claimed_at', staleBefore);
+            if (recoveryError) throw recoveryError;
             const { data, error } = await supabase
                 .from('notification_jobs')
                 .select('*')
@@ -850,6 +1111,44 @@ function createSupabaseStore(supabase) {
                 kind: job.kind,
                 status: job.status
             }));
+        },
+
+        async claimNotificationJob(id) {
+            const claimedAt = new Date().toISOString();
+            const claimToken = crypto.randomUUID();
+            const { data, error } = await supabase
+                .from('notification_jobs')
+                .update({
+                    status: 'processing',
+                    claimed_at: claimedAt,
+                    claim_token: claimToken
+                })
+                .eq('id', id)
+                .eq('status', 'pending')
+                .select('*')
+                .maybeSingle();
+            if (error) throw error;
+            if (!data) return null;
+            return {
+                id: Number(data.id),
+                noticeId: Number(data.notice_id),
+                kind: data.kind,
+                status: data.status,
+                claimToken: data.claim_token
+            };
+        },
+
+        async renewNotificationJobClaim(id, claimToken) {
+            const { data, error } = await supabase
+                .from('notification_jobs')
+                .update({ claimed_at: new Date().toISOString() })
+                .eq('id', id)
+                .eq('status', 'processing')
+                .eq('claim_token', claimToken)
+                .select('id')
+                .maybeSingle();
+            if (error) throw error;
+            return Boolean(data);
         },
 
         async getAutomationNotice(id) {
@@ -923,17 +1222,22 @@ function createSupabaseStore(supabase) {
             return data;
         },
 
-        async updateNotificationJob(id, changes) {
+        async updateNotificationJob(id, changes, claimToken = null) {
             const payload = {};
             if (Object.hasOwn(changes, 'status')) payload.status = changes.status;
             if (Object.hasOwn(changes, 'completedAt')) payload.completed_at = changes.completedAt;
-            const { data, error } = await supabase
+            if (Object.hasOwn(changes, 'claimedAt')) payload.claimed_at = changes.claimedAt;
+            if (Object.hasOwn(changes, 'claimToken')) payload.claim_token = changes.claimToken;
+            let query = supabase
                 .from('notification_jobs')
                 .update(payload)
-                .eq('id', id)
+                .eq('id', id);
+            if (claimToken) query = query.eq('claim_token', claimToken);
+            const { data, error } = await query
                 .select('*')
-                .single();
+                .maybeSingle();
             if (error) throw error;
+            if (!data) throw new Error('notification job claim lost');
             return data;
         },
 
@@ -1161,84 +1465,23 @@ function createSupabaseStore(supabase) {
         },
 
         async decideCategoryCandidate(id, decision) {
-            const { data: candidate, error: candidateError } = await supabase
-                .from('category_candidates')
-                .select('*, category_candidate_notices(notice_id)')
-                .eq('id', id)
-                .in('status', ['pending', 'deferred'])
-                .maybeSingle();
-            if (candidateError) throw candidateError;
-            if (!candidate) {
-                const error = new Error('category candidate is not pending');
-                error.code = 'CATEGORY_CANDIDATE_NOT_PENDING';
-                throw error;
+            const { data, error } = await supabase.rpc('decide_category_candidate', {
+                target_candidate_id: Number(id),
+                decision_action: decision.action,
+                category_name: decision.name || null,
+                category_slug: decision.slug || null,
+                target_category_id: decision.categoryId
+                    ? Number(decision.categoryId)
+                    : null,
+                defer_until: decision.deferredUntil || null
+            });
+            if (error?.message?.includes('CATEGORY_CANDIDATE_NOT_PENDING')) {
+                const conflict = new Error('category candidate is not pending');
+                conflict.code = 'CATEGORY_CANDIDATE_NOT_PENDING';
+                throw conflict;
             }
-            const noticeIds = (candidate.category_candidate_notices || [])
-                .map(item => Number(item.notice_id));
-            let categoryId = null;
-            let status;
-            if (decision.action === 'approve') {
-                const { data: category, error } = await supabase
-                    .from('categories')
-                    .insert({ name: decision.name, slug: decision.slug })
-                    .select('*')
-                    .single();
-                if (error) throw error;
-                categoryId = Number(category.id);
-                status = 'approved';
-            } else if (decision.action === 'merge') {
-                categoryId = Number(decision.categoryId);
-                status = 'merged';
-                const { error } = await supabase.from('category_aliases').upsert({
-                    category_id: categoryId,
-                    alias: candidate.display_name,
-                    normalized_alias: candidate.normalized_keyword
-                }, { onConflict: 'normalized_alias' });
-                if (error) throw error;
-            } else if (decision.action === 'reject') {
-                status = 'rejected';
-            } else if (decision.action === 'defer') {
-                status = 'deferred';
-            } else {
-                throw new Error('invalid category candidate decision');
-            }
-            if (categoryId && noticeIds.length > 0) {
-                const { error } = await supabase
-                    .from('notice_categories')
-                    .upsert(noticeIds.map(noticeId => ({
-                        notice_id: noticeId,
-                        category_id: categoryId
-                    })), {
-                        onConflict: 'notice_id,category_id',
-                        ignoreDuplicates: true
-                    });
-                if (error) throw error;
-            }
-            const { data: updated, error: updateError } = await supabase
-                .from('category_candidates')
-                .update({
-                    status,
-                    merged_category_id: categoryId,
-                    deferred_until: decision.action === 'defer'
-                        ? decision.deferredUntil
-                        : null,
-                    decided_at: decision.action === 'defer' ? null : new Date().toISOString(),
-                    updated_at: new Date().toISOString()
-                })
-                .eq('id', id)
-                .select('*')
-                .single();
-            if (updateError) throw updateError;
-            const { error: auditError } = await supabase
-                .from('automation_audit_logs')
-                .insert({
-                    action: `category_candidate_${decision.action}`,
-                    entity_type: 'category_candidate',
-                    entity_id: String(id),
-                    metadata: decision
-                });
-            if (auditError) throw auditError;
-            return updated;
+            if (error) throw error;
+            return Array.isArray(data) ? data[0] : data;
         },
 
         async listCrawlRuns() {

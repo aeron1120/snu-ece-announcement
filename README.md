@@ -56,6 +56,7 @@ npm run prepare:public
 - Build command: `npm install`
 - Start command: `npm start`
 - Health check: `/api/health`
+- Runtime: Node.js 22 이상 (`package.json`의 `engines`와 일치)
 
 필수 환경 변수는 [.env.example](.env.example)을 기준으로 설정합니다.
 

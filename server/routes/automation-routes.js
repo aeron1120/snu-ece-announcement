@@ -26,6 +26,9 @@ function errorResponse(res, error) {
     if (error?.code === 'CATEGORY_CANDIDATE_NOT_PENDING') {
         return res.status(409).json({ error: '이미 처리되었거나 존재하지 않는 카테고리 후보입니다.' });
     }
+    if (error?.code === 'CRAWL_ALREADY_RUNNING') {
+        return res.status(409).json({ error: '같은 공지 수집 작업이 이미 실행 중입니다.' });
+    }
     console.error('[automation-api]', error);
     return res.status(500).json({ error: error?.message || '자동화 요청 처리에 실패했습니다.' });
 }
@@ -289,7 +292,8 @@ export function createAutomationRouter({
                 deadline: analysis.deadline,
                 targets: analysis.targets,
                 keywords: analysis.keywords,
-                analysisStatus: 'completed',
+                categoryIds: analysis.existingCategoryIds,
+                analysisStatus: 'succeeded',
                 analysisConfidence: analysis.confidence
             });
             res.json({ notice: updated });

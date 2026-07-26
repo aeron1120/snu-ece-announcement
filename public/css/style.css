@@ -435,6 +435,10 @@ body {
 .review-actions { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; padding-top: 16px; border-top: 1px solid var(--border); }
 .review-actions .btn[disabled] { opacity: .55; cursor: wait; }
 .notification-preferences { width: min(560px, 100%); }
+.detail-source-area { margin: 16px 0; padding: 16px; border: 1px solid var(--border); border-radius: 12px; background: #fafafa; }
+.detail-source-area h4 { margin: 0 0 10px; }
+.detail-source-area a { color: var(--primary); font-weight: 650; }
+.detail-source-area ul { margin: 10px 0 0; padding-left: 20px; }
 .notification-preferences h2 { margin: 4px 0 8px; font-family: var(--serif); color: var(--primary-deep); }
 .notification-help { margin: 0 0 12px; color: var(--text-sub); line-height: 1.6; font-size: 14px; }
 .notification-check {

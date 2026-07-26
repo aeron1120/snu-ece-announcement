@@ -180,10 +180,16 @@ create table if not exists public.notification_jobs (
   status text not null default 'pending'
     check (status in ('pending', 'processing', 'completed', 'failed')),
   scheduled_at timestamptz not null default now(),
+  claimed_at timestamptz,
+  claim_token uuid,
   created_at timestamptz not null default now(),
   completed_at timestamptz,
   unique (notice_id, kind)
 );
+
+alter table public.notification_jobs
+  add column if not exists claimed_at timestamptz,
+  add column if not exists claim_token uuid;
 
 create table if not exists public.notification_deliveries (
   id bigint generated always as identity primary key,
@@ -211,6 +217,33 @@ create table if not exists public.automation_audit_logs (
 
 create index if not exists crawl_runs_started_idx
   on public.crawl_runs (started_at desc);
+do $$
+begin
+  if to_regclass('public.crawl_runs_one_running_per_source') is null then
+    with duplicate_runs as (
+      select id
+      from (
+        select id,
+               row_number() over (
+                 partition by source_type
+                 order by started_at desc, id desc
+               ) as position
+        from public.crawl_runs
+        where status = 'running'
+      ) ranked
+      where position > 1
+    )
+    update public.crawl_runs
+    set status = 'failed',
+        error_message = coalesce(error_message, 'duplicate crawl closed during schema migration'),
+        finished_at = coalesce(finished_at, now())
+    where id in (select id from duplicate_runs);
+  end if;
+end;
+$$;
+create unique index if not exists crawl_runs_one_running_per_source
+  on public.crawl_runs (source_type)
+  where status = 'running';
 create index if not exists category_candidates_status_idx
   on public.category_candidates (status, last_seen_at desc);
 create index if not exists notification_jobs_due_idx
@@ -242,6 +275,56 @@ revoke all on public.notification_jobs from anon, authenticated;
 revoke all on public.notification_deliveries from anon, authenticated;
 revoke all on public.automation_audit_logs from anon, authenticated;
 
+create or replace function public.create_manual_notice(
+  notice_payload jsonb,
+  should_notify boolean default true
+)
+returns setof public.notices
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  created_row public.notices;
+begin
+  insert into public.notices (
+    title, content, target, targets, host, deadline, ai_summary, images,
+    status, source_type, raw_title, raw_content, analysis_status,
+    published_at, views, is_deleted
+  ) values (
+    notice_payload->>'title',
+    notice_payload->>'content',
+    coalesce(nullif(notice_payload->>'target', ''), '전체'),
+    jsonb_build_array(coalesce(nullif(notice_payload->>'target', ''), '전체')),
+    coalesce(nullif(notice_payload->>'host', ''), '기타'),
+    nullif(notice_payload->>'deadline', '')::date,
+    coalesce(notice_payload->'aiSummary', '[]'::jsonb),
+    coalesce(notice_payload->'images', '[]'::jsonb),
+    'published',
+    'manual',
+    notice_payload->>'title',
+    notice_payload->>'content',
+    'succeeded',
+    now(),
+    0,
+    false
+  )
+  returning * into created_row;
+
+  if should_notify then
+    insert into public.notification_jobs (notice_id, kind, status)
+    values (created_row.id, 'new_notice', 'pending')
+    on conflict (notice_id, kind) do nothing;
+  end if;
+
+  return next created_row;
+  return;
+end;
+$$;
+
+revoke all on function public.create_manual_notice(jsonb, boolean) from public;
+grant execute on function public.create_manual_notice(jsonb, boolean) to service_role;
+
 create or replace function public.publish_review_notice(
   target_notice_id bigint,
   edits jsonb default '{}'::jsonb,
@@ -263,8 +346,7 @@ begin
       targets = case when edits ? 'targets' then edits->'targets' else targets end,
       host = coalesce(nullif(edits->>'host', ''), host),
       deadline = case
-        when edits ? 'deadline' and edits->>'deadline' is not null
-          then (edits->>'deadline')::date
+        when edits ? 'deadline' then nullif(edits->>'deadline', '')::date
         else deadline
       end,
       ai_summary = case when edits ? 'aiSummary' then edits->'aiSummary' else ai_summary end,
@@ -322,6 +404,114 @@ $$;
 
 revoke all on function public.publish_review_notice(bigint, jsonb, boolean) from public;
 grant execute on function public.publish_review_notice(bigint, jsonb, boolean) to service_role;
+
+create or replace function public.decide_category_candidate(
+  target_candidate_id bigint,
+  decision_action text,
+  category_name text default null,
+  category_slug text default null,
+  target_category_id bigint default null,
+  defer_until timestamptz default null
+)
+returns setof public.category_candidates
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  candidate_row public.category_candidates;
+  updated_row public.category_candidates;
+  selected_category_id bigint;
+  next_status text;
+begin
+  select * into candidate_row
+  from public.category_candidates
+  where id = target_candidate_id
+    and status in ('pending', 'deferred')
+  for update;
+
+  if candidate_row is null then
+    raise exception 'CATEGORY_CANDIDATE_NOT_PENDING';
+  end if;
+
+  if decision_action = 'approve' then
+    if nullif(trim(category_name), '') is null
+      or nullif(trim(category_slug), '') is null then
+      raise exception 'CATEGORY_NAME_AND_SLUG_REQUIRED';
+    end if;
+    insert into public.categories (name, slug)
+    values (trim(category_name), trim(category_slug))
+    returning id into selected_category_id;
+    next_status := 'approved';
+  elsif decision_action = 'merge' then
+    select id into selected_category_id
+    from public.categories
+    where id = target_category_id and is_active = true;
+    if selected_category_id is null then
+      raise exception 'CATEGORY_NOT_FOUND';
+    end if;
+    insert into public.category_aliases (
+      category_id, alias, normalized_alias
+    ) values (
+      selected_category_id,
+      candidate_row.display_name,
+      candidate_row.normalized_keyword
+    )
+    on conflict (normalized_alias) do update
+      set category_id = excluded.category_id,
+          alias = excluded.alias;
+    next_status := 'merged';
+  elsif decision_action = 'reject' then
+    next_status := 'rejected';
+  elsif decision_action = 'defer' then
+    if defer_until is null then
+      raise exception 'DEFER_UNTIL_REQUIRED';
+    end if;
+    next_status := 'deferred';
+  else
+    raise exception 'INVALID_CATEGORY_DECISION';
+  end if;
+
+  if selected_category_id is not null then
+    insert into public.notice_categories (notice_id, category_id)
+    select notice_id, selected_category_id
+    from public.category_candidate_notices
+    where candidate_id = candidate_row.id
+    on conflict do nothing;
+  end if;
+
+  update public.category_candidates
+  set status = next_status,
+      merged_category_id = selected_category_id,
+      deferred_until = case when decision_action = 'defer' then defer_until else null end,
+      decided_at = case when decision_action = 'defer' then null else now() end,
+      updated_at = now()
+  where id = candidate_row.id
+  returning * into updated_row;
+
+  insert into public.automation_audit_logs (
+    action, entity_type, entity_id, metadata
+  ) values (
+    'category_candidate_' || decision_action,
+    'category_candidate',
+    candidate_row.id::text,
+    jsonb_build_object(
+      'categoryId', selected_category_id,
+      'deferredUntil', defer_until
+    )
+  );
+
+  return next updated_row;
+  return;
+end;
+$$;
+
+revoke all on function public.decide_category_candidate(
+  bigint, text, text, text, bigint, timestamptz
+) from public;
+grant execute on function public.decide_category_candidate(
+  bigint, text, text, text, bigint, timestamptz
+) to service_role;
 
 create or replace function public.increment_notice_views(target_notice_id bigint)
 returns setof public.notices

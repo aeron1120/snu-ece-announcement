@@ -40,7 +40,10 @@ const automationStore = createAutomationStore({
     filePath: automationFilePath
 });
 const noticeAnalyzer = process.env.GEMINI_API_KEY
-    ? createNoticeAnalyzer({ apiKey: process.env.GEMINI_API_KEY })
+    ? createNoticeAnalyzer({
+        apiKey: process.env.GEMINI_API_KEY,
+        categoryProvider: () => automationStore.listCategories()
+    })
     : null;
 const eceCrawler = createEceCrawler({
     store: automationStore,
@@ -345,9 +348,14 @@ function toClientNotice(row) {
         title: row.title || '',
         content: row.content || '',
         target: row.target || '전체',
+        targets: Array.isArray(row.targets) ? row.targets : [],
         host: row.host || '기타',
         deadline: row.deadline || '',
         aiSummary: Array.isArray(row.ai_summary) ? row.ai_summary : [],
+        keywords: Array.isArray(row.keywords) ? row.keywords : [],
+        sourceUrl: row.source_url || null,
+        sourcePublishedAt: row.source_published_at || null,
+        attachments: Array.isArray(row.attachments) ? row.attachments : [],
         images: Array.isArray(row.images) ? row.images : [],
         categoryIds: (row.notice_categories || []).map(item => Number(item.category_id)),
         views: Number(row.views) || 0,
@@ -609,34 +617,22 @@ async function listNotices() {
 
 async function createNotice(payload) {
     if (!useSupabase) {
-        const notices = await readNotices();
-        const newNotice = { id: Date.now(), ...payload, views: 0 };
-        notices.unshift(newNotice);
-        await writeNotices(notices);
-        return newNotice;
+        return automationStore.createManualNotice(payload, { notify: true });
     }
 
-    const { data, error } = await supabase
-        .from(SUPABASE_NOTICES_TABLE)
-        .insert({
-            title: payload.title,
-            content: payload.content,
-            target: payload.target,
-            host: payload.host,
-            deadline: normalizeDeadline(payload.deadline),
-            ai_summary: payload.aiSummary,
-            images: payload.images,
-            views: 0,
-            is_deleted: false
-        })
-        .select('*')
-        .single();
+    const { data, error } = await supabase.rpc('create_manual_notice', {
+        notice_payload: {
+            ...payload,
+            deadline: normalizeDeadline(payload.deadline)
+        },
+        should_notify: true
+    });
 
     if (error) {
         throw error;
     }
 
-    return toClientNotice(data);
+    return toClientNotice(Array.isArray(data) ? data[0] : data);
 }
 
 async function updateNotice(id, payload) {
@@ -644,7 +640,7 @@ async function updateNotice(id, payload) {
         const notices = await readNotices();
         const idx = notices.findIndex(n => Number(n.id) === id);
         if (idx === -1) {
-            return null;
+            return automationStore.updateManualNotice(id, payload);
         }
 
         const prev = notices[idx];
@@ -688,7 +684,7 @@ async function softDeleteNotice(id) {
         const notices = await readNotices();
         const idx = notices.findIndex(n => Number(n.id) === id);
         if (idx === -1) {
-            return false;
+            return automationStore.deleteManualNotice(id);
         }
 
         notices[idx] = {
@@ -723,7 +719,7 @@ async function incrementViewCount(id) {
         const notices = await readNotices();
         const idx = notices.findIndex(n => Number(n.id) === id && !n.isDeleted);
         if (idx === -1) {
-            return null;
+            return automationStore.incrementAutomationNoticeView(id);
         }
 
         notices[idx].views = (Number(notices[idx].views) || 0) + 1;
@@ -1109,8 +1105,44 @@ app.put('/api/settings/passwords', requireSuperAdmin, async (req, res) => {
 
 app.get('/api/notices', async (req, res) => {
     try {
-        const notices = await listNotices();
-        res.json({ notices });
+        const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
+        const limit = Math.min(50, Math.max(1, Number.parseInt(req.query.limit, 10) || 50));
+        const categoryIds = String(req.query.category || '')
+            .split(',')
+            .map(Number)
+            .filter(id => Number.isSafeInteger(id) && id > 0);
+        let notices = await listNotices();
+        if (categoryIds.length > 0) {
+            notices = notices.filter(notice => {
+                const noticeCategoryIds = (notice.categoryIds || []).map(Number);
+                return categoryIds.some(id => noticeCategoryIds.includes(id));
+            });
+        }
+        const total = notices.length;
+        const offset = (page - 1) * limit;
+        res.json({
+            notices: notices.slice(offset, offset + limit),
+            pagination: {
+                page,
+                limit,
+                total,
+                totalPages: Math.ceil(total / limit)
+            }
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message || '공지 조회 실패' });
+    }
+});
+
+app.get('/api/notices/:id', async (req, res) => {
+    try {
+        const id = Number(req.params.id);
+        if (!Number.isSafeInteger(id)) {
+            return res.status(400).json({ error: '유효하지 않은 id입니다.' });
+        }
+        const notice = (await listNotices()).find(item => Number(item.id) === id);
+        if (!notice) return res.status(404).json({ error: '공지 없음' });
+        res.json({ notice });
     } catch (error) {
         res.status(500).json({ error: error.message || '공지 조회 실패' });
     }
