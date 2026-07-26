@@ -6,6 +6,12 @@ import { promises as fs } from 'fs';
 import { createClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
 import cron from 'node-cron';
+import { getAutomationConfig } from './config/runtime-config.js';
+import { createAutomationStore } from './storage/automation-store.js';
+import { createEceCrawler } from './services/ece-crawler.js';
+import * as eceParser from './services/ece-parser.js';
+import { createNoticeAnalyzer } from './services/notice-analyzer.js';
+import { createAutomationRouter } from './routes/automation-routes.js';
 
 dotenv.config();
 
@@ -15,6 +21,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const noticesFilePath = path.join(__dirname, 'data', 'notices.json');
 const settingsFilePath = path.join(__dirname, 'data', 'settings.json');
 const bannerFilePath = path.join(__dirname, 'data', 'banner-slides.json');
+const automationFilePath = path.join(__dirname, 'data', 'automation.json');
 const SUPER_ADMIN_TOKEN = process.env.SUPER_ADMIN_TOKEN || process.env.ADMIN_TOKEN || '';
 const NOTICE_ADMIN_TOKEN = process.env.NOTICE_ADMIN_TOKEN || '0327';
 const SUPABASE_URL = process.env.SUPABASE_URL || '';
@@ -23,6 +30,21 @@ const SUPABASE_NOTICES_TABLE = process.env.SUPABASE_NOTICES_TABLE || 'notices';
 const SUPABASE_SETTINGS_TABLE = process.env.SUPABASE_SETTINGS_TABLE || 'app_settings';
 const useSupabase = Boolean(SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY);
 const supabase = useSupabase ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY) : null;
+const automationConfig = getAutomationConfig();
+const automationStore = createAutomationStore({
+    supabase,
+    useSupabase,
+    filePath: automationFilePath
+});
+const noticeAnalyzer = process.env.GEMINI_API_KEY
+    ? createNoticeAnalyzer({ apiKey: process.env.GEMINI_API_KEY })
+    : null;
+const eceCrawler = createEceCrawler({
+    store: automationStore,
+    parser: eceParser,
+    analyzer: noticeAnalyzer,
+    config: automationConfig.crawl
+});
 let bannerStorageMode = useSupabase ? 'supabase' : 'file';
 const initialNoticeAdminToken = NOTICE_ADMIN_TOKEN;
 
@@ -70,7 +92,7 @@ app.use((req, res, next) => {
     } else {
         res.header('Access-Control-Allow-Origin', '*');
     }
-    res.header('Access-Control-Allow-Headers', 'Content-Type, x-admin-token, x-super-admin-token, x-banner-token');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, x-admin-token, x-super-admin-token, x-banner-token, x-crawl-secret, x-subscription-token');
     res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
 
     if (req.method === 'OPTIONS') {
@@ -497,9 +519,10 @@ function initializeBannerCleanupCron() {
 
 async function listNotices() {
     if (!useSupabase) {
-        const notices = await readNotices();
-        return notices
-            .filter(notice => !notice.isDeleted)
+        const manualNotices = await readNotices();
+        const automatedNotices = await automationStore.listPublishedNotices();
+        return [...manualNotices, ...automatedNotices]
+            .filter(notice => !notice.isDeleted && (!notice.status || notice.status === 'published'))
             .sort((a, b) => Number(b.id) - Number(a.id));
     }
 
@@ -507,6 +530,7 @@ async function listNotices() {
         .from(SUPABASE_NOTICES_TABLE)
         .select('*')
         .eq('is_deleted', false)
+        .eq('status', 'published')
         .order('created_at', { ascending: false })
         .order('id', { ascending: false });
 
@@ -928,6 +952,14 @@ function toClientBannerSlide(row) {
     };
 }
 
+app.use(createAutomationRouter({
+    store: automationStore,
+    crawler: eceCrawler,
+    analyzer: noticeAnalyzer,
+    requireAdmin: requireNoticeAdmin,
+    config: automationConfig
+}));
+
 app.get('/api/health', (req, res) => {
     res.json({ ok: true, storage: useSupabase ? 'supabase' : 'file', bannerStorage: bannerStorageMode });
 });
@@ -1224,6 +1256,12 @@ app.delete('/api/banner-slides/:id', requireBannerAdmin, async (req, res) => {
     }
 });
 
+export { app };
+
+const isDirectRun = process.argv[1]
+    && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url));
+
+if (isDirectRun) {
 ensureDefaultData()
     .then(() => {
         initializeBannerCleanupCron();
@@ -1235,3 +1273,4 @@ ensureDefaultData()
         console.error('초기화 실패:', error);
         process.exit(1);
     });
+}

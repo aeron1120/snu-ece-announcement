@@ -242,6 +242,73 @@ revoke all on public.notification_jobs from anon, authenticated;
 revoke all on public.notification_deliveries from anon, authenticated;
 revoke all on public.automation_audit_logs from anon, authenticated;
 
+create or replace function public.publish_review_notice(
+  target_notice_id bigint,
+  edits jsonb default '{}'::jsonb,
+  should_notify boolean default true
+)
+returns setof public.notices
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  updated_row public.notices;
+begin
+  update public.notices
+  set title = coalesce(nullif(edits->>'title', ''), title),
+      content = coalesce(nullif(edits->>'content', ''), content),
+      target = coalesce(nullif(edits->>'target', ''), target),
+      targets = case when edits ? 'targets' then edits->'targets' else targets end,
+      host = coalesce(nullif(edits->>'host', ''), host),
+      deadline = case
+        when edits ? 'deadline' and edits->>'deadline' is not null
+          then (edits->>'deadline')::date
+        else deadline
+      end,
+      ai_summary = case when edits ? 'aiSummary' then edits->'aiSummary' else ai_summary end,
+      keywords = case when edits ? 'keywords' then edits->'keywords' else keywords end,
+      attachments = case when edits ? 'attachments' then edits->'attachments' else attachments end,
+      analysis_confidence = case
+        when edits ? 'analysisConfidence' then (edits->>'analysisConfidence')::numeric
+        else analysis_confidence
+      end,
+      status = 'published',
+      reviewed_at = now(),
+      published_at = now(),
+      updated_at = now()
+  where id = target_notice_id
+    and status = 'pending_review'
+    and is_deleted = false
+  returning * into updated_row;
+
+  if updated_row is null then
+    raise exception 'NOTICE_NOT_PENDING';
+  end if;
+
+  if should_notify then
+    insert into public.notification_jobs (notice_id, kind, status)
+    values (updated_row.id, 'new_notice', 'pending')
+    on conflict (notice_id, kind) do nothing;
+  end if;
+
+  insert into public.automation_audit_logs (
+    action, entity_type, entity_id, metadata
+  ) values (
+    'notice_published',
+    'notice',
+    updated_row.id::text,
+    jsonb_build_object('notify', should_notify)
+  );
+
+  return next updated_row;
+  return;
+end;
+$$;
+
+revoke all on function public.publish_review_notice(bigint, jsonb, boolean) from public;
+grant execute on function public.publish_review_notice(bigint, jsonb, boolean) to service_role;
+
 create or replace function public.increment_notice_views(target_notice_id bigint)
 returns setof public.notices
 language plpgsql

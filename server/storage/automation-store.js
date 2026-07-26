@@ -28,6 +28,12 @@ function duplicateSourceError() {
     return error;
 }
 
+function noticeNotPendingError() {
+    const error = new Error('notice is not pending review');
+    error.code = 'NOTICE_NOT_PENDING';
+    return error;
+}
+
 function toSupabaseNotice(row) {
     if (!row) return null;
     return {
@@ -52,6 +58,8 @@ function toSupabaseNotice(row) {
         analysisStatus: row.analysis_status,
         analysisConfidence: row.analysis_confidence,
         crawlMetadata: row.crawl_metadata || {},
+        rejectionReason: row.review_note,
+        publishedAt: row.published_at,
         createdAt: row.created_at,
         updatedAt: row.updated_at
     };
@@ -211,6 +219,100 @@ function createJsonStore(filePath) {
                 Number(item.id) === Number(id) && item.status === 'pending_review'
             );
             return notice ? { ...notice } : null;
+        },
+
+        async updateReviewAnalysis(id, analysis) {
+            return mutate(document => {
+                const notice = document.notices.find(item =>
+                    Number(item.id) === Number(id) && item.status === 'pending_review'
+                );
+                if (!notice) throw noticeNotPendingError();
+                Object.assign(notice, analysis, { updatedAt: new Date().toISOString() });
+                return { ...notice };
+            });
+        },
+
+        async publishReviewNotice(id, edits = {}, { notify = true } = {}) {
+            return mutate(document => {
+                const notice = document.notices.find(item => Number(item.id) === Number(id));
+                if (!notice || notice.status !== 'pending_review') throw noticeNotPendingError();
+                const now = new Date().toISOString();
+                const editableFields = [
+                    'title', 'content', 'target', 'targets', 'host', 'deadline',
+                    'aiSummary', 'keywords', 'attachments', 'analysisConfidence'
+                ];
+                for (const field of editableFields) {
+                    if (Object.hasOwn(edits, field)) notice[field] = edits[field];
+                }
+                notice.status = 'published';
+                notice.publishedAt = now;
+                notice.updatedAt = now;
+                if (notify) {
+                    document.notificationJobs.push({
+                        id: nextId(document.notificationJobs),
+                        noticeId: notice.id,
+                        status: 'pending',
+                        targets: Array.isArray(notice.targets) ? notice.targets : [],
+                        attemptCount: 0,
+                        createdAt: now,
+                        updatedAt: now
+                    });
+                }
+                document.auditLogs.push({
+                    id: nextId(document.auditLogs),
+                    action: 'notice_published',
+                    entityType: 'notice',
+                    entityId: String(notice.id),
+                    metadata: { notify },
+                    createdAt: now
+                });
+                return { ...notice };
+            });
+        },
+
+        async rejectReviewNotice(id, reason = '') {
+            return mutate(document => {
+                const notice = document.notices.find(item => Number(item.id) === Number(id));
+                if (!notice || notice.status !== 'pending_review') throw noticeNotPendingError();
+                const now = new Date().toISOString();
+                notice.status = 'rejected';
+                notice.rejectionReason = String(reason || '').trim() || null;
+                notice.updatedAt = now;
+                document.auditLogs.push({
+                    id: nextId(document.auditLogs),
+                    action: 'notice_rejected',
+                    entityType: 'notice',
+                    entityId: String(notice.id),
+                    metadata: { reason: notice.rejectionReason },
+                    createdAt: now
+                });
+                return { ...notice };
+            });
+        },
+
+        async listPublishedNotices() {
+            const document = await readDocument();
+            return document.notices
+                .filter(notice => notice.status === 'published')
+                .sort((a, b) =>
+                    String(b.publishedAt || b.createdAt).localeCompare(
+                        String(a.publishedAt || a.createdAt)
+                    )
+                )
+                .map(notice => ({ ...notice }));
+        },
+
+        async listNotificationJobs() {
+            const document = await readDocument();
+            return document.notificationJobs.map(job => ({ ...job }));
+        },
+
+        async listCrawlRuns() {
+            const document = await readDocument();
+            return document.crawlRuns
+                .slice()
+                .sort((a, b) => String(b.startedAt).localeCompare(String(a.startedAt)))
+                .map(run => ({ ...run }));
         }
     };
 }
@@ -317,6 +419,89 @@ function createSupabaseStore(supabase) {
                 .maybeSingle();
             if (error) throw error;
             return toSupabaseNotice(data);
+        },
+
+        async updateReviewAnalysis(id, analysis) {
+            const payload = {};
+            const fieldMap = {
+                aiSummary: 'ai_summary',
+                deadline: 'deadline',
+                targets: 'targets',
+                keywords: 'keywords',
+                analysisStatus: 'analysis_status',
+                analysisConfidence: 'analysis_confidence'
+            };
+            for (const [field, column] of Object.entries(fieldMap)) {
+                if (Object.hasOwn(analysis, field)) payload[column] = analysis[field];
+            }
+            const { data, error } = await supabase
+                .from('notices')
+                .update(payload)
+                .eq('id', id)
+                .eq('status', 'pending_review')
+                .select('*')
+                .maybeSingle();
+            if (error) throw error;
+            if (!data) throw noticeNotPendingError();
+            return toSupabaseNotice(data);
+        },
+
+        async publishReviewNotice(id, edits = {}, { notify = true } = {}) {
+            const { data, error } = await supabase.rpc('publish_review_notice', {
+                target_notice_id: Number(id),
+                edits,
+                should_notify: Boolean(notify)
+            });
+            if (error?.message?.includes('NOTICE_NOT_PENDING')) throw noticeNotPendingError();
+            if (error) throw error;
+            return toSupabaseNotice(Array.isArray(data) ? data[0] : data);
+        },
+
+        async rejectReviewNotice(id, reason = '') {
+            const { data, error } = await supabase
+                .from('notices')
+                .update({
+                    status: 'rejected',
+                    review_note: String(reason || '').trim() || null,
+                    reviewed_at: new Date().toISOString()
+                })
+                .eq('id', id)
+                .eq('status', 'pending_review')
+                .select('*')
+                .maybeSingle();
+            if (error) throw error;
+            if (!data) throw noticeNotPendingError();
+            return toSupabaseNotice(data);
+        },
+
+        async listPublishedNotices() {
+            const { data, error } = await supabase
+                .from('notices')
+                .select('*')
+                .eq('status', 'published')
+                .eq('is_deleted', false)
+                .order('published_at', { ascending: false });
+            if (error) throw error;
+            return (data || []).map(toSupabaseNotice);
+        },
+
+        async listNotificationJobs() {
+            const { data, error } = await supabase
+                .from('notification_jobs')
+                .select('*')
+                .order('created_at', { ascending: false });
+            if (error) throw error;
+            return data || [];
+        },
+
+        async listCrawlRuns() {
+            const { data, error } = await supabase
+                .from('crawl_runs')
+                .select('*')
+                .order('started_at', { ascending: false })
+                .limit(100);
+            if (error) throw error;
+            return data || [];
         }
     };
 }

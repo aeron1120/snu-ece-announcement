@@ -104,3 +104,57 @@ test('JSON automation store records crawl completion', async () => {
     assert.equal(completed.createdCount, 2);
     assert.ok(completed.finishedAt);
 });
+
+test('JSON automation store publishes only reviewed notices and queues notification once', async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), 'ece-store-publish-'));
+    const store = createAutomationStore({
+        useSupabase: false,
+        filePath: path.join(directory, 'automation.json')
+    });
+    const pending = await store.createPendingNotice({
+        sourceType: 'ece_academics',
+        sourceExternalId: '60001',
+        title: '원본 제목',
+        content: '원본 본문',
+        targets: ['24학번'],
+        keywords: ['수강신청']
+    });
+
+    const published = await store.publishReviewNotice(pending.id, {
+        title: '검수한 제목',
+        targets: ['24학번', '25학번']
+    }, { notify: true });
+
+    assert.equal(published.status, 'published');
+    assert.equal(published.title, '검수한 제목');
+    assert.deepEqual(published.targets, ['24학번', '25학번']);
+    assert.equal((await store.listReviewNotices()).length, 0);
+    assert.equal((await store.listPublishedNotices()).length, 1);
+    assert.equal((await store.listNotificationJobs()).length, 1);
+    await assert.rejects(
+        () => store.publishReviewNotice(pending.id, {}, { notify: true }),
+        error => error.code === 'NOTICE_NOT_PENDING'
+    );
+    assert.equal((await store.listNotificationJobs()).length, 1);
+});
+
+test('JSON automation store rejects a pending notice without a notification job', async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), 'ece-store-reject-'));
+    const store = createAutomationStore({
+        useSupabase: false,
+        filePath: path.join(directory, 'automation.json')
+    });
+    const pending = await store.createPendingNotice({
+        sourceType: 'ece_academics',
+        sourceExternalId: '60002',
+        title: '반려 대상',
+        content: '본문'
+    });
+
+    const rejected = await store.rejectReviewNotice(pending.id, '대상이 아님');
+
+    assert.equal(rejected.status, 'rejected');
+    assert.equal(rejected.rejectionReason, '대상이 아님');
+    assert.equal((await store.listPublishedNotices()).length, 0);
+    assert.equal((await store.listNotificationJobs()).length, 0);
+});
