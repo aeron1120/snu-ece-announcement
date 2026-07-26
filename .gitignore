@@ -5,3 +5,5 @@ node_modules
 # settings.json에는 배너 비밀번호와 관리자 토큰 해시가 들어가므로 커밋하지 않는다.
 server/data/
 .worktrees/
+server/data/automation.json
+server/data/automation.json.tmp
