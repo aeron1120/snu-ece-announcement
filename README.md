@@ -20,8 +20,22 @@ Cloudflare Pages에 프론트를 올리고, 별도 백엔드 API + Supabase DB�
 - `js/app.js`: 전체 프론트 로직
 - `server/server.js`: API 서버
 - `server/sql/supabase-schema.sql`: Supabase 스키마/함수 생성 SQL
-- `server/data/notices.json`: 로컬 폴백 저장 파일
-- `public/`: Cloudflare Pages 배포용 정적 산출물
+- `server/data/`: Supabase 미설정 시 쓰는 로컬 폴백 저장소. 서버가 자동 생성하며 **git에 커밋하지 않습니다**
+  (`settings.json`에 배너 비밀번호와 관리자 토큰 해시가 들어가기 때문)
+- `public/`: 배포용 정적 산출물. `npm run prepare:public`으로 생성하며 직접 편집하지 않습니다
+
+## 공지 공유 (카톡 연동)
+
+이 서비스는 카톡 공지방을 대체하지 않고 **보완**합니다. 알림은 카톡이 맡고, 검색·마감 관리·아카이브는 이 사이트가 맡습니다.
+
+1. 관리자가 공지를 등록합니다
+2. 공지 상세에서 **🔗 링크 복사**를 누르면 `https://<도메인>/?id=<공지번호>` 형태의 링크가 복사됩니다
+3. 그 링크를 카톡 공지방에 올리면, 학생이 눌렀을 때 해당 공지가 바로 열립니다
+
+> 링크 미리보기는 현재 사이트 공통 문구만 표시됩니다. 이 페이지는 클라이언트 렌더링이라
+> 카톡 크롤러가 공지별 제목·요약을 읽지 못합니다. 공지별 미리보기가 필요하면 서버가
+> `?id=` 요청에 SSR로 응답해야 하며, 이 경우 정적 배포(Cloudflare Pages) 대신
+> Node 서버에서 프론트를 함께 서빙해야 합니다.
 
 ## 로컬 실행
 1. `npm install`
@@ -60,7 +74,8 @@ Render/Railway/Fly.io 같은 Node 배포 플랫폼에 `server/server.js`를 실�
 필수 환경 변수:
 - `GEMINI_API_KEY`
 - `FRONTEND_ORIGIN=https://<your-pages-domain>`
-- `ADMIN_TOKEN=<운영자만 아는 문자열>`
+- `SUPER_ADMIN_TOKEN=<절대 관리자만 아는 문자열>` (구버전 이름 `ADMIN_TOKEN`도 인식됩니다)
+- `NOTICE_ADMIN_TOKEN=<공지 관리자용 문자열>`
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `SUPABASE_NOTICES_TABLE=notices`
