@@ -93,6 +93,17 @@ export function createAutomationRouter({
 
     router.post('/api/admin/crawl/ece-academics', requireAdmin, runCrawl);
 
+    router.post('/api/admin/notification-jobs/process', requireAdmin, async (req, res) => {
+        if (!pushService) {
+            return res.status(503).json({ error: '웹 푸시가 설정되지 않았습니다.' });
+        }
+        try {
+            res.json(await pushService.processPendingJobs());
+        } catch (error) {
+            errorResponse(res, error);
+        }
+    });
+
     router.get('/api/push/public-key', (req, res) => {
         if (!pushService?.publicKey) {
             return res.status(503).json({ error: '웹 푸시가 설정되지 않았습니다.' });

@@ -308,6 +308,88 @@ function createJsonStore(filePath) {
             return document.notificationJobs.map(job => ({ ...job }));
         },
 
+        async listPendingNotificationJobs(batchSize = 50) {
+            const document = await readDocument();
+            return document.notificationJobs
+                .filter(job => job.status === 'pending')
+                .slice(0, batchSize)
+                .map(job => ({ ...job }));
+        },
+
+        async getAutomationNotice(id) {
+            const document = await readDocument();
+            const notice = document.notices.find(item => Number(item.id) === Number(id));
+            return notice ? { ...notice } : null;
+        },
+
+        async ensureNotificationDeliveries(jobId, subscriptionIds) {
+            return mutate(document => {
+                const created = [];
+                for (const subscriptionId of subscriptionIds) {
+                    let delivery = document.notificationDeliveries.find(item =>
+                        Number(item.jobId) === Number(jobId)
+                        && String(item.subscriptionId) === String(subscriptionId)
+                    );
+                    if (!delivery) {
+                        delivery = {
+                            id: nextId(document.notificationDeliveries),
+                            jobId: Number(jobId),
+                            subscriptionId: String(subscriptionId),
+                            status: 'pending',
+                            attempts: 0,
+                            nextAttemptAt: null,
+                            lastError: null,
+                            sentAt: null,
+                            createdAt: new Date().toISOString(),
+                            updatedAt: new Date().toISOString()
+                        };
+                        document.notificationDeliveries.push(delivery);
+                    }
+                    created.push({ ...delivery });
+                }
+                return created;
+            });
+        },
+
+        async listNotificationDeliveries(jobId = null) {
+            const document = await readDocument();
+            return document.notificationDeliveries
+                .filter(item => jobId == null || Number(item.jobId) === Number(jobId))
+                .map(item => ({ ...item }));
+        },
+
+        async updateNotificationDelivery(id, changes) {
+            return mutate(document => {
+                const delivery = document.notificationDeliveries.find(item =>
+                    Number(item.id) === Number(id)
+                );
+                if (!delivery) throw new Error('notification delivery not found');
+                Object.assign(delivery, changes, { updatedAt: new Date().toISOString() });
+                return { ...delivery };
+            });
+        },
+
+        async updateNotificationJob(id, changes) {
+            return mutate(document => {
+                const job = document.notificationJobs.find(item => Number(item.id) === Number(id));
+                if (!job) throw new Error('notification job not found');
+                Object.assign(job, changes, { updatedAt: new Date().toISOString() });
+                return { ...job };
+            });
+        },
+
+        async deactivatePushSubscription(id) {
+            return mutate(document => {
+                const subscription = document.pushSubscriptions.find(item =>
+                    String(item.id) === String(id)
+                );
+                if (!subscription) return null;
+                subscription.status = 'inactive';
+                subscription.updatedAt = new Date().toISOString();
+                return { ...subscription };
+            });
+        },
+
         async createPushSubscription(input) {
             return mutate(document => {
                 const existing = document.pushSubscriptions.find(item =>
@@ -549,6 +631,119 @@ function createSupabaseStore(supabase) {
                 .order('created_at', { ascending: false });
             if (error) throw error;
             return data || [];
+        },
+
+        async listPendingNotificationJobs(batchSize = 50) {
+            const { data, error } = await supabase
+                .from('notification_jobs')
+                .select('*')
+                .eq('status', 'pending')
+                .lte('scheduled_at', new Date().toISOString())
+                .order('scheduled_at', { ascending: true })
+                .limit(batchSize);
+            if (error) throw error;
+            return (data || []).map(job => ({
+                id: Number(job.id),
+                noticeId: Number(job.notice_id),
+                kind: job.kind,
+                status: job.status
+            }));
+        },
+
+        async getAutomationNotice(id) {
+            const { data, error } = await supabase
+                .from('notices')
+                .select('*, notice_categories(category_id)')
+                .eq('id', id)
+                .maybeSingle();
+            if (error) throw error;
+            if (!data) return null;
+            return {
+                ...toSupabaseNotice(data),
+                categoryIds: (data.notice_categories || []).map(item => Number(item.category_id))
+            };
+        },
+
+        async ensureNotificationDeliveries(jobId, subscriptionIds) {
+            if (subscriptionIds.length === 0) return [];
+            const rows = subscriptionIds.map(subscriptionId => ({
+                job_id: jobId,
+                subscription_id: subscriptionId,
+                status: 'pending'
+            }));
+            const { data, error } = await supabase
+                .from('notification_deliveries')
+                .upsert(rows, {
+                    onConflict: 'job_id,subscription_id',
+                    ignoreDuplicates: true
+                })
+                .select('*');
+            if (error) throw error;
+            return data || [];
+        },
+
+        async listNotificationDeliveries(jobId = null) {
+            let query = supabase.from('notification_deliveries').select('*');
+            if (jobId != null) query = query.eq('job_id', jobId);
+            const { data, error } = await query;
+            if (error) throw error;
+            return (data || []).map(item => ({
+                id: Number(item.id),
+                jobId: Number(item.job_id),
+                subscriptionId: item.subscription_id,
+                status: item.status,
+                attempts: item.attempts,
+                nextAttemptAt: item.next_attempt_at,
+                lastError: item.last_error,
+                sentAt: item.sent_at
+            }));
+        },
+
+        async updateNotificationDelivery(id, changes) {
+            const fieldMap = {
+                status: 'status',
+                attempts: 'attempts',
+                nextAttemptAt: 'next_attempt_at',
+                lastError: 'last_error',
+                sentAt: 'sent_at'
+            };
+            const payload = { updated_at: new Date().toISOString() };
+            for (const [field, column] of Object.entries(fieldMap)) {
+                if (Object.hasOwn(changes, field)) payload[column] = changes[field];
+            }
+            const { data, error } = await supabase
+                .from('notification_deliveries')
+                .update(payload)
+                .eq('id', id)
+                .select('*')
+                .single();
+            if (error) throw error;
+            return data;
+        },
+
+        async updateNotificationJob(id, changes) {
+            const payload = {};
+            if (Object.hasOwn(changes, 'status')) payload.status = changes.status;
+            if (Object.hasOwn(changes, 'completedAt')) payload.completed_at = changes.completedAt;
+            const { data, error } = await supabase
+                .from('notification_jobs')
+                .update(payload)
+                .eq('id', id)
+                .select('*')
+                .single();
+            if (error) throw error;
+            return data;
+        },
+
+        async deactivatePushSubscription(id) {
+            const { data, error } = await supabase
+                .from('push_subscriptions')
+                .update({ status: 'inactive', updated_at: new Date().toISOString() })
+                .eq('id', id)
+                .select('*')
+                .maybeSingle();
+            if (error) throw error;
+            return data;
         },
 
         async createPushSubscription(input) {

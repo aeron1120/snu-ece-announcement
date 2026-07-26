@@ -52,6 +52,26 @@ const pushService = createPushService({
     webPushClient: webPush,
     config: automationConfig.push
 });
+let notificationWorkerRunning = false;
+let notificationWorkerTimer = null;
+
+function initializeNotificationWorker() {
+    if (!automationConfig.push.enabled || notificationWorkerTimer) return;
+    const tick = async () => {
+        if (notificationWorkerRunning) return;
+        notificationWorkerRunning = true;
+        try {
+            await pushService.processPendingJobs();
+        } catch (error) {
+            console.error('알림 작업 처리 실패:', error);
+        } finally {
+            notificationWorkerRunning = false;
+        }
+    };
+    tick();
+    notificationWorkerTimer = setInterval(tick, 30_000);
+    notificationWorkerTimer.unref?.();
+}
 let bannerStorageMode = useSupabase ? 'supabase' : 'file';
 const initialNoticeAdminToken = NOTICE_ADMIN_TOKEN;
 
@@ -1274,6 +1294,7 @@ if (isDirectRun) {
 ensureDefaultData()
     .then(() => {
         initializeBannerCleanupCron();
+        initializeNotificationWorker();
         app.listen(PORT, () => {
             console.log(`Server running on http://localhost:${PORT} (storage: ${useSupabase ? 'supabase' : 'file'})`);
         });

@@ -99,6 +99,105 @@ export function createPushService({ store, webPushClient, config, now = () => ne
         return subscription;
     }
 
+    async function processJob(job) {
+        const notice = await store.getAutomationNotice(job.noticeId);
+        if (!notice || notice.status !== 'published') {
+            await store.updateNotificationJob(job.id, {
+                status: 'completed',
+                completedAt: now().toISOString()
+            });
+            return { sent: 0, failed: 0 };
+        }
+        const subscriptions = (await store.listPushSubscriptions())
+            .filter(subscription =>
+                subscription.status === 'active'
+                && matchesSubscription(notice, subscription)
+            );
+        await store.ensureNotificationDeliveries(
+            job.id,
+            subscriptions.map(subscription => subscription.id)
+        );
+        const subscriptionById = new Map(
+            subscriptions.map(subscription => [String(subscription.id), subscription])
+        );
+        const timestamp = now();
+        const deliveries = await store.listNotificationDeliveries(job.id);
+        let sent = 0;
+        let failed = 0;
+
+        for (const delivery of deliveries) {
+            if (delivery.status === 'sent' || delivery.status === 'permanent_failure') continue;
+            if (delivery.nextAttemptAt && new Date(delivery.nextAttemptAt) > timestamp) continue;
+            const subscription = subscriptionById.get(String(delivery.subscriptionId));
+            if (!subscription) {
+                await store.updateNotificationDelivery(delivery.id, {
+                    status: 'permanent_failure',
+                    lastError: 'subscription unavailable',
+                    nextAttemptAt: null
+                });
+                failed += 1;
+                continue;
+            }
+            try {
+                await webPushClient.sendNotification({
+                    endpoint: subscription.endpoint,
+                    keys: {
+                        p256dh: subscription.p256dh,
+                        auth: subscription.auth
+                    }
+                }, JSON.stringify({
+                    title: notice.title,
+                    body: (notice.aiSummary?.[0] || notice.content || '').slice(0, 180),
+                    url: `/?id=${encodeURIComponent(notice.id)}`,
+                    tag: `notice-${notice.id}`
+                }));
+                await store.updateNotificationDelivery(delivery.id, {
+                    status: 'sent',
+                    attempts: Number(delivery.attempts || 0) + 1,
+                    sentAt: timestamp.toISOString(),
+                    nextAttemptAt: null,
+                    lastError: null
+                });
+                sent += 1;
+            } catch (error) {
+                const statusCode = Number(error?.statusCode || error?.status);
+                const attempts = Number(delivery.attempts || 0) + 1;
+                if (statusCode === 404 || statusCode === 410) {
+                    await store.deactivatePushSubscription(subscription.id);
+                    await store.updateNotificationDelivery(delivery.id, {
+                        status: 'permanent_failure',
+                        attempts,
+                        nextAttemptAt: null,
+                        lastError: `push endpoint gone (${statusCode})`
+                    });
+                } else {
+                    const retryMinutes = [1, 5, 30][attempts - 1];
+                    await store.updateNotificationDelivery(delivery.id, {
+                        status: retryMinutes ? 'retry' : 'permanent_failure',
+                        attempts,
+                        nextAttemptAt: retryMinutes
+                            ? new Date(timestamp.getTime() + retryMinutes * 60_000).toISOString()
+                            : null,
+                        lastError: String(error?.message || 'push delivery failed').slice(0, 500)
+                    });
+                }
+                failed += 1;
+            }
+        }
+
+        const updatedDeliveries = await store.listNotificationDeliveries(job.id);
+        const terminal = updatedDeliveries.every(delivery =>
+            delivery.status === 'sent' || delivery.status === 'permanent_failure'
+        );
+        if (terminal) {
+            await store.updateNotificationJob(job.id, {
+                status: 'completed',
+                completedAt: now().toISOString()
+            });
+        }
+        return { sent, failed };
+    }
+
     return {
         publicKey: config.enabled ? config.publicKey : null,
 
@@ -134,6 +233,18 @@ export function createPushService({ store, webPushClient, config, now = () => ne
         async deleteSubscription(id, managementToken) {
             await authenticatedSubscription(id, managementToken);
             await store.deletePushSubscription(id);
+        },
+
+        async processPendingJobs({ batchSize = 50 } = {}) {
+            if (!config.enabled) return { jobs: 0, sent: 0, failed: 0 };
+            const jobs = await store.listPendingNotificationJobs(batchSize);
+            const summary = { jobs: jobs.length, sent: 0, failed: 0 };
+            for (const job of jobs) {
+                const result = await processJob(job);
+                summary.sent += result.sent;
+                summary.failed += result.failed;
+            }
+            return summary;
         }
     };
 }

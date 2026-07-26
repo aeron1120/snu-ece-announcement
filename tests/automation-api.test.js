@@ -7,7 +7,7 @@ import path from 'node:path';
 import { createAutomationRouter } from '../server/routes/automation-routes.js';
 import { createAutomationStore } from '../server/storage/automation-store.js';
 
-async function createTestServer({ crawlEnabled = true } = {}) {
+async function createTestServer({ crawlEnabled = true, pushService = null } = {}) {
     const directory = await mkdtemp(path.join(tmpdir(), 'ece-api-'));
     const store = createAutomationStore({
         useSupabase: false,
@@ -30,6 +30,7 @@ async function createTestServer({ crawlEnabled = true } = {}) {
         store,
         crawler,
         analyzer: null,
+        pushService,
         requireAdmin,
         config: {
             crawl: { enabled: crawlEnabled, triggerSecret: 's'.repeat(32) }
@@ -69,6 +70,32 @@ test('crawl endpoint requires its dedicated secret and respects disabled configu
         headers: { 'x-crawl-secret': 's'.repeat(32) }
     });
     assert.equal(unavailable.status, 503);
+});
+
+test('admin can trigger pending notification job processing', async t => {
+    let calls = 0;
+    const fixture = await createTestServer({
+        pushService: {
+            publicKey: 'public',
+            async processPendingJobs() {
+                calls += 1;
+                return { jobs: 1, sent: 2, failed: 0 };
+            }
+        }
+    });
+    t.after(() => fixture.server.close());
+
+    const response = await fetch(
+        `${fixture.baseUrl}/api/admin/notification-jobs/process`,
+        {
+            method: 'POST',
+            headers: { 'x-admin-token': 'test-admin' }
+        }
+    );
+
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).sent, 2);
+    assert.equal(calls, 1);
 });
 
 test('admin review routes require auth and publish or reject pending notices', async t => {
