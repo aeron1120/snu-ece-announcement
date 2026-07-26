@@ -51,3 +51,35 @@ test('PWA manifest and service worker include install and push contracts', async
     assert.match(worker, /showNotification/);
     assert.match(worker, /notificationclick/);
 });
+
+test('Cloudflare scheduled worker triggers the protected crawl endpoint', async () => {
+    const worker = (await import('../cloudflare/crawl-worker.js')).default;
+    const calls = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (url, options) => {
+        calls.push({ url, options });
+        return { ok: true, status: 200 };
+    };
+    try {
+        const pending = [];
+        worker.scheduled({}, {
+            API_BASE_URL: 'https://api.example.test/',
+            CRAWL_TRIGGER_SECRET: 'secret'
+        }, {
+            waitUntil(promise) {
+                pending.push(promise);
+            }
+        });
+        await Promise.all(pending);
+    } finally {
+        globalThis.fetch = originalFetch;
+    }
+
+    assert.equal(calls.length, 1);
+    assert.equal(
+        calls[0].url,
+        'https://api.example.test/api/internal/crawl/ece-academics'
+    );
+    assert.equal(calls[0].options.method, 'POST');
+    assert.equal(calls[0].options.headers['x-crawl-secret'], 'secret');
+});

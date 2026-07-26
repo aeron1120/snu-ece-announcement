@@ -993,7 +993,10 @@ async function getGeminiSummary(text) {
     try {
         const response = await fetch(buildApiUrl('/api/summary'), {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                ...getNoticeAdminHeaders()
+            },
             body: JSON.stringify({ prompt, model: GEMINI_MODEL })
         });
 

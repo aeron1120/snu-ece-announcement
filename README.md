@@ -1,112 +1,141 @@
 # SNU ECE 공지방
 
-Cloudflare Pages에 프론트를 올리고, 별도 백엔드 API + Supabase DB에 공지를 저장해서 모든 사용자가 같은 공지 데이터를 보도록 구성한 버전입니다.
+서울대학교 전기정보공학부 공지를 카카오톡 공지방 대신 웹에서 검색·필터링하고, ECE 학사 공지를 자동 수집해 관리자가 검수한 뒤 대상자에게 알림을 보내는 서비스입니다.
 
-## 핵심 동작
-- 공지 목록 조회: `GET /api/notices`
-- 공지 추가: `POST /api/notices`
-- 공지 수정: `PUT /api/notices/:id`
-- 공지 삭제(소프트 삭제): `DELETE /api/notices/:id`
-- 조회수 증가: `POST /api/notices/:id/view`
-- 관리자 인증 확인: `POST /api/admin/verify`
-- AI 요약: `POST /api/summary`
+## 구성
 
-공지 데이터는 기본적으로 Supabase 테이블에 저장됩니다. (환경 변수가 없으면 로컬 파일 모드로 폴백)
+- 프런트엔드: 정적 HTML/CSS/JavaScript, PWA, Cloudflare Pages
+- API: Express, Render
+- 데이터베이스: Supabase PostgreSQL
+- 자동 수집: Cloudflare Cron Worker → Render 보호 엔드포인트
+- 공지 분석: Gemini JSON 응답
+- 알림: VAPID Web Push
 
-## 폴더 구조
-- `index.html`: 메인 HTML
-- `css/style.css`: 스타일
-- `js/config.js`: 프론트 API 서버 주소 설정
-- `js/app.js`: 전체 프론트 로직
-- `server/server.js`: API 서버
-- `server/sql/supabase-schema.sql`: Supabase 스키마/함수 생성 SQL
-- `server/data/`: Supabase 미설정 시 쓰는 로컬 폴백 저장소. 서버가 자동 생성하며 **git에 커밋하지 않습니다**
-  (`settings.json`에 배너 비밀번호와 관리자 토큰 해시가 들어가기 때문)
-- `public/`: 배포용 정적 산출물. `npm run prepare:public`으로 생성하며 직접 편집하지 않습니다
-
-## 공지 공유 (카톡 연동)
-
-이 서비스는 카톡 공지방을 대체하지 않고 **보완**합니다. 알림은 카톡이 맡고, 검색·마감 관리·아카이브는 이 사이트가 맡습니다.
-
-1. 관리자가 공지를 등록합니다
-2. 공지 상세에서 **🔗 링크 복사**를 누르면 `https://<도메인>/?id=<공지번호>` 형태의 링크가 복사됩니다
-3. 그 링크를 카톡 공지방에 올리면, 학생이 눌렀을 때 해당 공지가 바로 열립니다
-
-> 링크 미리보기는 현재 사이트 공통 문구만 표시됩니다. 이 페이지는 클라이언트 렌더링이라
-> 카톡 크롤러가 공지별 제목·요약을 읽지 못합니다. 공지별 미리보기가 필요하면 서버가
-> `?id=` 요청에 SSR로 응답해야 하며, 이 경우 정적 배포(Cloudflare Pages) 대신
-> Node 서버에서 프론트를 함께 서빙해야 합니다.
+자동 수집 공지는 즉시 공개되지 않습니다. 항상 `pending_review` 상태로 들어오며, 관리자가 원문·대상·요약·키워드·카테고리를 검수해 승인한 경우에만 공개되고 알림 작업이 생성됩니다.
 
 ## 로컬 실행
-1. `npm install`
-2. `.env` 파일 생성 후 아래 값 설정
-3. `npm start`
-4. 브라우저에서 `http://localhost:3000` 접속
 
-### `.env` 예시
-```env
-PORT=3000
-GEMINI_API_KEY=your_gemini_api_key
-# Cloudflare Pages 도메인 허용 (예: https://your-site.pages.dev)
-FRONTEND_ORIGIN=
-
-# 관리자 인증 토큰 (공지 추가/수정/삭제 시 필요)
-SUPER_ADMIN_TOKEN=your_super_admin_token
-NOTICE_ADMIN_TOKEN=your_notice_admin_token
-
-# Supabase (영구 저장)
-SUPABASE_URL=
-SUPABASE_SERVICE_ROLE_KEY=
-SUPABASE_NOTICES_TABLE=notices
-SUPABASE_SETTINGS_TABLE=app_settings
+```bash
+npm install
+copy .env.example .env
+npm start
 ```
 
-## Cloudflare Pages + 백엔드 배포 방법
+기본 주소는 `http://localhost:3000`입니다. Supabase 환경 변수가 없으면 `server/data/*.json`을 사용하는 기능 확인용 파일 모드로 실행됩니다.
 
-### 1) Supabase 준비
-1. Supabase 프로젝트 생성
-2. SQL Editor에서 `server/sql/supabase-schema.sql` 실행
-3. `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` 확보
+프런트엔드 배포 산출물은 다음 명령으로 생성합니다.
 
-### 2) 백엔드 배포
-Render/Railway/Fly.io 같은 Node 배포 플랫폼에 `server/server.js`를 실행하도록 배포하세요.
-
-필수 환경 변수:
-- `GEMINI_API_KEY`
-- `FRONTEND_ORIGIN=https://<your-pages-domain>`
-- `SUPER_ADMIN_TOKEN=<절대 관리자만 아는 문자열>` (구버전 이름 `ADMIN_TOKEN`도 인식됩니다)
-- `NOTICE_ADMIN_TOKEN=<공지 관리자용 문자열>`
-- `SUPABASE_URL`
-- `SUPABASE_SERVICE_ROLE_KEY`
-- `SUPABASE_NOTICES_TABLE=notices`
-- `SUPABASE_SETTINGS_TABLE=app_settings`
-
-Render 무료 플랜이 슬립되어도 DB는 Supabase에 있으므로 공지 데이터는 유지됩니다.
-
-### 3) 프론트 설정
-`js/config.js`에서 API 주소를 설정하세요.
-
-```js
-window.API_BASE_URL = 'https://<your-backend-domain>';
-```
-
-같은 도메인에서 프론트/백엔드를 함께 서빙하면 빈 문자열(`''`) 유지하면 됩니다.
-
-### 4) `public` 생성
 ```bash
 npm run prepare:public
 ```
 
-### 5) Cloudflare Pages 배포
-- Build command: 없음
+`index.html`, `css`, `js`, PWA 파일과 Cloudflare 헤더가 `public/`에 복사됩니다. `public/`을 직접 수정하지 마세요.
+
+## 주요 흐름
+
+1. Cloudflare Worker가 30분마다 Render의 `POST /api/internal/crawl/ece-academics`를 호출합니다.
+2. 크롤러는 ECE 커뮤니티 → 학사 게시판에서 `학부`, `학부&대학원` 공지만 읽습니다.
+3. 외부 게시물 번호로 중복을 차단하고 Gemini가 요약·마감일·대상 학번·키워드를 분석합니다.
+4. 관리자가 검수함에서 승인 또는 반려합니다.
+5. 승인한 공지만 공개되며, “승인 및 알림”을 선택하면 알림 작업이 원자적으로 생성됩니다.
+6. 서버 워커가 구독자의 학번·카테고리 설정과 공지를 비교해 웹 푸시를 전송합니다.
+7. 최근 60일 동안 5개 이상의 공지에서 평균 신뢰도 0.75 이상으로 반복된 키워드를 카테고리 후보로 추천합니다. 생성·병합·보류·반려 결정은 관리자만 수행합니다.
+
+## Supabase 준비
+
+1. Supabase 프로젝트를 생성합니다.
+2. SQL Editor에서 [server/sql/supabase-schema.sql](server/sql/supabase-schema.sql)을 전체 실행합니다.
+3. Render에 `SUPABASE_URL`과 `SUPABASE_SERVICE_ROLE_KEY`를 설정합니다.
+
+서비스 역할 키는 Express 서버 전용입니다. Cloudflare Pages의 JavaScript나 저장소에 넣지 마세요. 자동화 테이블은 RLS가 활성화되어 있고 `anon`, `authenticated` 직접 접근이 취소되어 있습니다.
+
+기존 DB에 재적용해도 `create table if not exists`, `add column if not exists`를 사용하므로 마이그레이션을 반복 실행할 수 있습니다. 적용 전에는 Supabase 백업 또는 스테이징 프로젝트에서 먼저 검증하세요.
+
+## Render 배포
+
+- Build command: `npm install`
+- Start command: `npm start`
+- Health check: `/api/health`
+
+필수 환경 변수는 [.env.example](.env.example)을 기준으로 설정합니다.
+
+- `FRONTEND_ORIGIN`: 실제 Cloudflare Pages origin
+- `SUPER_ADMIN_TOKEN`, `NOTICE_ADMIN_TOKEN`, `BANNER_ADMIN_PASSWORD`: 서로 다른 긴 난수
+- `CRAWL_TRIGGER_SECRET`: 32자 이상 난수
+- `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`
+- `GEMINI_API_KEY`
+- `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`
+
+VAPID 키는 로컬에서 생성할 수 있습니다.
+
+```bash
+npx web-push generate-vapid-keys
+```
+
+키를 바꾸면 기존 브라우저 구독은 다시 받아야 합니다.
+
+## Cloudflare Pages 배포
+
+- Build command: `npm run prepare:public`
 - Build output directory: `public`
-- 루트에 `public`이 올라가도록 연결
 
-배포 후에는 Cloudflare Pages URL에서 공지 추가/수정/삭제가 백엔드에 저장되고, 다른 사용자도 동일 데이터가 보입니다.
+[js/config.js](js/config.js)의 `window.API_BASE_URL`을 Render API 주소로 설정합니다. `_headers`의 CSP `connect-src`는 기본적으로 `https://*.onrender.com`과 `https://*.supabase.co`를 허용합니다. 다른 API 도메인을 쓰면 배포 전에 정확한 origin을 추가하세요.
 
-## 운영 체크 포인트
-- 공지 생성/수정/삭제는 공지 관리자 비밀번호(`x-admin-token`)가 있어야 동작합니다.
-- 절대 관리자 비밀번호(`x-super-admin-token`)는 문의 > 관리자 설정 업데이트에서만 사용되며, 프론트에서 변경되지 않습니다.
-- 삭제는 소프트 삭제로 처리되어, 목록에서 사라지지만 DB 원본은 남습니다.
-- 브라우저/기기가 달라도 API와 DB가 같으면 같은 공지 목록을 보게 됩니다.
-- 관리자 정보/공지 관리자 비밀번호/배너 비밀번호 변경은 중앙 설정(`app_settings`)에 저장되어 다른 기기에도 동일 반영됩니다.
+## Cloudflare Cron Worker 배포
+
+[cloudflare/wrangler.jsonc](cloudflare/wrangler.jsonc)의 `API_BASE_URL`을 Render 주소로 바꾼 뒤 `cloudflare` 디렉터리에서 배포합니다.
+
+```bash
+cd cloudflare
+npx wrangler secret put CRAWL_TRIGGER_SECRET
+npx wrangler deploy
+```
+
+Worker의 `CRAWL_TRIGGER_SECRET`은 Render와 정확히 같아야 합니다. Cron 표현식은 `*/30 * * * *`이며 Cloudflare Cron은 UTC 기준으로 실행됩니다. 이 주기는 시간대와 무관하게 30분 간격입니다.
+
+## 배포 전 스모크 테스트
+
+스테이징 Supabase와 테스트용 브라우저 구독으로 다음을 확인합니다.
+
+1. 관리자 화면에서 수동 크롤링을 한 번 실행합니다.
+2. 새 공지가 검수함에는 보이지만 공개 목록에는 없는지 확인합니다.
+3. 원문 링크와 첨부파일을 확인하고 “승인 및 알림”을 실행합니다.
+4. 공개 상세 화면이 열리고 웹 푸시를 수신·클릭할 수 있는지 확인합니다.
+5. 같은 크롤링과 알림 처리를 다시 실행해 공지와 알림이 중복되지 않는지 확인합니다.
+6. 키워드가 기준을 충족했을 때 카테고리 추천의 근거 공지 수·기간·신뢰도가 맞는지 확인합니다.
+
+실제 푸시 구독 endpoint, 관리 토큰, 서비스 역할 키는 체크리스트나 로그에 기록하지 마세요.
+
+## 운영과 문제 해결
+
+- 크롤러 실행 이력: `GET /api/admin/crawl-runs`
+- 관리자 수동 크롤링: `POST /api/admin/crawl/ece-academics`
+- 알림 작업 수동 재처리: `POST /api/admin/notification-jobs/process`
+- 검수함: `GET /api/admin/review-notices`
+- 카테고리 후보: `GET /api/admin/category-candidates`
+
+크롤러가 `failed` 또는 `partial`이면 ECE 사이트 HTML 구조 변경 여부를 먼저 확인하세요. 파서는 게시판 행이나 제목·본문 선택자를 찾지 못하면 조용히 잘못 저장하지 않고 실패시킵니다.
+
+자동화가 비활성화되는 대표 원인은 다음과 같습니다.
+
+- 크롤링: `CRAWL_TRIGGER_SECRET`이 없거나 32자 미만
+- LLM 분석: `GEMINI_API_KEY` 없음
+- 웹 푸시: VAPID 공개키·비밀키·subject 중 하나라도 없음
+- 영구 저장: Supabase URL 또는 서비스 역할 키 없음
+
+푸시 서비스가 404 또는 410을 반환한 구독은 자동으로 비활성화합니다. 일시 오류는 1분, 5분, 30분 후 재시도하며 성공 또는 영구 실패 기록은 중복 전송하지 않습니다.
+
+카테고리 후보의 `occurrenceCount`는 기간 안의 서로 다른 공지 수이고, `averageConfidence`는 그 공지들의 LLM 신뢰도 평균입니다. “다시 추천 안 함”은 영구 제외, “30일 보류”는 기간이 지난 뒤 기준을 다시 충족하면 재등장합니다.
+
+## 롤백
+
+문제가 생기면 먼저 Cloudflare Worker Cron을 비활성화해 신규 수집을 멈춥니다. 푸시 문제라면 Render에서 VAPID 환경 변수를 제거하고 재배포하면 알림 워커가 비활성화됩니다. 이미 승인된 공지와 Supabase 데이터는 유지됩니다. 이전 Cloudflare Pages/Render 배포 버전으로 되돌린 뒤 원인을 확인하세요.
+
+## 검증
+
+```bash
+npm test
+npm run prepare:public
+node --check server/server.js
+git diff --check
+```

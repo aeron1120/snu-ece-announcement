@@ -1,0 +1,12 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "snu-ece-crawl-trigger",
+  "main": "crawl-worker.js",
+  "compatibility_date": "2026-07-27",
+  "triggers": {
+    "crons": ["*/30 * * * *"]
+  },
+  "vars": {
+    "API_BASE_URL": "https://replace-with-render-service.example"
+  }
+}

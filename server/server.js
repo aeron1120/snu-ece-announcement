@@ -14,6 +14,7 @@ import { createNoticeAnalyzer } from './services/notice-analyzer.js';
 import { createAutomationRouter } from './routes/automation-routes.js';
 import webPush from 'web-push';
 import { createPushService } from './services/push-service.js';
+import { rateLimit } from 'express-rate-limit';
 
 dotenv.config();
 
@@ -25,7 +26,7 @@ const settingsFilePath = path.join(__dirname, 'data', 'settings.json');
 const bannerFilePath = path.join(__dirname, 'data', 'banner-slides.json');
 const automationFilePath = path.join(__dirname, 'data', 'automation.json');
 const SUPER_ADMIN_TOKEN = process.env.SUPER_ADMIN_TOKEN || process.env.ADMIN_TOKEN || '';
-const NOTICE_ADMIN_TOKEN = process.env.NOTICE_ADMIN_TOKEN || '0327';
+const NOTICE_ADMIN_TOKEN = process.env.NOTICE_ADMIN_TOKEN || '';
 const SUPABASE_URL = process.env.SUPABASE_URL || '';
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 const SUPABASE_NOTICES_TABLE = process.env.SUPABASE_NOTICES_TABLE || 'notices';
@@ -106,11 +107,48 @@ const defaultBannerInfo = {
 const defaultSecuritySettings = {
     adminInfo: { ...defaultAdminInfo },
     bannerInfo: { ...defaultBannerInfo },
-    bannerPassword: '1234',
+    bannerPassword: process.env.BANNER_ADMIN_PASSWORD || '',
     adminTokenHash: hashToken(initialNoticeAdminToken)
 };
 
-app.use(express.json({ limit: '10mb' }));
+app.disable('x-powered-by');
+app.set('trust proxy', 1);
+
+const authenticationLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 10,
+    standardHeaders: 'draft-8',
+    legacyHeaders: false,
+    message: { error: '인증 시도가 너무 많습니다. 잠시 후 다시 시도해주세요.' }
+});
+const subscriptionLimiter = rateLimit({
+    windowMs: 10 * 60 * 1000,
+    limit: 10,
+    standardHeaders: 'draft-8',
+    legacyHeaders: false,
+    message: { error: '알림 설정 요청이 너무 많습니다. 잠시 후 다시 시도해주세요.' }
+});
+const crawlTriggerLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    limit: 4,
+    standardHeaders: 'draft-8',
+    legacyHeaders: false
+});
+const analysisLimiter = rateLimit({
+    windowMs: 10 * 60 * 1000,
+    limit: 20,
+    standardHeaders: 'draft-8',
+    legacyHeaders: false,
+    message: { error: 'AI 분석 요청이 너무 많습니다. 잠시 후 다시 시도해주세요.' }
+});
+
+app.use(['/api/notices', '/api/banner-slides'], express.json({ limit: '10mb' }));
+app.use('/api/push/subscriptions', express.json({ limit: '32kb' }));
+app.use(express.json({ limit: '256kb' }));
+app.use(['/api/admin/verify', '/api/super-admin/verify', '/api/banner/verify'], authenticationLimiter);
+app.use('/api/push/subscriptions', subscriptionLimiter);
+app.use('/api/internal/crawl', crawlTriggerLimiter);
+app.use('/api/summary', analysisLimiter);
 
 app.use((req, res, next) => {
     const allowedOrigin = process.env.FRONTEND_ORIGIN;
@@ -1152,7 +1190,7 @@ app.post('/api/notices/:id/view', async (req, res) => {
     }
 });
 
-app.post('/api/summary', async (req, res) => {
+app.post('/api/summary', requireNoticeAdmin, async (req, res) => {
     const { prompt, model = 'gemini-2.5-flash' } = req.body || {};
     const apiKey = process.env.GEMINI_API_KEY;
 
