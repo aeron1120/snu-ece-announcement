@@ -10,6 +10,7 @@ function emptyDocument() {
         crawlItems: [],
         categories: [],
         categoryAliases: [],
+        noticeCategories: [],
         categoryCandidates: [],
         categoryCandidateNotices: [],
         pushSubscriptions: [],
@@ -59,6 +60,7 @@ function toSupabaseNotice(row) {
         analysisStatus: row.analysis_status,
         analysisConfidence: row.analysis_confidence,
         crawlMetadata: row.crawl_metadata || {},
+        categoryIds: (row.notice_categories || []).map(item => Number(item.category_id)),
         rejectionReason: row.review_note,
         publishedAt: row.published_at,
         createdAt: row.created_at,
@@ -211,7 +213,12 @@ function createJsonStore(filePath) {
             return document.notices
                 .filter(notice => notice.status === 'pending_review')
                 .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
-                .map(notice => ({ ...notice }));
+                .map(notice => ({
+                    ...notice,
+                    categoryIds: document.noticeCategories
+                        .filter(item => Number(item.noticeId) === Number(notice.id))
+                        .map(item => Number(item.categoryId))
+                }));
         },
 
         async getReviewNotice(id) {
@@ -219,7 +226,12 @@ function createJsonStore(filePath) {
             const notice = document.notices.find(item =>
                 Number(item.id) === Number(id) && item.status === 'pending_review'
             );
-            return notice ? { ...notice } : null;
+            return notice ? {
+                ...notice,
+                categoryIds: document.noticeCategories
+                    .filter(item => Number(item.noticeId) === Number(id))
+                    .map(item => Number(item.categoryId))
+            } : null;
         },
 
         async updateReviewAnalysis(id, analysis) {
@@ -244,6 +256,22 @@ function createJsonStore(filePath) {
                 ];
                 for (const field of editableFields) {
                     if (Object.hasOwn(edits, field)) notice[field] = edits[field];
+                }
+                if (Array.isArray(edits.categoryIds)) {
+                    document.noticeCategories = document.noticeCategories.filter(item =>
+                        Number(item.noticeId) !== Number(notice.id)
+                    );
+                    for (const categoryId of Array.from(new Set(edits.categoryIds.map(Number)))) {
+                        if (document.categories.some(category =>
+                            Number(category.id) === categoryId && category.isActive !== false
+                        )) {
+                            document.noticeCategories.push({
+                                noticeId: notice.id,
+                                categoryId,
+                                createdAt: now
+                            });
+                        }
+                    }
                 }
                 notice.status = 'published';
                 notice.publishedAt = now;
@@ -446,6 +474,180 @@ function createJsonStore(filePath) {
             return document.pushSubscriptions.map(subscription => ({ ...subscription }));
         },
 
+        async listCategories({ activeOnly = true } = {}) {
+            const document = await readDocument();
+            return document.categories
+                .filter(category => !activeOnly || category.isActive !== false)
+                .map(category => ({
+                    ...category,
+                    aliases: document.categoryAliases
+                        .filter(alias => Number(alias.categoryId) === Number(category.id))
+                        .map(alias => alias.alias)
+                }));
+        },
+
+        async getCategoryEvaluationData() {
+            const document = await readDocument();
+            return {
+                notices: document.notices
+                    .filter(notice => notice.status === 'published')
+                    .map(notice => ({ ...notice })),
+                categories: document.categories.map(category => ({
+                    ...category,
+                    aliases: document.categoryAliases
+                        .filter(alias => Number(alias.categoryId) === Number(category.id))
+                        .map(alias => alias.alias)
+                })),
+                candidates: document.categoryCandidates.map(candidate => ({
+                    ...candidate,
+                    supportingNoticeIds: document.categoryCandidateNotices
+                        .filter(item => Number(item.candidateId) === Number(candidate.id))
+                        .map(item => Number(item.noticeId))
+                }))
+            };
+        },
+
+        async upsertCategoryCandidates(recommendations) {
+            return mutate(document => {
+                const updated = [];
+                for (const recommendation of recommendations) {
+                    let candidate = document.categoryCandidates.find(item =>
+                        item.normalizedKeyword === recommendation.normalizedKeyword
+                    );
+                    if (candidate?.status === 'rejected') continue;
+                    const now = new Date().toISOString();
+                    if (!candidate) {
+                        candidate = {
+                            id: nextId(document.categoryCandidates),
+                            createdAt: now
+                        };
+                        document.categoryCandidates.push(candidate);
+                    }
+                    Object.assign(candidate, recommendation, {
+                        status: 'pending',
+                        updatedAt: now
+                    });
+                    document.categoryCandidateNotices =
+                        document.categoryCandidateNotices.filter(item =>
+                            Number(item.candidateId) !== Number(candidate.id)
+                        );
+                    for (const noticeId of recommendation.supportingNoticeIds) {
+                        document.categoryCandidateNotices.push({
+                            candidateId: candidate.id,
+                            noticeId: Number(noticeId),
+                            createdAt: now
+                        });
+                    }
+                    updated.push({ ...candidate });
+                }
+                return updated;
+            });
+        },
+
+        async listCategoryCandidates() {
+            const document = await readDocument();
+            return document.categoryCandidates
+                .filter(candidate => candidate.status === 'pending')
+                .sort((a, b) => b.occurrenceCount - a.occurrenceCount)
+                .map(candidate => {
+                    const supportingNoticeIds = document.categoryCandidateNotices
+                        .filter(item => Number(item.candidateId) === Number(candidate.id))
+                        .map(item => Number(item.noticeId));
+                    return {
+                        ...candidate,
+                        supportingNoticeIds,
+                        supportingNotices: document.notices
+                            .filter(notice => supportingNoticeIds.includes(Number(notice.id)))
+                            .map(notice => ({ id: notice.id, title: notice.title }))
+                    };
+                });
+        },
+
+        async decideCategoryCandidate(id, decision) {
+            return mutate(document => {
+                const candidate = document.categoryCandidates.find(item =>
+                    Number(item.id) === Number(id)
+                );
+                if (!candidate || !['pending', 'deferred'].includes(candidate.status)) {
+                    const error = new Error('category candidate is not pending');
+                    error.code = 'CATEGORY_CANDIDATE_NOT_PENDING';
+                    throw error;
+                }
+                const now = new Date().toISOString();
+                const supportingNoticeIds = document.categoryCandidateNotices
+                    .filter(item => Number(item.candidateId) === Number(candidate.id))
+                    .map(item => Number(item.noticeId));
+                let categoryId = null;
+                if (decision.action === 'approve') {
+                    if (document.categories.some(item => item.slug === decision.slug)) {
+                        throw new Error('category slug already exists');
+                    }
+                    const category = {
+                        id: nextId(document.categories),
+                        name: decision.name,
+                        slug: decision.slug,
+                        isActive: true,
+                        createdAt: now,
+                        updatedAt: now
+                    };
+                    document.categories.push(category);
+                    categoryId = category.id;
+                    candidate.status = 'approved';
+                } else if (decision.action === 'merge') {
+                    const category = document.categories.find(item =>
+                        Number(item.id) === Number(decision.categoryId)
+                    );
+                    if (!category) throw new Error('category not found');
+                    categoryId = category.id;
+                    if (!document.categoryAliases.some(alias =>
+                        alias.normalizedAlias === candidate.normalizedKeyword
+                    )) {
+                        document.categoryAliases.push({
+                            id: nextId(document.categoryAliases),
+                            categoryId,
+                            alias: candidate.displayName,
+                            normalizedAlias: candidate.normalizedKeyword,
+                            createdAt: now
+                        });
+                    }
+                    candidate.status = 'merged';
+                } else if (decision.action === 'reject') {
+                    candidate.status = 'rejected';
+                } else if (decision.action === 'defer') {
+                    candidate.status = 'deferred';
+                    candidate.deferredUntil = decision.deferredUntil;
+                } else {
+                    throw new Error('invalid category candidate decision');
+                }
+                if (categoryId) {
+                    candidate.mergedCategoryId = categoryId;
+                    for (const noticeId of supportingNoticeIds) {
+                        if (!document.noticeCategories.some(item =>
+                            Number(item.noticeId) === noticeId
+                            && Number(item.categoryId) === categoryId
+                        )) {
+                            document.noticeCategories.push({
+                                noticeId,
+                                categoryId,
+                                createdAt: now
+                            });
+                        }
+                    }
+                }
+                candidate.decidedAt = decision.action === 'defer' ? null : now;
+                candidate.updatedAt = now;
+                document.auditLogs.push({
+                    id: nextId(document.auditLogs),
+                    action: `category_candidate_${decision.action}`,
+                    entityType: 'category_candidate',
+                    entityId: String(candidate.id),
+                    metadata: decision,
+                    createdAt: now
+                });
+                return { ...candidate };
+            });
+        },
+
         async listCrawlRuns() {
             const document = await readDocument();
             return document.crawlRuns
@@ -551,7 +753,7 @@ function createSupabaseStore(supabase) {
         async getReviewNotice(id) {
             const { data, error } = await supabase
                 .from('notices')
-                .select('*')
+                .select('*, notice_categories(category_id)')
                 .eq('id', id)
                 .eq('status', 'pending_review')
                 .eq('is_deleted', false)
@@ -616,7 +818,7 @@ function createSupabaseStore(supabase) {
         async listPublishedNotices() {
             const { data, error } = await supabase
                 .from('notices')
-                .select('*')
+                .select('*, notice_categories(category_id)')
                 .eq('status', 'published')
                 .eq('is_deleted', false)
                 .order('published_at', { ascending: false });
@@ -840,6 +1042,203 @@ function createSupabaseStore(supabase) {
                 .eq('status', 'active');
             if (error) throw error;
             return Promise.all((data || []).map(item => this.getPushSubscription(item.id)));
+        },
+
+        async listCategories({ activeOnly = true } = {}) {
+            let query = supabase
+                .from('categories')
+                .select('*, category_aliases(alias)')
+                .order('name', { ascending: true });
+            if (activeOnly) query = query.eq('is_active', true);
+            const { data, error } = await query;
+            if (error) throw error;
+            return (data || []).map(category => ({
+                id: Number(category.id),
+                name: category.name,
+                slug: category.slug,
+                isActive: category.is_active,
+                aliases: (category.category_aliases || []).map(alias => alias.alias)
+            }));
+        },
+
+        async getCategoryEvaluationData() {
+            const [noticeResult, categoryResult, candidateResult] = await Promise.all([
+                supabase
+                    .from('notices')
+                    .select('id,status,keywords,analysis_confidence,published_at,created_at')
+                    .eq('status', 'published')
+                    .eq('is_deleted', false),
+                this.listCategories({ activeOnly: false }),
+                supabase
+                    .from('category_candidates')
+                    .select('*, category_candidate_notices(notice_id)')
+            ]);
+            if (noticeResult.error) throw noticeResult.error;
+            if (candidateResult.error) throw candidateResult.error;
+            return {
+                notices: (noticeResult.data || []).map(notice => ({
+                    id: Number(notice.id),
+                    status: notice.status,
+                    keywords: notice.keywords || [],
+                    analysisConfidence: notice.analysis_confidence,
+                    publishedAt: notice.published_at,
+                    createdAt: notice.created_at
+                })),
+                categories: categoryResult,
+                candidates: (candidateResult.data || []).map(candidate => ({
+                    id: Number(candidate.id),
+                    normalizedKeyword: candidate.normalized_keyword,
+                    displayName: candidate.display_name,
+                    status: candidate.status,
+                    deferredUntil: candidate.deferred_until,
+                    supportingNoticeIds: (candidate.category_candidate_notices || [])
+                        .map(item => Number(item.notice_id))
+                }))
+            };
+        },
+
+        async upsertCategoryCandidates(recommendations) {
+            const results = [];
+            for (const recommendation of recommendations) {
+                const { data, error } = await supabase
+                    .from('category_candidates')
+                    .upsert({
+                        normalized_keyword: recommendation.normalizedKeyword,
+                        display_name: recommendation.displayName,
+                        status: 'pending',
+                        occurrence_count: recommendation.occurrenceCount,
+                        average_confidence: recommendation.averageConfidence,
+                        first_seen_at: recommendation.firstSeenAt,
+                        last_seen_at: recommendation.lastSeenAt,
+                        deferred_until: null,
+                        updated_at: new Date().toISOString()
+                    }, { onConflict: 'normalized_keyword' })
+                    .select('*')
+                    .single();
+                if (error) throw error;
+                const deleteResult = await supabase
+                    .from('category_candidate_notices')
+                    .delete()
+                    .eq('candidate_id', data.id);
+                if (deleteResult.error) throw deleteResult.error;
+                if (recommendation.supportingNoticeIds.length > 0) {
+                    const insertResult = await supabase
+                        .from('category_candidate_notices')
+                        .insert(recommendation.supportingNoticeIds.map(noticeId => ({
+                            candidate_id: data.id,
+                            notice_id: noticeId
+                        })));
+                    if (insertResult.error) throw insertResult.error;
+                }
+                results.push(data);
+            }
+            return results;
+        },
+
+        async listCategoryCandidates() {
+            const { data, error } = await supabase
+                .from('category_candidates')
+                .select('*, category_candidate_notices(notice_id, notices(id,title))')
+                .eq('status', 'pending')
+                .order('occurrence_count', { ascending: false });
+            if (error) throw error;
+            return (data || []).map(candidate => ({
+                id: Number(candidate.id),
+                normalizedKeyword: candidate.normalized_keyword,
+                displayName: candidate.display_name,
+                status: candidate.status,
+                occurrenceCount: candidate.occurrence_count,
+                averageConfidence: candidate.average_confidence,
+                firstSeenAt: candidate.first_seen_at,
+                lastSeenAt: candidate.last_seen_at,
+                supportingNoticeIds: (candidate.category_candidate_notices || [])
+                    .map(item => Number(item.notice_id)),
+                supportingNotices: (candidate.category_candidate_notices || [])
+                    .map(item => item.notices)
+                    .filter(Boolean)
+                    .map(notice => ({ id: Number(notice.id), title: notice.title }))
+            }));
+        },
+
+        async decideCategoryCandidate(id, decision) {
+            const { data: candidate, error: candidateError } = await supabase
+                .from('category_candidates')
+                .select('*, category_candidate_notices(notice_id)')
+                .eq('id', id)
+                .in('status', ['pending', 'deferred'])
+                .maybeSingle();
+            if (candidateError) throw candidateError;
+            if (!candidate) {
+                const error = new Error('category candidate is not pending');
+                error.code = 'CATEGORY_CANDIDATE_NOT_PENDING';
+                throw error;
+            }
+            const noticeIds = (candidate.category_candidate_notices || [])
+                .map(item => Number(item.notice_id));
+            let categoryId = null;
+            let status;
+            if (decision.action === 'approve') {
+                const { data: category, error } = await supabase
+                    .from('categories')
+                    .insert({ name: decision.name, slug: decision.slug })
+                    .select('*')
+                    .single();
+                if (error) throw error;
+                categoryId = Number(category.id);
+                status = 'approved';
+            } else if (decision.action === 'merge') {
+                categoryId = Number(decision.categoryId);
+                status = 'merged';
+                const { error } = await supabase.from('category_aliases').upsert({
+                    category_id: categoryId,
+                    alias: candidate.display_name,
+                    normalized_alias: candidate.normalized_keyword
+                }, { onConflict: 'normalized_alias' });
+                if (error) throw error;
+            } else if (decision.action === 'reject') {
+                status = 'rejected';
+            } else if (decision.action === 'defer') {
+                status = 'deferred';
+            } else {
+                throw new Error('invalid category candidate decision');
+            }
+            if (categoryId && noticeIds.length > 0) {
+                const { error } = await supabase
+                    .from('notice_categories')
+                    .upsert(noticeIds.map(noticeId => ({
+                        notice_id: noticeId,
+                        category_id: categoryId
+                    })), {
+                        onConflict: 'notice_id,category_id',
+                        ignoreDuplicates: true
+                    });
+                if (error) throw error;
+            }
+            const { data: updated, error: updateError } = await supabase
+                .from('category_candidates')
+                .update({
+                    status,
+                    merged_category_id: categoryId,
+                    deferred_until: decision.action === 'defer'
+                        ? decision.deferredUntil
+                        : null,
+                    decided_at: decision.action === 'defer' ? null : new Date().toISOString(),
+                    updated_at: new Date().toISOString()
+                })
+                .eq('id', id)
+                .select('*')
+                .single();
+            if (updateError) throw updateError;
+            const { error: auditError } = await supabase
+                .from('automation_audit_logs')
+                .insert({
+                    action: `category_candidate_${decision.action}`,
+                    entity_type: 'category_candidate',
+                    entity_id: String(id),
+                    metadata: decision
+                });
+            if (auditError) throw auditError;
+            return updated;
         },
 
         async listCrawlRuns() {

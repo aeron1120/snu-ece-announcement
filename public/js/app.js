@@ -48,6 +48,9 @@ let reviewNotices = [];
 let selectedReviewNoticeId = null;
 let reviewMutationInFlight = false;
 let reviewManagerOpener = null;
+let activeCategories = [];
+let selectedCategoryFilters = new Set();
+let categoryCandidates = [];
 
 // 서버에 등록된 배너가 하나도 없을 때 배너 영역이 비어 보이지 않도록 쓰는 안내 문구.
 // 실제 광고가 아니므로 마감일·모집 같은 허위 정보를 넣지 않는다.
@@ -503,6 +506,27 @@ function closeReviewManager() {
     reviewManagerOpener?.focus();
 }
 
+function openCategoryManager() {
+    if (!noticeAdminAuthToken) {
+        pendingAuthAction = 'category';
+        document.getElementById('admin-pwd').value = '';
+        setPasswordModalTexts('카테고리 관리자 인증', '추천 카테고리를 관리하려면 관리자 비밀번호를 입력하세요.');
+        openModal('pwd-modal');
+        return;
+    }
+    const modal = document.getElementById('category-manager-modal');
+    modal.style.display = 'flex';
+    modal.setAttribute('aria-hidden', 'false');
+    loadCategoryCandidates();
+    modal.querySelector('.close-btn')?.focus();
+}
+
+function closeCategoryManager() {
+    const modal = document.getElementById('category-manager-modal');
+    modal.style.display = 'none';
+    modal.setAttribute('aria-hidden', 'true');
+}
+
 function triggerEditNotice() {
     if(!currentViewId) return;
     pendingAuthAction = 'edit';
@@ -615,6 +639,11 @@ async function verifyPassword() {
         modal.style.display = 'flex';
         modal.setAttribute('aria-hidden', 'false');
         await loadReviewNotices();
+    } else if (pendingAuthAction === 'category') {
+        const modal = document.getElementById('category-manager-modal');
+        modal.style.display = 'flex';
+        modal.setAttribute('aria-hidden', 'false');
+        await loadCategoryCandidates();
     }
 
     pendingAuthAction = null;
@@ -1086,6 +1115,40 @@ function buildHostButtons() {
     });
 }
 
+async function loadCategories() {
+    try {
+        const result = await apiRequest('/api/categories', { method: 'GET' });
+        activeCategories = Array.isArray(result?.categories) ? result.categories : [];
+    } catch (error) {
+        console.error('카테고리 불러오기 실패:', error);
+        activeCategories = [];
+    }
+    buildCategoryButtons();
+}
+
+function buildCategoryButtons() {
+    const container = document.getElementById('fg-category');
+    if (!container) return;
+    if (activeCategories.length === 0) {
+        container.innerHTML = '<span class="review-list-meta">등록된 카테고리가 없습니다.</span>';
+        return;
+    }
+    container.innerHTML = activeCategories.map(category => {
+        const id = Number(category.id);
+        return `<button class="filter-btn ${selectedCategoryFilters.has(id) ? 'active' : ''}"
+            type="button" data-category-id="${id}" onclick="toggleCategoryFilter(${id})">${escapeHtml(category.name)}</button>`;
+    }).join('');
+}
+
+function toggleCategoryFilter(categoryId) {
+    const id = Number(categoryId);
+    if (selectedCategoryFilters.has(id)) selectedCategoryFilters.delete(id);
+    else selectedCategoryFilters.add(id);
+    buildCategoryButtons();
+    filterCards();
+    updateFilterChips();
+}
+
 function toggleFilterBtn(btn) {
     const group = btn.dataset.group;
     const val = btn.dataset.val;
@@ -1127,6 +1190,14 @@ function updateFilterChips() {
         chipsArea.appendChild(chip);
     }
 
+    if (selectedCategoryFilters.size > 0) {
+        hasActive = true;
+        const chip = document.createElement('div');
+        chip.className = 'filter-chip';
+        chip.innerHTML = `<span>카테고리: ${selectedCategoryFilters.size}개</span><button onclick="event.stopPropagation(); clearCategoryFilters()">×</button>`;
+        chipsArea.appendChild(chip);
+    }
+
     bar.classList.toggle('has-active', hasActive);
     const count = document.getElementById('filter-active-chips').children.length;
     const svg = `<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 4h18M7 8h10M11 12h2M9 16h6"/></svg>`;
@@ -1150,10 +1221,19 @@ function clearDateRange() {
     updateFilterChips();
 }
 
+function clearCategoryFilters() {
+    selectedCategoryFilters.clear();
+    buildCategoryButtons();
+    filterCards();
+    updateFilterChips();
+}
+
 function resetAllFilters() {
     const defaults = { 'deadline-status': '전체', 'host': '전체', 'has-image': '전체', 'saved': '전체', 'views': '전체', 'sort': '최신순' };
     Object.keys(filterState).forEach(g => { filterState[g] = defaults[g]; });
     document.querySelectorAll('.filter-btn').forEach(b => { b.classList.toggle('active', b.dataset.val === defaults[b.dataset.group]); });
+    selectedCategoryFilters.clear();
+    buildCategoryButtons();
     clearDateRange();
     updateFilterChips();
     filterCards();
@@ -1209,6 +1289,11 @@ function filterCards() {
         }
 
         if (fHost !== '전체' && (notice.host || '기타') !== fHost) return;
+
+        if (selectedCategoryFilters.size > 0) {
+            const noticeCategoryIds = (notice.categoryIds || []).map(Number);
+            if (![...selectedCategoryFilters].some(id => noticeCategoryIds.includes(id))) return;
+        }
 
         const hasImg = notice.images && notice.images.length > 0;
         if (fHasImage === '있음' && !hasImg) return;
@@ -1566,6 +1651,7 @@ document.addEventListener('keydown', function(e) {
 
 document.addEventListener('DOMContentLoaded', async function () {
     await loadData();
+    await loadCategories();
     renderAdminInfo();
     renderBannerAdminInfo();
     refreshBannerDOM();
@@ -1673,6 +1759,15 @@ function renderReviewEditor(notice) {
     const summaries = Array.isArray(notice.aiSummary) ? notice.aiSummary : [];
     const attachments = Array.isArray(notice.attachments) ? notice.attachments : [];
     const keywords = Array.isArray(notice.keywords) ? notice.keywords : [];
+    const selectedCategoryIds = new Set((notice.categoryIds || []).map(Number));
+    const categoryCheckboxHtml = activeCategories.length > 0
+        ? activeCategories.map(category => `
+            <label class="notification-check">
+                <input type="checkbox" name="review-category" value="${Number(category.id)}"
+                    ${selectedCategoryIds.has(Number(category.id)) ? 'checked' : ''}>
+                ${escapeHtml(category.name)}
+            </label>`).join('')
+        : '<span class="review-list-meta">등록된 카테고리가 없습니다.</span>';
     const attachmentHtml = attachments.length
         ? `<ul class="review-attachments">${attachments.map(file => `
             <li><a href="${escapeHtml(file.url || '#')}" target="_blank" rel="noopener noreferrer">${escapeHtml(file.name || '첨부파일')}</a></li>
@@ -1718,7 +1813,7 @@ function renderReviewEditor(notice) {
         <div class="review-analysis">
             <strong>카테고리</strong>
             <div id="review-category-checkboxes" class="review-keywords">
-                <span class="review-list-meta">활성 카테고리는 카테고리 관리 기능과 함께 표시됩니다.</span>
+                ${categoryCheckboxHtml}
             </div>
             <div class="review-keywords">${keywords.map(keyword =>
                 `<span class="review-keyword">${escapeHtml(keyword)}</span>`
@@ -1749,6 +1844,9 @@ function collectReviewEdits() {
         deadline: document.getElementById('review-deadline').value || null,
         targets: splitReviewValues(document.getElementById('review-targets').value),
         keywords: splitReviewValues(document.getElementById('review-keywords').value),
+        categoryIds: Array.from(
+            document.querySelectorAll('input[name="review-category"]:checked')
+        ).map(input => Number(input.value)),
         aiSummary: document.getElementById('review-summary').value
             .split('\n').map(item => item.trim()).filter(Boolean)
     };
@@ -1850,6 +1948,132 @@ window.addEventListener('keydown', event => {
     if (event.key === 'Escape'
         && document.getElementById('review-manager-modal')?.style.display === 'flex') {
         closeReviewManager();
+    }
+});
+
+function setCategoryManagerStatus(message, isError = false) {
+    const element = document.getElementById('category-manager-status');
+    element.textContent = message || '';
+    element.style.color = isError ? 'var(--danger)' : 'var(--text-sub)';
+}
+
+async function loadCategoryCandidates() {
+    const list = document.getElementById('category-candidate-list');
+    list.innerHTML = '<div class="review-empty">추천 후보를 계산하고 있습니다.</div>';
+    setCategoryManagerStatus('최근 공지의 키워드와 신뢰도를 확인하고 있습니다.');
+    try {
+        await loadCategories();
+        const result = await apiRequest('/api/admin/category-candidates', {
+            method: 'GET',
+            headers: getNoticeAdminHeaders()
+        });
+        categoryCandidates = Array.isArray(result?.candidates) ? result.candidates : [];
+        renderCategoryCandidates();
+        setCategoryManagerStatus(categoryCandidates.length > 0
+            ? `관리자 결정이 필요한 후보 ${categoryCandidates.length}건`
+            : '현재 기준을 충족한 새 카테고리 후보가 없습니다.');
+    } catch (error) {
+        list.innerHTML = '<div class="review-empty">추천 후보를 불러오지 못했습니다.</div>';
+        setCategoryManagerStatus(error.message, true);
+    }
+}
+
+function renderCategoryCandidates() {
+    const list = document.getElementById('category-candidate-list');
+    if (categoryCandidates.length === 0) {
+        list.innerHTML = '<div class="review-empty">현재 추천 후보가 없습니다.</div>';
+        return;
+    }
+    const categoryOptions = activeCategories.map(category =>
+        `<option value="${Number(category.id)}">${escapeHtml(category.name)}</option>`
+    ).join('');
+    list.innerHTML = categoryCandidates.map(candidate => {
+        const evidence = (candidate.supportingNotices || []).slice(0, 5);
+        return `
+            <article class="category-candidate">
+                <div class="category-candidate-header">
+                    <h3>${escapeHtml(candidate.displayName)}</h3>
+                    <span class="category-candidate-metrics">
+                        ${Number(candidate.occurrenceCount)}개 공지 · 신뢰도 ${Math.round(Number(candidate.averageConfidence) * 100)}%
+                    </span>
+                </div>
+                <p class="review-list-meta">
+                    ${escapeHtml(String(candidate.firstSeenAt || '').slice(0, 10))}
+                    ~ ${escapeHtml(String(candidate.lastSeenAt || '').slice(0, 10))}
+                </p>
+                <ul class="category-evidence">${evidence.map(notice =>
+                    `<li>${escapeHtml(notice.title || `공지 ${notice.id}`)}</li>`
+                ).join('')}</ul>
+                <div class="category-candidate-actions">
+                    <button class="btn btn-small" type="button" onclick="approveCategoryCandidate(${Number(candidate.id)})">새 카테고리로 추가</button>
+                    <select id="category-merge-${Number(candidate.id)}" aria-label="${escapeHtml(candidate.displayName)} 병합 대상">
+                        <option value="">기존 카테고리 선택</option>${categoryOptions}
+                    </select>
+                    <button class="btn btn-outline btn-small" type="button" onclick="mergeCategoryCandidate(${Number(candidate.id)})">병합</button>
+                    <button class="btn btn-outline btn-small" type="button" onclick="deferCategoryCandidate(${Number(candidate.id)})">30일 보류</button>
+                    <button class="btn btn-danger btn-small" type="button" onclick="rejectCategoryCandidate(${Number(candidate.id)})">다시 추천 안 함</button>
+                </div>
+            </article>`;
+    }).join('');
+}
+
+async function decideCategoryCandidate(id, action, body = {}) {
+    setCategoryManagerStatus('카테고리 결정을 저장하고 있습니다.');
+    try {
+        await apiRequest(`/api/admin/category-candidates/${encodeURIComponent(id)}/${action}`, {
+            method: 'POST',
+            headers: getNoticeAdminHeaders(),
+            body: JSON.stringify(body)
+        });
+        await Promise.all([
+            loadCategoryCandidates(),
+            refreshPublishedNotices()
+        ]);
+    } catch (error) {
+        setCategoryManagerStatus(error.message, true);
+    }
+}
+
+async function approveCategoryCandidate(id) {
+    const candidate = categoryCandidates.find(item => Number(item.id) === Number(id));
+    if (!candidate) return;
+    const name = window.prompt('새 카테고리 이름', candidate.displayName);
+    if (!name?.trim()) return;
+    const suggestedSlug = String(candidate.normalizedKeyword)
+        .replace(/[^a-z0-9가-힣]+/g, '-')
+        .replace(/[가-힣]/g, '')
+        .replace(/^-|-$/g, '') || `category-${id}`;
+    const slug = window.prompt('URL용 영문 슬러그 (예: scholarships)', suggestedSlug);
+    if (!slug?.trim()) return;
+    await decideCategoryCandidate(id, 'approve', {
+        name: name.trim(),
+        slug: slug.trim().toLowerCase()
+    });
+}
+
+async function mergeCategoryCandidate(id) {
+    const select = document.getElementById(`category-merge-${id}`);
+    const categoryId = Number(select?.value);
+    if (!categoryId) {
+        setCategoryManagerStatus('병합할 기존 카테고리를 선택해주세요.', true);
+        return;
+    }
+    await decideCategoryCandidate(id, 'merge', { categoryId });
+}
+
+async function deferCategoryCandidate(id) {
+    await decideCategoryCandidate(id, 'defer');
+}
+
+async function rejectCategoryCandidate(id) {
+    if (!window.confirm('이 키워드를 앞으로 다시 추천하지 않도록 반려할까요?')) return;
+    await decideCategoryCandidate(id, 'reject');
+}
+
+window.addEventListener('keydown', event => {
+    if (event.key === 'Escape'
+        && document.getElementById('category-manager-modal')?.style.display === 'flex') {
+        closeCategoryManager();
     }
 });
 

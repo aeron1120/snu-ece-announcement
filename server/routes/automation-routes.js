@@ -1,5 +1,6 @@
 import express from 'express';
 import crypto from 'node:crypto';
+import { evaluateCategoryCandidates } from '../services/category-recommender.js';
 
 function secretsMatch(actual, expected) {
     if (!actual || !expected) return false;
@@ -21,6 +22,9 @@ function errorResponse(res, error) {
     }
     if (error?.code === 'PUSH_DISABLED') {
         return res.status(503).json({ error: error.message });
+    }
+    if (error?.code === 'CATEGORY_CANDIDATE_NOT_PENDING') {
+        return res.status(409).json({ error: '이미 처리되었거나 존재하지 않는 카테고리 후보입니다.' });
     }
     console.error('[automation-api]', error);
     return res.status(500).json({ error: error?.message || '자동화 요청 처리에 실패했습니다.' });
@@ -78,6 +82,17 @@ export function createAutomationRouter({
         }
     }
 
+    async function refreshCategoryCandidates() {
+        const data = await store.getCategoryEvaluationData();
+        const recommendations = evaluateCategoryCandidates({
+            ...data,
+            now: new Date(),
+            config: config.categories
+        });
+        await store.upsertCategoryCandidates(recommendations);
+        return store.listCategoryCandidates();
+    }
+
     router.post('/api/internal/crawl/ece-academics', async (req, res) => {
         if (!config.crawl.enabled) {
             return res.status(503).json({ error: '크롤링 자동화가 설정되지 않았습니다.' });
@@ -109,6 +124,79 @@ export function createAutomationRouter({
             return res.status(503).json({ error: '웹 푸시가 설정되지 않았습니다.' });
         }
         res.json({ publicKey: pushService.publicKey });
+    });
+
+    router.get('/api/categories', async (req, res) => {
+        try {
+            res.json({ categories: await store.listCategories() });
+        } catch (error) {
+            errorResponse(res, error);
+        }
+    });
+
+    router.get('/api/admin/category-candidates', requireAdmin, async (req, res) => {
+        try {
+            res.json({ candidates: await refreshCategoryCandidates() });
+        } catch (error) {
+            errorResponse(res, error);
+        }
+    });
+
+    router.post('/api/admin/category-candidates/:id/approve', requireAdmin, async (req, res) => {
+        const name = String(req.body?.name || '').trim();
+        const slug = String(req.body?.slug || '').trim().toLowerCase();
+        if (!name || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
+            return res.status(400).json({ error: '카테고리 이름과 영문 슬러그를 확인해주세요.' });
+        }
+        try {
+            const candidate = await store.decideCategoryCandidate(req.params.id, {
+                action: 'approve',
+                name,
+                slug
+            });
+            res.json({ candidate });
+        } catch (error) {
+            errorResponse(res, error);
+        }
+    });
+
+    router.post('/api/admin/category-candidates/:id/merge', requireAdmin, async (req, res) => {
+        const categoryId = Number(req.body?.categoryId);
+        if (!Number.isSafeInteger(categoryId) || categoryId <= 0) {
+            return res.status(400).json({ error: '병합할 카테고리를 선택해주세요.' });
+        }
+        try {
+            const candidate = await store.decideCategoryCandidate(req.params.id, {
+                action: 'merge',
+                categoryId
+            });
+            res.json({ candidate });
+        } catch (error) {
+            errorResponse(res, error);
+        }
+    });
+
+    router.post('/api/admin/category-candidates/:id/reject', requireAdmin, async (req, res) => {
+        try {
+            const candidate = await store.decideCategoryCandidate(req.params.id, {
+                action: 'reject'
+            });
+            res.json({ candidate });
+        } catch (error) {
+            errorResponse(res, error);
+        }
+    });
+
+    router.post('/api/admin/category-candidates/:id/defer', requireAdmin, async (req, res) => {
+        try {
+            const candidate = await store.decideCategoryCandidate(req.params.id, {
+                action: 'defer',
+                deferredUntil: new Date(Date.now() + 30 * 86_400_000).toISOString()
+            });
+            res.json({ candidate });
+        } catch (error) {
+            errorResponse(res, error);
+        }
     });
 
     router.post('/api/push/subscriptions', async (req, res) => {

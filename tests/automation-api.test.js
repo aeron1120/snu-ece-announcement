@@ -33,7 +33,12 @@ async function createTestServer({ crawlEnabled = true, pushService = null } = {}
         pushService,
         requireAdmin,
         config: {
-            crawl: { enabled: crawlEnabled, triggerSecret: 's'.repeat(32) }
+            crawl: { enabled: crawlEnabled, triggerSecret: 's'.repeat(32) },
+            categories: {
+                windowDays: 60,
+                minimumNotices: 5,
+                minimumConfidence: 0.75
+            }
         }
     }));
     const server = await new Promise(resolve => {
@@ -151,4 +156,46 @@ test('admin review routes require auth and publish or reject pending notices', a
     assert.equal(rejected.status, 200);
     assert.equal((await rejected.json()).notice.status, 'rejected');
     assert.equal((await fixture.store.listNotificationJobs()).length, 1);
+});
+
+test('admin can approve a threshold category candidate and expose it publicly', async t => {
+    const fixture = await createTestServer();
+    t.after(() => fixture.server.close());
+    for (let index = 1; index <= 5; index += 1) {
+        const pending = await fixture.store.createPendingNotice({
+            sourceType: 'ece_academics',
+            sourceExternalId: `category-${index}`,
+            title: `장학금 공지 ${index}`,
+            content: '본문',
+            keywords: ['장학 제도'],
+            analysisConfidence: 0.8,
+            publishedAt: new Date(Date.now() - index * 86_400_000).toISOString()
+        });
+        await fixture.store.publishReviewNotice(pending.id, {}, { notify: false });
+    }
+
+    const candidateResponse = await fetch(
+        `${fixture.baseUrl}/api/admin/category-candidates`,
+        { headers: { 'x-admin-token': 'test-admin' } }
+    );
+    assert.equal(candidateResponse.status, 200);
+    const candidates = (await candidateResponse.json()).candidates;
+    assert.equal(candidates.length, 1);
+
+    const approveResponse = await fetch(
+        `${fixture.baseUrl}/api/admin/category-candidates/${candidates[0].id}/approve`,
+        {
+            method: 'POST',
+            headers: {
+                'content-type': 'application/json',
+                'x-admin-token': 'test-admin'
+            },
+            body: JSON.stringify({ name: '장학 제도', slug: 'scholarships' })
+        }
+    );
+    assert.equal(approveResponse.status, 200);
+
+    const categoriesResponse = await fetch(`${fixture.baseUrl}/api/categories`);
+    assert.equal(categoriesResponse.status, 200);
+    assert.equal((await categoriesResponse.json()).categories[0].slug, 'scholarships');
 });

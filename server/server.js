@@ -311,6 +311,7 @@ function toClientNotice(row) {
         deadline: row.deadline || '',
         aiSummary: Array.isArray(row.ai_summary) ? row.ai_summary : [],
         images: Array.isArray(row.images) ? row.images : [],
+        categoryIds: (row.notice_categories || []).map(item => Number(item.category_id)),
         views: Number(row.views) || 0,
         createdAt: row.created_at || null,
         updatedAt: row.updated_at || null
@@ -555,7 +556,7 @@ async function listNotices() {
 
     const { data, error } = await supabase
         .from(SUPABASE_NOTICES_TABLE)
-        .select('*')
+        .select('*, notice_categories(category_id)')
         .eq('is_deleted', false)
         .eq('status', 'published')
         .order('created_at', { ascending: false })

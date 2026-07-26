@@ -52,6 +52,7 @@
     <div class="header-actions">
         <button class="btn btn-outline" onclick="location.reload()">새로고침</button>
         <button class="btn btn-outline" onclick="openNotificationPreferences()">알림 받기</button>
+        <button class="btn btn-outline" onclick="openCategoryManager()">카테고리 추천</button>
         <button class="btn btn-outline" id="review-manager-open" onclick="openReviewManager()">
             검수 대기 <span id="review-pending-count" aria-label="검수 대기 공지 수">—</span>
         </button>
@@ -103,6 +104,13 @@
                 <div class="filter-group-label">주관 기관</div>
                 <div class="filter-btn-group" id="fg-host">
                     <button class="filter-btn active" data-group="host" data-val="전체" onclick="toggleFilterBtn(this)">전체</button>
+                </div>
+            </div>
+
+            <div class="filter-group">
+                <div class="filter-group-label">카테고리 (복수 선택)</div>
+                <div class="filter-btn-group" id="fg-category">
+                    <span class="review-list-meta">카테고리를 불러오는 중입니다.</span>
                 </div>
             </div>
 
@@ -451,6 +459,17 @@
                 <button class="btn" id="notification-save" type="button" onclick="saveNotificationPreferences()">알림 허용 및 저장</button>
             </div>
         </div>
+    </div>
+</div>
+
+<div class="overlay" id="category-manager-modal" aria-hidden="true">
+    <div class="modal category-manager" role="dialog" aria-modal="true" aria-labelledby="category-manager-title" onclick="event.stopPropagation()">
+        <button class="close-btn" type="button" aria-label="카테고리 추천 닫기" onclick="closeCategoryManager()">×</button>
+        <p class="review-eyebrow">최근 60일 키워드 분석</p>
+        <h2 id="category-manager-title">카테고리 추천</h2>
+        <p class="notification-help">5개 이상의 서로 다른 공지에서 평균 신뢰도 0.75 이상으로 나타난 키워드만 추천합니다. 추가 여부는 관리자가 결정합니다.</p>
+        <p id="category-manager-status" class="review-status" aria-live="polite"></p>
+        <div id="category-candidate-list" class="category-candidate-list"></div>
     </div>
 </div>
 

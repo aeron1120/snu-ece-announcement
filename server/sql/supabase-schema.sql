@@ -254,6 +254,7 @@ set search_path = public
 as $$
 declare
   updated_row public.notices;
+  category_value jsonb;
 begin
   update public.notices
   set title = coalesce(nullif(edits->>'title', ''), title),
@@ -290,6 +291,19 @@ begin
     insert into public.notification_jobs (notice_id, kind, status)
     values (updated_row.id, 'new_notice', 'pending')
     on conflict (notice_id, kind) do nothing;
+  end if;
+
+  if edits ? 'categoryIds' then
+    delete from public.notice_categories where notice_id = updated_row.id;
+    for category_value in select * from jsonb_array_elements(edits->'categoryIds')
+    loop
+      insert into public.notice_categories (notice_id, category_id)
+      select updated_row.id, (category_value #>> '{}')::bigint
+      from public.categories
+      where id = (category_value #>> '{}')::bigint
+        and is_active = true
+      on conflict do nothing;
+    end loop;
   end if;
 
   insert into public.automation_audit_logs (
