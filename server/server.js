@@ -26,45 +26,19 @@ const supabase = useSupabase ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_
 let bannerStorageMode = useSupabase ? 'supabase' : 'file';
 const initialNoticeAdminToken = NOTICE_ADMIN_TOKEN;
 
-const defaultNotices = [
-    {
-        id: 1,
-        title: "2026 만우절 사전 이벤트 'ㄴr ㅅr실 할말 있oł...'",
-        host: '문화소통국',
-        target: '전체',
-        deadline: '2026-03-28',
-        content:
-            '안녕하세요, 문화소통국입니다.\\n만우절 사전 이벤트를 진행합니다.\\n(참여 링크: https://forms.gle/test)\\n많관부!',
-        aiSummary: ['만우절 맞이 익명 고백 이벤트 진행', '구글폼 링크를 통해 참여 가능', '추첨 통해 상품권 지급'],
-        images: [],
-        views: 124
-    }
-];
+// 실사용 서비스이므로 가짜 공지를 시드하지 않는다. 첫 공지는 관리자가 직접 등록한다.
+const defaultNotices = [];
 
+// 등록된 배너가 없을 때 배너 영역이 비어 보이지 않도록 쓰는 안내 배너.
+// 실제 광고가 아니므로 마감일·모집 같은 허위 정보를 넣지 않는다.
 const defaultBannerSlides = [
     {
-        name: '스타트업 부트캠프 모집',
-        text: '📢 [광고] 교내 스타트업 부트캠프 참가자 모집 (~4/7)',
+        name: '배너 광고 안내',
+        text: "📢 배너 광고 제휴 문의는 상단 '문의' 버튼을 눌러주세요",
         bgStyle: 'background: linear-gradient(90deg, #eff6ff, #dbeafe);',
         textColor: '#1e40af',
         src: null,
         order: 0
-    },
-    {
-        name: '글로벌 교환학생 설명회',
-        text: '🎓 글로벌 교환학생 설명회 안내 D-5 (신청필수)',
-        bgStyle: 'background: linear-gradient(90deg, #fdf4ff, #fae8ff);',
-        textColor: '#86198f',
-        src: null,
-        order: 1
-    },
-    {
-        name: 'AI 아이디어톤 모집',
-        text: '💻 [홍보] 총학생회 주관 AI 아이디어톤 2026 모집중!',
-        bgStyle: 'background: linear-gradient(90deg, #ecfdf5, #d1fae5);',
-        textColor: '#065f46',
-        src: null,
-        order: 2
     }
 ];
 
@@ -449,7 +423,7 @@ async function ensureDefaultData() {
         throw error;
     }
 
-    if ((count || 0) === 0) {
+    if ((count || 0) === 0 && defaultNotices.length > 0) {
         const seedRows = defaultNotices.map(notice => ({
             title: notice.title,
             content: notice.content,

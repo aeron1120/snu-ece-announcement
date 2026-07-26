@@ -4,6 +4,17 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SNU ECE 공지방</title>
+
+    <!-- 카톡·메신저 링크 미리보기용. 이 페이지는 클라이언트 렌더링이라 크롤러가 공지별
+         내용을 읽지 못하므로, 지금은 사이트 공통 미리보기만 제공한다.
+         공지별 미리보기가 필요해지면 서버에서 ?id= 요청에 SSR로 응답해야 한다. -->
+    <meta name="description" content="서울대 전기정보공학부 공지를 한곳에서. 검색·마감일 관리·AI 3줄 요약.">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="SNU ECE 공지방">
+    <meta property="og:title" content="SNU ECE 공지방">
+    <meta property="og:description" content="서울대 전기정보공학부 공지를 한곳에서. 검색·마감일 관리·AI 3줄 요약.">
+    <meta property="og:locale" content="ko_KR">
+    <meta name="twitter:card" content="summary">
     <link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css" rel="stylesheet">
     <link rel="stylesheet" href="./css/style.css">
 </head>
@@ -17,15 +28,11 @@
 
     <div class="header-banner-wrapper">
         <div class="header-banner" id="header-banner">
+            <!-- 실제 배너는 로드 후 refreshBannerDOM()이 서버 데이터로 교체한다.
+                 그 전에 잠깐 보이는 구간이므로 허위 광고 대신 안내 문구를 둔다. -->
             <div class="banner-track" id="banner-track">
                 <a href="#" class="banner-slide" style="background: linear-gradient(90deg, #eff6ff, #dbeafe);" onclick="if(isDragging) event.preventDefault();">
-                    <span style="color: #1e40af; font-weight: 700;">📢 [광고] 교내 스타트업 부트캠프 참가자 모집 (~4/7)</span>
-                </a>
-                <a href="#" class="banner-slide" style="background: linear-gradient(90deg, #fdf4ff, #fae8ff);" onclick="if(isDragging) event.preventDefault();">
-                    <span style="color: #86198f; font-weight: 700;">🎓 글로벌 교환학생 설명회 안내 D-5 (신청필수)</span>
-                </a>
-                <a href="#" class="banner-slide" style="background: linear-gradient(90deg, #ecfdf5, #d1fae5);" onclick="if(isDragging) event.preventDefault();">
-                    <span style="color: #065f46; font-weight: 700;">💻 [홍보] 총학생회 주관 AI 아이디어톤 2026 모집중!</span>
+                    <span style="color: #1e40af; font-weight: 700;">📢 배너 광고 제휴 문의는 상단 '문의' 버튼을 눌러주세요</span>
                 </a>
             </div>
         </div>
@@ -342,6 +349,7 @@
             <div id="detail-content" class="original-text-content"></div>
         </div>
         <div style="text-align: right; border-top: 1px solid var(--border); padding-top: 24px; display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap;">
+            <button class="btn btn-small" onclick="copyNoticeLink()" style="margin-right: auto;">🔗 링크 복사</button>
             <button class="btn btn-outline btn-small" id="compare-toggle-btn" onclick="toggleCompare(currentViewId)">🔍 비교 목록에 추가</button>
             <button class="btn btn-outline btn-small" onclick="triggerEditNotice()">이 공지 수정하기</button>
             <button class="btn btn-danger btn-small" onclick="triggerDeletePost()">이 공지 삭제하기</button>

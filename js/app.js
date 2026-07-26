@@ -2,9 +2,20 @@
 // 🌍 전역 상태 & 초기화
 // ========================================
 
-const CURRENT_DATE = new Date("2026-03-27T00:00:00");
+// D-Day 기준일. 페이지를 열어둔 채 자정을 넘겨도 맞도록 호출 시점마다 계산한다.
+function getCurrentDate() {
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    return now;
+}
+
 const GEMINI_MODEL = "gemini-2.5-flash";
-const API_BASE_URL = (window.API_BASE_URL || localStorage.getItem('eceApiBaseUrl') || '').trim().replace(/\/$/, '');
+// config.js가 빈 문자열(동일 출처)을 지정했을 수 있으므로 || 대신 타입으로 판별한다.
+const API_BASE_URL = (
+    typeof window.API_BASE_URL === 'string'
+        ? window.API_BASE_URL
+        : (localStorage.getItem('eceApiBaseUrl') || '')
+).trim().replace(/\/$/, '');
 
 let currentViewId = null;
 let editingNoticeId = null;
@@ -34,16 +45,16 @@ let noticeAdminAuthToken = '';
 let superAdminAuthToken = '';
 let bannerManageAuthToken = '';
 
-const defaultNotices = [{
-    id: 1, title: "2026 만우절 사전 이벤트 'ㄴr ㅅr실 할말 있øł...'", host: "문화소통국", target: "전체", deadline: "2026-03-28",
-    content: "안녕하세요, 문화소통국입니다.\n만우절 사전 이벤트를 진행합니다.\n(참여 링크: https://forms.gle/test)\n많관부!",
-    aiSummary: ["만우절 맞이 익명 고백 이벤트 진행", "구글폼 링크를 통해 참여 가능", "추첨 통해 상품권 지급"], images: [], views: 124 
-}];
-
-const defaultBannerSlides = [
-    { name: "스타트업 부트캠프 모집", src: null, bgStyle: "background: linear-gradient(90deg, #eff6ff, #dbeafe);", textColor: "#1e40af", text: "📢 [광고] 교내 스타트업 부트캠프 참가자 모집 (~4/7)" },
-    { name: "글로벌 교환학생 설명회", src: null, bgStyle: "background: linear-gradient(90deg, #fdf4ff, #fae8ff);", textColor: "#86198f", text: "🎓 글로벌 교환학생 설명회 안내 D-5 (신청필수)" },
-    { name: "AI 아이디어톤 모집", src: null, bgStyle: "background: linear-gradient(90deg, #ecfdf5, #d1fae5);", textColor: "#065f46", text: "💻 [홍보] 총학생회 주관 AI 아이디어톤 2026 모집중!" }
+// 서버에 등록된 배너가 하나도 없을 때 배너 영역이 비어 보이지 않도록 쓰는 안내 문구.
+// 실제 광고가 아니므로 마감일·모집 같은 허위 정보를 넣지 않는다.
+const placeholderBannerSlides = [
+    {
+        name: "배너 광고 안내",
+        src: null,
+        bgStyle: "background: linear-gradient(90deg, #eff6ff, #dbeafe);",
+        textColor: "#1e40af",
+        text: "📢 배너 광고 제휴 문의는 상단 '문의' 버튼을 눌러주세요"
+    }
 ];
 
 const filterState = {
@@ -121,16 +132,16 @@ async function loadData() {
 
     try {
         const result = await apiRequest('/api/notices', { method: 'GET' });
-        notices = Array.isArray(result?.notices) ? result.notices : defaultNotices;
+        notices = Array.isArray(result?.notices) ? result.notices : [];
     } catch (error) {
         console.error('공지 목록 불러오기 실패:', error);
-        notices = defaultNotices;
-        alert('공지 목록을 서버에서 불러오지 못해 기본 데이터로 표시합니다.');
+        // 가짜 공지를 대신 보여주면 안 되므로 빈 목록으로 두고 실패 사실만 알린다.
+        notices = [];
+        alert('공지 목록을 불러오지 못했습니다. 잠시 후 새로고침해주세요.');
     }
 
     try { const storedSaved = localStorage.getItem('eceSaved'); savedPosts = storedSaved ? JSON.parse(storedSaved) : []; if (!Array.isArray(savedPosts)) savedPosts = []; } catch (e) { savedPosts = []; }
-    try { const stored = localStorage.getItem('eceBannerSlides'); if (stored) bannerSlides = JSON.parse(stored); } catch(e) {}
-    if (bannerSlides.length === 0) bannerSlides = JSON.parse(JSON.stringify(defaultBannerSlides));
+    if (bannerSlides.length === 0) bannerSlides = JSON.parse(JSON.stringify(placeholderBannerSlides));
 
     await loadBannerSlides();
     startBannerPolling();
@@ -190,7 +201,8 @@ function refreshBannerDOM() {
         const slideEl = document.createElement('a');
         slideEl.href = '#';
         slideEl.className = 'banner-slide';
-        slideEl.style.background = slide.bgStyle || '#f8fafc';
+        // bgStyle은 "background: ...;" 형태의 선언문이므로 style.background(값)이 아니라 cssText에 넣어야 적용된다.
+        slideEl.style.cssText = slide.src ? 'padding: 0;' : (slide.bgStyle || 'background: #f8fafc;');
         slideEl.onclick = (e) => {
             if (isDragging) e.preventDefault();
         };
@@ -227,7 +239,7 @@ function getBase64(file) { return new Promise((resolve, reject) => { const reade
 function calcDDay(deadlineStr) {
     if (!deadlineStr) return { text: "상시", isUrgent: false, isD1: false };
     const dDate = new Date(deadlineStr + "T23:59:59");
-    const diffDays = Math.ceil((dDate - CURRENT_DATE) / (1000 * 60 * 60 * 24));
+    const diffDays = Math.ceil((dDate - getCurrentDate()) / (1000 * 60 * 60 * 24));
     if (diffDays < 0) return { text: "마감됨", isUrgent: false, isD1: false };
     if (diffDays === 0) return { text: "D-Day", isUrgent: true, isD1: false };
     if (diffDays === 1) return { text: "D-1", isUrgent: true, isD1: true };
@@ -235,10 +247,22 @@ function calcDDay(deadlineStr) {
     return { text: `D-${diffDays}`, isUrgent: false, isD1: false };
 }
 
+// 공지 제목·기관·배너 문구는 관리자가 자유롭게 입력하므로, HTML로 조립하기 전에 반드시 이스케이프한다.
+// 따옴표까지 처리해야 value="..." 같은 속성 안에 넣어도 빠져나가지 못한다.
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
 function linkify(text) {
     if(!text) return "";
-    let safeText = text.replace(/</g, "&lt;").replace(/>/g, "&gt;");
-    return safeText.replace(/(https?:\/\/[^\s<]+[^<.,:;"')\]\s])/g, `<a href="$1" target="_blank">$1</a>`);
+    // 먼저 전체를 이스케이프하므로, 뒤이어 매칭되는 URL에는 따옴표가 남아 있지 않다.
+    const safeText = escapeHtml(text);
+    return safeText.replace(/(https?:\/\/[^\s<]+[^<.,:;"')\]\s])/g, `<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>`);
 }
 
 // ========================================
@@ -246,14 +270,87 @@ function linkify(text) {
 // ========================================
 
 function openModal(id) { document.getElementById(id).style.display = 'flex'; if(id === 'pwd-modal') document.getElementById('admin-pwd').focus(); }
-function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+function closeModal(id) {
+    document.getElementById(id).style.display = 'none';
+    if (id === 'detail-modal') clearNoticeUrl();
+}
 
 window.onclick = function(event) {
     if (event.target.classList.contains('overlay')) {
         event.target.style.display = 'none';
-        if(event.target.id === 'pwd-modal') pendingAuthAction = null; 
+        if(event.target.id === 'pwd-modal') pendingAuthAction = null;
+        if(event.target.id === 'detail-modal') clearNoticeUrl();
     }
 }
+
+// ========================================
+// 🔗 공지 딥링크
+// 카톡 공지방에 링크를 올리면 학생이 눌렀을 때 해당 공지가 바로 열려야 한다.
+// ========================================
+
+const NOTICE_URL_PARAM = 'id';
+
+function getNoticeShareUrl(id) {
+    const url = new URL(location.href);
+    url.hash = '';
+    url.search = '';
+    url.searchParams.set(NOTICE_URL_PARAM, String(id));
+    return url.toString();
+}
+
+// 상세를 열면 주소창을 그 공지의 공유 링크로 바꾼다. 히스토리에 쌓아 뒤로가기로 닫히게 한다.
+function syncUrlToNotice(id) {
+    if (!window.history?.pushState) return;
+    const target = getNoticeShareUrl(id);
+    if (location.href === target) return;   // 링크로 직접 진입한 경우 중복 push 방지
+    history.pushState({ noticeId: String(id) }, '', target);
+}
+
+function clearNoticeUrl() {
+    if (!window.history?.replaceState) return;
+    if (!new URLSearchParams(location.search).has(NOTICE_URL_PARAM)) return;
+    history.replaceState({}, '', location.pathname);
+}
+
+// 최초 진입 시 ?id=... 가 있으면 그 공지를 연다.
+function openNoticeFromUrl() {
+    const requestedId = new URLSearchParams(location.search).get(NOTICE_URL_PARAM);
+    if (!requestedId) return;
+
+    const exists = notices.some(n => String(n.id) === String(requestedId));
+    if (!exists) {
+        alert('링크에 해당하는 공지를 찾을 수 없습니다.\n삭제되었거나 주소가 잘못되었습니다.');
+        clearNoticeUrl();
+        return;
+    }
+
+    openDetail(requestedId);
+}
+
+async function copyNoticeLink() {
+    if (!currentViewId) return;
+    const url = getNoticeShareUrl(currentViewId);
+
+    try {
+        await navigator.clipboard.writeText(url);
+        alert('공지 링크가 복사되었습니다.\n카톡 공지방에 붙여넣으세요.\n\n' + url);
+    } catch (error) {
+        // 클립보드 권한이 없는 브라우저(카톡 인앱 등) 대비 수동 복사 경로
+        prompt('아래 링크를 복사하세요.', url);
+    }
+}
+
+window.addEventListener('popstate', function () {
+    const detail = document.getElementById('detail-modal');
+    const requestedId = new URLSearchParams(location.search).get(NOTICE_URL_PARAM);
+
+    if (!requestedId) {
+        if (detail) detail.style.display = 'none';
+        return;
+    }
+
+    if (String(currentViewId) !== String(requestedId)) openDetail(requestedId);
+});
 
 // 배너 드래그 로직
 function slideBanner() {
@@ -637,11 +734,12 @@ function renderBannerList() {
 
     bannerSlides.forEach((slide, idx) => {
         const safeId = Number(slide.id);
+        const safeText = escapeHtml(slide.text || '');
         const slideItem = document.createElement('div');
         slideItem.className = 'banner-item';
         slideItem.innerHTML = `
             <div class="banner-item-header">
-                <span class="banner-item-text">${slide.text || ''}</span>
+                <span class="banner-item-text">${safeText}</span>
                 <div class="banner-item-actions">
                     <button class="btn btn-outline btn-small" onclick="moveBanner(${idx}, -1)" ${idx === 0 ? 'disabled' : ''}>↑</button>
                     <button class="btn btn-outline btn-small" onclick="moveBanner(${idx}, 1)" ${idx === bannerSlides.length - 1 ? 'disabled' : ''}>↓</button>
@@ -649,8 +747,8 @@ function renderBannerList() {
                 </div>
             </div>
             <div class="banner-item-form">
-                <input type="text" placeholder="배너 텍스트" value="${slide.text || ''}" class="banner-input-text-${safeId}">
-                <input type="color" value="${slide.textColor || '#000000'}" class="banner-input-color-${safeId}">
+                <input type="text" placeholder="배너 텍스트" value="${safeText}" class="banner-input-text-${safeId}">
+                <input type="color" value="${escapeHtml(slide.textColor || '#000000')}" class="banner-input-color-${safeId}">
                 <input type="file" accept="image/*" class="banner-input-file-${safeId}">
                 <button class="btn btn-small" onclick="updateBannerSlide(${safeId})">수정</button>
             </div>
@@ -951,7 +1049,8 @@ function buildHostButtons() {
     const current = filterState['host'];
     container.innerHTML = `<button class="filter-btn ${current === '전체' ? 'active' : ''}" data-group="host" data-val="전체" onclick="toggleFilterBtn(this)">전체</button>`;
     hosts.forEach(h => {
-        container.innerHTML += `<button class="filter-btn ${current === h ? 'active' : ''}" data-group="host" data-val="${h}" onclick="toggleFilterBtn(this)">${h}</button>`;
+        const safeHost = escapeHtml(h);
+        container.innerHTML += `<button class="filter-btn ${current === h ? 'active' : ''}" data-group="host" data-val="${safeHost}" onclick="toggleFilterBtn(this)">${safeHost}</button>`;
     });
 }
 
@@ -1045,6 +1144,8 @@ function filterCards() {
     const dateFrom = document.getElementById('filter-date-from')?.value || '';
     const dateTo = document.getElementById('filter-date-to')?.value || '';
 
+    const today = getCurrentDate();
+
     const grid = document.getElementById('notice-grid');
     grid.innerHTML = "";
 
@@ -1068,7 +1169,7 @@ function filterCards() {
         if (fDeadlineStatus !== '전체') {
             if (fDeadlineStatus === '진행중' && dDay.text === '마감됨') return;
             if (fDeadlineStatus === '마감임박') {
-                const d = notice.deadline ? Math.ceil((new Date(notice.deadline + 'T23:59:59') - CURRENT_DATE) / 86400000) : 999;
+                const d = notice.deadline ? Math.ceil((new Date(notice.deadline + 'T23:59:59') - today) / 86400000) : 999;
                 if (d < 0 || d > 3) return;
             }
             if (fDeadlineStatus === '상시' && notice.deadline) return;
@@ -1097,8 +1198,8 @@ function filterCards() {
 
     if (fSort === '마감임박순') {
         filtered.sort((a, b) => {
-            const da = a.deadline ? new Date(a.deadline + 'T23:59:59') - CURRENT_DATE : Infinity;
-            const db = b.deadline ? new Date(b.deadline + 'T23:59:59') - CURRENT_DATE : Infinity;
+            const da = a.deadline ? new Date(a.deadline + 'T23:59:59') - today : Infinity;
+            const db = b.deadline ? new Date(b.deadline + 'T23:59:59') - today : Infinity;
             return da - db;
         });
     } else if (fSort === '조회수순') {
@@ -1111,8 +1212,8 @@ function filterCards() {
         const noticeIdStr = String(notice.id);
         const isSaved = savedPosts.includes(noticeIdStr);
         const dDay = calcDDay(notice.deadline);
-        const safeTitle = notice.title || "";
-        let imgHtml = (notice.images && notice.images.length > 0) ? `<img src="${notice.images[0]}" class="card-img-preview" style="display:block;">` : '';
+        const safeTitle = escapeHtml(notice.title || "");
+        let imgHtml = (notice.images && notice.images.length > 0) ? `<img src="${escapeHtml(notice.images[0])}" class="card-img-preview" style="display:block;">` : '';
         const cardClass = dDay.isD1 ? "card d1-card" : "card";
         const starClass = isSaved ? 'star-icon active' : 'star-icon';
         const starChar = isSaved ? '★' : '☆';
@@ -1121,16 +1222,16 @@ function filterCards() {
         card.className = cardClass;
         card.onclick = () => openDetail(notice.id);
         card.innerHTML = `
-            <div class="${starClass}" onclick="toggleSave(event, '${notice.id}')">${starChar}</div>
+            <div class="${starClass}" onclick="toggleSave(event, '${escapeHtml(notice.id)}')">${starChar}</div>
             <div class="tags">
                 <span class="tag ${dDay.isUrgent ? 'd-day' : ''}">${dDay.text}</span>
-                <span class="tag target">${notice.target || '전체'}</span>
-                <span class="tag">${notice.host || ''}</span>
+                <span class="tag target">${escapeHtml(notice.target || '전체')}</span>
+                <span class="tag">${escapeHtml(notice.host || '')}</span>
             </div>
             <h3>${safeTitle}</h3>
-            <p><strong>마감일</strong> ${notice.deadline ? notice.deadline : '상시'}</p>
+            <p><strong>마감일</strong> ${escapeHtml(notice.deadline || '상시')}</p>
             ${imgHtml}
-            <div class="view-count">👀 조회 ${notice.views || 0}</div>
+            <div class="view-count">👀 조회 ${Number(notice.views) || 0}</div>
         `;
         grid.appendChild(card);
     });
@@ -1230,7 +1331,7 @@ function openDetail(idStr) {
             if (freshIdx !== -1) {
                 notices[freshIdx].views = result.notice.views;
                 if (String(currentViewId) === String(result.notice.id)) {
-                    document.getElementById('detail-meta').innerHTML = `마감일: ${notice.deadline ? notice.deadline : '상시'} &nbsp;|&nbsp; 조회: ${result.notice.views}`;
+                    document.getElementById('detail-meta').innerHTML = `마감일: ${escapeHtml(notice.deadline || '상시')} &nbsp;|&nbsp; 조회: ${Number(result.notice.views) || 0}`;
                 }
                 filterCards();
             }
@@ -1242,24 +1343,25 @@ function openDetail(idStr) {
     const dDay = calcDDay(notice.deadline);
     document.getElementById('detail-tags').innerHTML = `
         <span class="tag ${dDay.isUrgent ? 'd-day' : ''}">${dDay.text}</span>
-        <span class="tag target">${notice.target || '전체'}</span>
-        <span class="tag">${notice.host || ''}</span>
+        <span class="tag target">${escapeHtml(notice.target || '전체')}</span>
+        <span class="tag">${escapeHtml(notice.host || '')}</span>
     `;
     document.getElementById('detail-title').innerText = notice.title || "";
-    document.getElementById('detail-meta').innerHTML = `마감일: ${notice.deadline ? notice.deadline : '상시'} &nbsp;|&nbsp; 조회: ${notice.views}`;
-    document.getElementById('detail-summary').innerHTML = (notice.aiSummary || []).map(item => `<li>${item}</li>`).join('');
+    document.getElementById('detail-meta').innerHTML = `마감일: ${escapeHtml(notice.deadline || '상시')} &nbsp;|&nbsp; 조회: ${Number(notice.views) || 0}`;
+    document.getElementById('detail-summary').innerHTML = (notice.aiSummary || []).map(item => `<li>${escapeHtml(item)}</li>`).join('');
     document.getElementById('detail-content').innerHTML = linkify(notice.content || "");
-    
+
     const gallery = document.getElementById('detail-gallery');
     gallery.innerHTML = '';
     if (notice.images && notice.images.length > 0) {
         notice.images.forEach((src, idx) => {
-            gallery.innerHTML += `<img src="${src}" class="gallery-img" onclick="openImageViewer(${idx})">`;
+            gallery.innerHTML += `<img src="${escapeHtml(src)}" class="gallery-img" onclick="openImageViewer(${idx})">`;
         });
         gallery.style.display = 'flex';
     } else { gallery.style.display = 'none'; }
     
     openModal('detail-modal');
+    syncUrlToNotice(currentViewId);
     setTimeout(() => { if(typeof updateCompareButton === 'function') updateCompareButton(String(idStr)); }, 30);
 }
 
@@ -1309,7 +1411,8 @@ function updateCompareBar() {
         if (!notice) return;
         const slot = document.createElement('div');
         slot.className = 'compare-slot';
-        slot.innerHTML = `<span title="${notice.title}">${notice.title}</span><button class="remove-btn" onclick="toggleCompare('${id}')">×</button>`;
+        const safeTitle = escapeHtml(notice.title || '');
+        slot.innerHTML = `<span title="${safeTitle}">${safeTitle}</span><button class="remove-btn" onclick="toggleCompare('${escapeHtml(id)}')">×</button>`;
         slotsArea.appendChild(slot);
     });
     if (compareList.length > 0) {
@@ -1341,20 +1444,20 @@ function openCompareModal() {
         const col = document.createElement('div');
         col.className = 'compare-col';
 
-        const summaryHtml = (notice.aiSummary || []).map(item => `<li>${item}</li>`).join('') || '<li style="color:var(--text-sub)">요약 없음</li>';
-        const thumbHtml = (notice.images && notice.images.length > 0) ? `<img src="${notice.images[0]}" style="width:100%; height:110px; object-fit:cover; border-radius:10px; margin-bottom:10px; border:1px solid var(--border); flex-shrink:0;">` : '';
+        const summaryHtml = (notice.aiSummary || []).map(item => `<li>${escapeHtml(item)}</li>`).join('') || '<li style="color:var(--text-sub)">요약 없음</li>';
+        const thumbHtml = (notice.images && notice.images.length > 0) ? `<img src="${escapeHtml(notice.images[0])}" style="width:100%; height:110px; object-fit:cover; border-radius:10px; margin-bottom:10px; border:1px solid var(--border); flex-shrink:0;">` : '';
         const colId = 'compare-col-' + id;
-        const safeContent = (notice.content || '').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-        const contentWithLinks = safeContent.replace(/(https?:\/\/[^\s<]+[^<.,:;"')\]\s])/g, `<a href="$1" target="_blank" style="color:#2563eb;text-decoration:none;font-weight:600;">$1</a>`);
+        const safeContent = escapeHtml(notice.content || '');
+        const contentWithLinks = safeContent.replace(/(https?:\/\/[^\s<]+[^<.,:;"')\]\s])/g, `<a href="$1" target="_blank" rel="noopener noreferrer" style="color:#2563eb;text-decoration:none;font-weight:600;">$1</a>`);
 
         col.innerHTML = `${thumbHtml}
             <div class="tags" style="margin-bottom:6px; flex-wrap:wrap; padding-right:0;">
                 <span class="tag ${dDay.isUrgent ? 'd-day' : ''}">${dDay.text}</span>
-                <span class="tag target">${notice.target || '전체'}</span>
-                <span class="tag">${notice.host || ''}</span>
+                <span class="tag target">${escapeHtml(notice.target || '전체')}</span>
+                <span class="tag">${escapeHtml(notice.host || '')}</span>
             </div>
-            <h3>${notice.title || ''}</h3>
-            <div class="compare-meta">📅 마감: ${notice.deadline || '상시'} &nbsp;|&nbsp; 👀 조회 ${notice.views || 0}</div>
+            <h3>${escapeHtml(notice.title || '')}</h3>
+            <div class="compare-meta">📅 마감: ${escapeHtml(notice.deadline || '상시')} &nbsp;|&nbsp; 👀 조회 ${Number(notice.views) || 0}</div>
             <div class="compare-tabs" id="${colId}-tabs">
                 <button class="compare-tab-btn active" onclick="switchCompareTab('${id}','summary')">✨ AI 요약</button>
                 <button class="compare-tab-btn" onclick="switchCompareTab('${id}','original')">📄 원문</button>
@@ -1431,7 +1534,8 @@ document.addEventListener('DOMContentLoaded', async function () {
     buildHostButtons();
     filterCards();
     updateCompareBar();
-    
+    openNoticeFromUrl();   // 카톡 링크로 들어온 경우 해당 공지를 바로 연다
+
     // 배너 드래그 이벤트 리스너
     const headerBanner = document.getElementById('header-banner');
     if (headerBanner) {
