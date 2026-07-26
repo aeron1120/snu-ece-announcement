@@ -139,3 +139,5 @@ npm run prepare:public
 node --check server/server.js
 git diff --check
 ```
+
+`tests/automation-e2e.test.js`는 임시 JSON 저장소와 고정 HTML/Gemini/Web Push 응답으로 수집, 비공개 검수, 승인, 공개, 알림 1회 전송, 중복 차단, 카테고리 추천까지 한 흐름으로 검증합니다. 실제 Cloudflare·Render·Supabase·브라우저 푸시를 사용하는 스테이징 스모크 테스트는 위의 배포 전 체크리스트에 따라 별도로 실행해야 합니다.
