@@ -1221,17 +1221,22 @@ function filterCards() {
         const card = document.createElement('div');
         card.className = cardClass;
         card.onclick = () => openDetail(notice.id);
+        // 포스터는 카드 맨 위에 온다. 이미지가 없는 공지는 썸네일 영역 자체를 만들지 않는다.
         card.innerHTML = `
-            <div class="${starClass}" onclick="toggleSave(event, '${escapeHtml(notice.id)}')">${starChar}</div>
-            <div class="tags">
-                <span class="tag ${dDay.isUrgent ? 'd-day' : ''}">${dDay.text}</span>
-                <span class="tag target">${escapeHtml(notice.target || '전체')}</span>
-                <span class="tag">${escapeHtml(notice.host || '')}</span>
-            </div>
-            <h3>${safeTitle}</h3>
-            <p><strong>마감일</strong> ${escapeHtml(notice.deadline || '상시')}</p>
             ${imgHtml}
-            <div class="view-count">👀 조회 ${Number(notice.views) || 0}</div>
+            <div class="card-body">
+                <div class="${starClass}" onclick="toggleSave(event, '${escapeHtml(notice.id)}')">${starChar}</div>
+                <div class="tags">
+                    <span class="tag ${dDay.isUrgent ? 'd-day' : ''}">${dDay.text}</span>
+                    <span class="tag target">${escapeHtml(notice.target || '전체')}</span>
+                    <span class="tag">${escapeHtml(notice.host || '')}</span>
+                </div>
+                <h3>${safeTitle}</h3>
+                <div class="card-meta">
+                    <span>마감 ${escapeHtml(notice.deadline || '상시')}</span>
+                    <span class="view-count">조회 ${Number(notice.views) || 0}</span>
+                </div>
+            </div>
         `;
         grid.appendChild(card);
     });
