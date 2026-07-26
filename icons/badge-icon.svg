@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-label="공지 알림">
+  <circle cx="48" cy="48" r="44" fill="#1e3a8a"/>
+  <path d="M25 27h46v42H25z" fill="#fff"/>
+  <path d="M33 37h30v6H33zm0 13h30v6H33z" fill="#1e3a8a"/>
+</svg>

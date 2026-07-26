@@ -1,0 +1,19 @@
+{
+  "name": "SNU ECE 공지방",
+  "short_name": "ECE 공지",
+  "description": "서울대학교 전기정보공학부 공지와 맞춤 알림",
+  "lang": "ko-KR",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#1e3a8a",
+  "icons": [
+    {
+      "src": "/icons/app-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -40,3 +40,14 @@ test('canonical HTML includes the administrator review manager contract', async 
     assert.match(html, /role="dialog"/);
     assert.match(html, /aria-live="polite"/);
 });
+
+test('PWA manifest and service worker include install and push contracts', async () => {
+    const manifest = JSON.parse(await readFile('manifest.webmanifest', 'utf8'));
+    const worker = await readFile('service-worker.js', 'utf8');
+
+    assert.equal(manifest.display, 'standalone');
+    assert.match(manifest.icons[0].src, /app-icon\.svg$/);
+    assert.match(worker, /addEventListener\('push'/);
+    assert.match(worker, /showNotification/);
+    assert.match(worker, /notificationclick/);
+});

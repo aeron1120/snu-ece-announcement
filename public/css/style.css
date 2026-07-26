@@ -434,6 +434,18 @@ body {
 .review-attachments { margin: 12px 0; padding-left: 20px; }
 .review-actions { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; padding-top: 16px; border-top: 1px solid var(--border); }
 .review-actions .btn[disabled] { opacity: .55; cursor: wait; }
+.notification-preferences { width: min(560px, 100%); }
+.notification-preferences h2 { margin: 4px 0 8px; font-family: var(--serif); color: var(--primary-deep); }
+.notification-help { margin: 0 0 12px; color: var(--text-sub); line-height: 1.6; font-size: 14px; }
+.notification-check {
+    display: flex; align-items: center; gap: 9px; margin: 12px 0;
+    color: var(--text-main); font-size: 14px; font-weight: 650;
+}
+.notification-check input { width: 18px; height: 18px; accent-color: var(--primary); }
+.notification-categories { margin: 14px 0; padding: 14px; border: 1px solid var(--border); border-radius: 12px; }
+.notification-categories legend { padding: 0 6px; color: var(--text-main); font-size: 13px; font-weight: 750; }
+#notification-category-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+#notification-category-list label { display: flex; align-items: center; gap: 7px; font-size: 13px; }
 
 @media (max-width: 1300px) {
     .header { grid-template-columns: 1fr auto; }
@@ -477,6 +489,7 @@ body {
     .review-notice-list { max-height: 240px; }
     .review-editor-grid { grid-template-columns: 1fr; }
     .review-editor-grid .wide { grid-column: auto; }
+    #notification-category-list { grid-template-columns: 1fr; }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -13,6 +13,15 @@ function errorResponse(res, error) {
     if (error?.code === 'NOTICE_NOT_PENDING') {
         return res.status(409).json({ error: '이미 처리되었거나 존재하지 않는 검수 공지입니다.' });
     }
+    if (error?.code === 'INVALID_PUSH_SUBSCRIPTION') {
+        return res.status(400).json({ error: error.message });
+    }
+    if (error?.code === 'INVALID_SUBSCRIPTION_TOKEN') {
+        return res.status(401).json({ error: error.message });
+    }
+    if (error?.code === 'PUSH_DISABLED') {
+        return res.status(503).json({ error: error.message });
+    }
     console.error('[automation-api]', error);
     return res.status(500).json({ error: error?.message || '자동화 요청 처리에 실패했습니다.' });
 }
@@ -21,14 +30,42 @@ export function createAutomationRouter({
     store,
     crawler,
     analyzer = null,
+    pushService = null,
     requireAdmin,
-    config
+    config,
+    frontendOrigin = ''
 }) {
     if (!store || !crawler || !requireAdmin || !config) {
         throw new Error('Automation router dependencies are required');
     }
 
     const router = express.Router();
+    const subscriptionRateLimits = new Map();
+
+    function validateSubscriptionMutation(req, res, { rateLimit = false } = {}) {
+        if (!req.is('application/json')) {
+            res.status(415).json({ error: 'Content-Type은 application/json이어야 합니다.' });
+            return false;
+        }
+        const origin = req.get('origin');
+        if (frontendOrigin && origin && origin !== frontendOrigin) {
+            res.status(403).json({ error: '허용되지 않은 요청 출처입니다.' });
+            return false;
+        }
+        if (rateLimit) {
+            const now = Date.now();
+            const key = req.ip || 'unknown';
+            const recent = (subscriptionRateLimits.get(key) || [])
+                .filter(timestamp => now - timestamp < 10 * 60 * 1000);
+            if (recent.length >= 5) {
+                res.status(429).json({ error: '잠시 후 다시 시도해주세요.' });
+                return false;
+            }
+            recent.push(now);
+            subscriptionRateLimits.set(key, recent);
+        }
+        return true;
+    }
 
     async function runCrawl(req, res) {
         try {
@@ -55,6 +92,56 @@ export function createAutomationRouter({
     });
 
     router.post('/api/admin/crawl/ece-academics', requireAdmin, runCrawl);
+
+    router.get('/api/push/public-key', (req, res) => {
+        if (!pushService?.publicKey) {
+            return res.status(503).json({ error: '웹 푸시가 설정되지 않았습니다.' });
+        }
+        res.json({ publicKey: pushService.publicKey });
+    });
+
+    router.post('/api/push/subscriptions', async (req, res) => {
+        if (!pushService) return res.status(503).json({ error: '웹 푸시가 설정되지 않았습니다.' });
+        if (!validateSubscriptionMutation(req, res, { rateLimit: true })) return;
+        try {
+            const created = await pushService.createSubscription(
+                req.body?.subscription,
+                req.body?.preferences
+            );
+            res.status(201).json(created);
+        } catch (error) {
+            errorResponse(res, error);
+        }
+    });
+
+    router.put('/api/push/subscriptions/:id', async (req, res) => {
+        if (!pushService) return res.status(503).json({ error: '웹 푸시가 설정되지 않았습니다.' });
+        if (!validateSubscriptionMutation(req, res)) return;
+        try {
+            const subscription = await pushService.updateSubscription(
+                req.params.id,
+                req.get('x-subscription-token'),
+                req.body?.preferences
+            );
+            res.json({ subscription });
+        } catch (error) {
+            errorResponse(res, error);
+        }
+    });
+
+    router.delete('/api/push/subscriptions/:id', async (req, res) => {
+        if (!pushService) return res.status(503).json({ error: '웹 푸시가 설정되지 않았습니다.' });
+        if (!validateSubscriptionMutation(req, res)) return;
+        try {
+            await pushService.deleteSubscription(
+                req.params.id,
+                req.get('x-subscription-token')
+            );
+            res.status(204).send();
+        } catch (error) {
+            errorResponse(res, error);
+        }
+    });
 
     router.get('/api/admin/crawl-runs', requireAdmin, async (req, res) => {
         try {

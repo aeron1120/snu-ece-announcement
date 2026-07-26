@@ -1852,3 +1852,167 @@ window.addEventListener('keydown', event => {
         closeReviewManager();
     }
 });
+
+function pushSupported() {
+    return 'serviceWorker' in navigator
+        && 'PushManager' in window
+        && 'Notification' in window;
+}
+
+function base64UrlToBytes(value) {
+    const padding = '='.repeat((4 - value.length % 4) % 4);
+    const base64 = (value + padding).replace(/-/g, '+').replace(/_/g, '/');
+    const raw = atob(base64);
+    return Uint8Array.from(raw, character => character.charCodeAt(0));
+}
+
+function setNotificationStatus(message, isError = false) {
+    const element = document.getElementById('notification-status');
+    element.textContent = message || '';
+    element.style.color = isError ? 'var(--danger)' : 'var(--text-sub)';
+}
+
+async function loadNotificationCategories() {
+    const list = document.getElementById('notification-category-list');
+    try {
+        const result = await apiRequest('/api/categories', { method: 'GET' });
+        const categories = Array.isArray(result?.categories) ? result.categories : [];
+        list.innerHTML = categories.length > 0
+            ? categories.map(category => `
+                <label>
+                    <input type="checkbox" name="notification-category" value="${escapeHtml(category.id)}">
+                    ${escapeHtml(category.name)}
+                </label>`).join('')
+            : '<span class="review-list-meta">등록된 카테고리가 없습니다. 모든 카테고리 알림을 선택하세요.</span>';
+    } catch {
+        list.innerHTML = '<span class="review-list-meta">카테고리를 불러오지 못했습니다. 모든 카테고리 알림을 선택할 수 있습니다.</span>';
+    }
+}
+
+async function openNotificationPreferences() {
+    const modal = document.getElementById('notification-modal');
+    modal.style.display = 'flex';
+    modal.setAttribute('aria-hidden', 'false');
+    const supported = pushSupported();
+    document.getElementById('notification-unsupported').hidden = supported;
+    document.getElementById('notification-form').hidden = !supported;
+    const hasManagementToken = Boolean(localStorage.getItem('ecePushManagementToken'));
+    document.getElementById('notification-delete').hidden = !hasManagementToken;
+    setNotificationStatus(
+        supported
+            ? (Notification.permission === 'denied'
+                ? '브라우저 설정에서 이 사이트의 알림 권한을 허용해주세요.'
+                : '저장 버튼을 누를 때 브라우저가 알림 권한을 요청합니다.')
+            : '현재 브라우저에서는 웹 푸시를 사용할 수 없습니다.',
+        supported && Notification.permission === 'denied'
+    );
+    await loadNotificationCategories();
+    modal.querySelector('.close-btn')?.focus();
+}
+
+function closeNotificationPreferences() {
+    const modal = document.getElementById('notification-modal');
+    modal.style.display = 'none';
+    modal.setAttribute('aria-hidden', 'true');
+}
+
+function collectNotificationPreferences() {
+    return {
+        admissionYear: document.getElementById('notification-year').value || null,
+        allNotices: document.getElementById('notification-all').checked,
+        categoryIds: Array.from(
+            document.querySelectorAll('input[name="notification-category"]:checked')
+        ).map(input => Number(input.value)),
+        urgentEnabled: document.getElementById('notification-urgent').checked,
+        deadlineReminderDays: Number(document.getElementById('notification-reminder').value) || null
+    };
+}
+
+async function saveNotificationPreferences() {
+    if (!pushSupported()) return;
+    const button = document.getElementById('notification-save');
+    button.disabled = true;
+    setNotificationStatus('알림 권한과 구독 정보를 확인하고 있습니다.');
+    try {
+        const permission = await Notification.requestPermission();
+        if (permission !== 'granted') {
+            throw new Error('알림 권한이 허용되지 않았습니다.');
+        }
+        const registration = await navigator.serviceWorker.ready;
+        let browserSubscription = await registration.pushManager.getSubscription();
+        const subscriptionId = localStorage.getItem('ecePushSubscriptionId');
+        const managementToken = localStorage.getItem('ecePushManagementToken');
+        const preferences = collectNotificationPreferences();
+
+        if (subscriptionId && managementToken && browserSubscription) {
+            await apiRequest(`/api/push/subscriptions/${encodeURIComponent(subscriptionId)}`, {
+                method: 'PUT',
+                headers: { 'x-subscription-token': managementToken },
+                body: JSON.stringify({ preferences })
+            });
+        } else {
+            const keyResult = await apiRequest('/api/push/public-key', { method: 'GET' });
+            browserSubscription = browserSubscription || await registration.pushManager.subscribe({
+                userVisibleOnly: true,
+                applicationServerKey: base64UrlToBytes(keyResult.publicKey)
+            });
+            const result = await apiRequest('/api/push/subscriptions', {
+                method: 'POST',
+                body: JSON.stringify({
+                    subscription: browserSubscription.toJSON(),
+                    preferences
+                })
+            });
+            localStorage.setItem('ecePushSubscriptionId', String(result.subscription.id));
+            localStorage.setItem('ecePushManagementToken', result.managementToken);
+        }
+        document.getElementById('notification-delete').hidden = false;
+        setNotificationStatus('이 기기의 알림 설정을 저장했습니다.');
+    } catch (error) {
+        setNotificationStatus(error.message, true);
+    } finally {
+        button.disabled = false;
+    }
+}
+
+async function unsubscribeNotifications() {
+    const subscriptionId = localStorage.getItem('ecePushSubscriptionId');
+    const managementToken = localStorage.getItem('ecePushManagementToken');
+    if (!subscriptionId || !managementToken) return;
+    const button = document.getElementById('notification-delete');
+    button.disabled = true;
+    setNotificationStatus('알림 구독을 해지하고 있습니다.');
+    try {
+        await apiRequest(`/api/push/subscriptions/${encodeURIComponent(subscriptionId)}`, {
+            method: 'DELETE',
+            headers: { 'x-subscription-token': managementToken },
+            body: JSON.stringify({})
+        });
+        const registration = await navigator.serviceWorker.ready;
+        const browserSubscription = await registration.pushManager.getSubscription();
+        await browserSubscription?.unsubscribe();
+        localStorage.removeItem('ecePushSubscriptionId');
+        localStorage.removeItem('ecePushManagementToken');
+        button.hidden = true;
+        setNotificationStatus('알림 구독을 해지했습니다.');
+    } catch (error) {
+        setNotificationStatus(error.message, true);
+    } finally {
+        button.disabled = false;
+    }
+}
+
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/service-worker.js').catch(error => {
+            console.error('서비스 워커 등록 실패:', error);
+        });
+    });
+}
+
+window.addEventListener('keydown', event => {
+    if (event.key === 'Escape'
+        && document.getElementById('notification-modal')?.style.display === 'flex') {
+        closeNotificationPreferences();
+    }
+});

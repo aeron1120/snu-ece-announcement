@@ -1,5 +1,6 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 
 function emptyDocument() {
     return {
@@ -307,6 +308,62 @@ function createJsonStore(filePath) {
             return document.notificationJobs.map(job => ({ ...job }));
         },
 
+        async createPushSubscription(input) {
+            return mutate(document => {
+                const existing = document.pushSubscriptions.find(item =>
+                    item.endpoint === input.endpoint
+                );
+                if (existing) {
+                    Object.assign(existing, input, { updatedAt: new Date().toISOString() });
+                    return { ...existing };
+                }
+                const subscription = {
+                    id: crypto.randomUUID(),
+                    ...input
+                };
+                document.pushSubscriptions.push(subscription);
+                return { ...subscription };
+            });
+        },
+
+        async getPushSubscription(id) {
+            const document = await readDocument();
+            const subscription = document.pushSubscriptions.find(item =>
+                String(item.id) === String(id)
+            );
+            return subscription ? { ...subscription } : null;
+        },
+
+        async updatePushSubscription(id, preferences) {
+            return mutate(document => {
+                const subscription = document.pushSubscriptions.find(item =>
+                    String(item.id) === String(id)
+                );
+                if (!subscription) throw new Error('push subscription not found');
+                Object.assign(subscription, preferences, {
+                    status: 'active',
+                    updatedAt: new Date().toISOString()
+                });
+                return { ...subscription };
+            });
+        },
+
+        async deletePushSubscription(id) {
+            return mutate(document => {
+                const index = document.pushSubscriptions.findIndex(item =>
+                    String(item.id) === String(id)
+                );
+                if (index < 0) return false;
+                document.pushSubscriptions.splice(index, 1);
+                return true;
+            });
+        },
+
+        async listPushSubscriptions() {
+            const document = await readDocument();
+            return document.pushSubscriptions.map(subscription => ({ ...subscription }));
+        },
+
         async listCrawlRuns() {
             const document = await readDocument();
             return document.crawlRuns
@@ -492,6 +549,102 @@ function createSupabaseStore(supabase) {
                 .order('created_at', { ascending: false });
             if (error) throw error;
             return data || [];
+        },
+
+        async createPushSubscription(input) {
+            const payload = {
+                endpoint: input.endpoint,
+                p256dh: input.p256dh,
+                auth: input.auth,
+                management_token_hash: input.managementTokenHash,
+                admission_year: input.admissionYear,
+                all_notices: input.allNotices,
+                category_ids: input.categoryIds,
+                urgent_enabled: input.urgentEnabled,
+                deadline_reminder_days: input.deadlineReminderDays,
+                status: 'active',
+                updated_at: new Date().toISOString()
+            };
+            const { data, error } = await supabase
+                .from('push_subscriptions')
+                .upsert(payload, { onConflict: 'endpoint' })
+                .select('*')
+                .single();
+            if (error) throw error;
+            return {
+                id: data.id,
+                endpoint: data.endpoint,
+                p256dh: data.p256dh,
+                auth: data.auth,
+                managementTokenHash: data.management_token_hash,
+                admissionYear: data.admission_year,
+                allNotices: data.all_notices,
+                categoryIds: data.category_ids || [],
+                urgentEnabled: data.urgent_enabled,
+                deadlineReminderDays: data.deadline_reminder_days,
+                status: data.status
+            };
+        },
+
+        async getPushSubscription(id) {
+            const { data, error } = await supabase
+                .from('push_subscriptions')
+                .select('*')
+                .eq('id', id)
+                .maybeSingle();
+            if (error) throw error;
+            if (!data) return null;
+            return {
+                id: data.id,
+                endpoint: data.endpoint,
+                p256dh: data.p256dh,
+                auth: data.auth,
+                managementTokenHash: data.management_token_hash,
+                admissionYear: data.admission_year,
+                allNotices: data.all_notices,
+                categoryIds: data.category_ids || [],
+                urgentEnabled: data.urgent_enabled,
+                deadlineReminderDays: data.deadline_reminder_days,
+                status: data.status
+            };
+        },
+
+        async updatePushSubscription(id, preferences) {
+            const payload = {
+                admission_year: preferences.admissionYear,
+                all_notices: preferences.allNotices,
+                category_ids: preferences.categoryIds,
+                urgent_enabled: preferences.urgentEnabled,
+                deadline_reminder_days: preferences.deadlineReminderDays,
+                status: 'active',
+                updated_at: new Date().toISOString()
+            };
+            const { data, error } = await supabase
+                .from('push_subscriptions')
+                .update(payload)
+                .eq('id', id)
+                .select('*')
+                .single();
+            if (error) throw error;
+            return this.getPushSubscription(data.id);
+        },
+
+        async deletePushSubscription(id) {
+            const { error } = await supabase
+                .from('push_subscriptions')
+                .delete()
+                .eq('id', id);
+            if (error) throw error;
+            return true;
+        },
+
+        async listPushSubscriptions() {
+            const { data, error } = await supabase
+                .from('push_subscriptions')
+                .select('*')
+                .eq('status', 'active');
+            if (error) throw error;
+            return Promise.all((data || []).map(item => this.getPushSubscription(item.id)));
         },
 
         async listCrawlRuns() {

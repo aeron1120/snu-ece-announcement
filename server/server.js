@@ -12,6 +12,8 @@ import { createEceCrawler } from './services/ece-crawler.js';
 import * as eceParser from './services/ece-parser.js';
 import { createNoticeAnalyzer } from './services/notice-analyzer.js';
 import { createAutomationRouter } from './routes/automation-routes.js';
+import webPush from 'web-push';
+import { createPushService } from './services/push-service.js';
 
 dotenv.config();
 
@@ -44,6 +46,11 @@ const eceCrawler = createEceCrawler({
     parser: eceParser,
     analyzer: noticeAnalyzer,
     config: automationConfig.crawl
+});
+const pushService = createPushService({
+    store: automationStore,
+    webPushClient: webPush,
+    config: automationConfig.push
 });
 let bannerStorageMode = useSupabase ? 'supabase' : 'file';
 const initialNoticeAdminToken = NOTICE_ADMIN_TOKEN;
@@ -956,8 +963,10 @@ app.use(createAutomationRouter({
     store: automationStore,
     crawler: eceCrawler,
     analyzer: noticeAnalyzer,
+    pushService,
     requireAdmin: requireNoticeAdmin,
-    config: automationConfig
+    config: automationConfig,
+    frontendOrigin: process.env.FRONTEND_ORIGIN || ''
 }));
 
 app.get('/api/health', (req, res) => {

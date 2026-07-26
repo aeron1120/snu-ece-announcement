@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="SNU ECE 공지">
+  <rect width="512" height="512" rx="112" fill="#1e3a8a"/>
+  <path d="M116 154h280v204H116z" fill="#fff" opacity=".98"/>
+  <path d="M148 190h216v28H148zm0 58h216v28H148zm0 58h142v28H148z" fill="#1e3a8a"/>
+  <circle cx="365" cy="340" r="62" fill="#f97316"/>
+  <path d="M365 300v45l29 18" fill="none" stroke="#fff" stroke-width="18" stroke-linecap="round"/>
+</svg>
