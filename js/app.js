@@ -1214,7 +1214,8 @@ function filterCards() {
         const dDay = calcDDay(notice.deadline);
         const safeTitle = escapeHtml(notice.title || "");
         let imgHtml = (notice.images && notice.images.length > 0) ? `<img src="${escapeHtml(notice.images[0])}" class="card-img-preview" style="display:block;">` : '';
-        const cardClass = dDay.isD1 ? "card d1-card" : "card";
+        // 태그 색과 같은 기준(마감 3일 이내)으로 카드 왼쪽 세로선을 붉게 한다.
+        const cardClass = dDay.isUrgent ? "card card-urgent" : "card";
         const starClass = isSaved ? 'star-icon active' : 'star-icon';
         const starChar = isSaved ? '★' : '☆';
 

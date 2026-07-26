@@ -17,7 +17,7 @@
     --border-soft: #eef0f3;
     --danger: #c0392b;
     --danger-bg: #fdf2f0;
-    --d1-bg: #fdfaf9;
+    --urgent-bg: #fdfaf9;
     --star-active: #d99e2b;
     --ok: #2f6b48;
     --ok-bg: #eef5f0;
@@ -181,7 +181,8 @@ body {
     font-size: 12.5px; color: var(--text-sub); display: flex; align-items: center;
     margin-right: auto; font-weight: 600; font-variant-numeric: tabular-nums;
 }
-.filter-result-count strong { color: var(--primary); margin: 0 3px; }
+/* 좌우 여백을 주면 "결과 4 건"처럼 숫자와 단위가 벌어진다. */
+.filter-result-count strong { color: var(--primary); }
 
 /* ---------- 공지 그리드 & 카드 ---------- */
 .grid {
@@ -199,8 +200,9 @@ body {
     transition: border-color 0.15s;
 }
 .card:hover { border-color: #b9c0cb; border-left-color: var(--primary); }
-.card.d1-card { background-color: var(--d1-bg); border-left-color: var(--danger); }
-.card.d1-card:hover { border-color: #e3c6c1; border-left-color: var(--danger); }
+/* 마감 3일 이내. D-1 전용이 아니라 태그가 붉어지는 조건과 같은 범위다. */
+.card.card-urgent { background-color: var(--urgent-bg); border-left-color: var(--danger); }
+.card.card-urgent:hover { border-color: #e3c6c1; border-left-color: var(--danger); }
 
 /* 포스터 썸네일 — 이미지가 있는 공지에만 붙고, 카드 맨 위에 온다 */
 .card-img-preview {
