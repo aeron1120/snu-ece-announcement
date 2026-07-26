@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "start": "node server/server.js",
-    "prepare:public": "rm -rf public && mkdir -p public/css public/js && cp index.html public/ && cp css/style.css public/css/ && cp js/*.js public/js/"
+    "test": "node --test --test-concurrency=1",
+    "prepare:public": "node scripts/prepare-public.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.100.1",
