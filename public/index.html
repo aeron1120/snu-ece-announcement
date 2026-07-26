@@ -48,6 +48,9 @@
 
     <div class="header-actions">
         <button class="btn btn-outline" onclick="location.reload()">새로고침</button>
+        <button class="btn btn-outline" id="review-manager-open" onclick="openReviewManager()">
+            검수 대기 <span id="review-pending-count" aria-label="검수 대기 공지 수">—</span>
+        </button>
         <button class="btn" onclick="openAddNotice()">공지 추가하기</button>
     </div>
 </div>
@@ -378,6 +381,28 @@
     <div id="compare-slots-area" style="display:flex; gap:10px; flex-wrap:wrap; flex:1;"></div>
     <button class="btn btn-small" onclick="openCompareModal()" id="compare-exec-btn" style="flex-shrink:0;">비교 보기</button>
     <button class="btn btn-outline btn-small" onclick="clearCompare()" style="flex-shrink:0;">초기화</button>
+</div>
+
+<div class="overlay" id="review-manager-modal" aria-hidden="true">
+    <div class="modal review-manager" role="dialog" aria-modal="true" aria-labelledby="review-manager-title" onclick="event.stopPropagation()">
+        <div class="review-manager-header">
+            <div>
+                <p class="review-eyebrow">ECE 사이트 자동 수집</p>
+                <h2 id="review-manager-title">공지 검수함</h2>
+            </div>
+            <button class="close-btn" type="button" aria-label="공지 검수함 닫기" onclick="closeReviewManager()">×</button>
+        </div>
+        <p id="review-status" class="review-status" aria-live="polite"></p>
+        <div class="review-layout">
+            <aside class="review-list-pane" aria-label="검수 대기 공지">
+                <button class="btn btn-outline btn-small" type="button" onclick="runManualCrawl()">지금 새 공지 확인</button>
+                <div id="review-notice-list" class="review-notice-list"></div>
+            </aside>
+            <section id="review-editor" class="review-editor" aria-label="공지 검수 편집기">
+                <div class="review-empty">왼쪽에서 검수할 공지를 선택하세요.</div>
+            </section>
+        </div>
+    </div>
 </div>
 
 <!-- 비교 모달 -->

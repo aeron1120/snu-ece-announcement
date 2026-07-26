@@ -44,6 +44,10 @@ let bannerAdminInfo = { name: "학생회 대외협력국 (국장 : 이배너)", 
 let noticeAdminAuthToken = '';
 let superAdminAuthToken = '';
 let bannerManageAuthToken = '';
+let reviewNotices = [];
+let selectedReviewNoticeId = null;
+let reviewMutationInFlight = false;
+let reviewManagerOpener = null;
 
 // 서버에 등록된 배너가 하나도 없을 때 배너 영역이 비어 보이지 않도록 쓰는 안내 문구.
 // 실제 광고가 아니므로 마감일·모집 같은 허위 정보를 넣지 않는다.
@@ -476,6 +480,29 @@ function openAddNotice() {
     openModal('pwd-modal');
 }
 
+function openReviewManager() {
+    reviewManagerOpener = document.activeElement;
+    if (!noticeAdminAuthToken) {
+        pendingAuthAction = 'review';
+        document.getElementById('admin-pwd').value = '';
+        setPasswordModalTexts('공지 검수 관리자 인증', '자동 수집 공지를 검수하려면 관리자 비밀번호를 입력하세요.');
+        openModal('pwd-modal');
+        return;
+    }
+    const modal = document.getElementById('review-manager-modal');
+    modal.style.display = 'flex';
+    modal.setAttribute('aria-hidden', 'false');
+    loadReviewNotices();
+    modal.querySelector('.close-btn')?.focus();
+}
+
+function closeReviewManager() {
+    const modal = document.getElementById('review-manager-modal');
+    modal.style.display = 'none';
+    modal.setAttribute('aria-hidden', 'true');
+    reviewManagerOpener?.focus();
+}
+
 function triggerEditNotice() {
     if(!currentViewId) return;
     pendingAuthAction = 'edit';
@@ -583,6 +610,11 @@ async function verifyPassword() {
         document.getElementById('edit-banner-admin-name').value = bannerAdminInfo.name;
         document.getElementById('edit-banner-admin-phone').value = bannerAdminInfo.phone;
         document.getElementById('edit-banner-admin-kakao').value = bannerAdminInfo.kakao;
+    } else if (pendingAuthAction === 'review') {
+        const modal = document.getElementById('review-manager-modal');
+        modal.style.display = 'flex';
+        modal.setAttribute('aria-hidden', 'false');
+        await loadReviewNotices();
     }
 
     pendingAuthAction = null;
@@ -1556,4 +1588,267 @@ document.addEventListener('DOMContentLoaded', async function () {
     
     clearInterval(bannerInterval);
     bannerInterval = setInterval(slideBanner, 15000);
+});
+
+function setReviewStatus(message, isError = false) {
+    const status = document.getElementById('review-status');
+    if (!status) return;
+    status.textContent = message || '';
+    status.style.color = isError ? 'var(--danger)' : 'var(--text-sub)';
+}
+
+function splitReviewValues(value) {
+    return String(value || '').split(',').map(item => item.trim())
+        .filter((item, index, all) => item && all.indexOf(item) === index);
+}
+
+async function loadReviewNotices() {
+    const list = document.getElementById('review-notice-list');
+    if (!list) return;
+    list.innerHTML = '<div class="review-empty">검수 대기 공지를 불러오는 중입니다.</div>';
+    setReviewStatus('목록을 갱신하고 있습니다.');
+    try {
+        const result = await apiRequest('/api/admin/review-notices', {
+            method: 'GET',
+            headers: getNoticeAdminHeaders()
+        });
+        reviewNotices = Array.isArray(result?.notices) ? result.notices : [];
+        document.getElementById('review-pending-count').textContent = String(reviewNotices.length);
+        renderReviewNoticeList();
+        setReviewStatus(reviewNotices.length > 0
+            ? `검수 대기 공지 ${reviewNotices.length}건`
+            : '현재 검수 대기 공지가 없습니다.');
+        if (reviewNotices.length === 0) {
+            selectedReviewNoticeId = null;
+            document.getElementById('review-editor').innerHTML =
+                '<div class="review-empty">현재 검수 대기 공지가 없습니다.</div>';
+        } else if (!reviewNotices.some(item =>
+            String(item.id) === String(selectedReviewNoticeId))) {
+            await openReviewNotice(reviewNotices[0].id);
+        }
+    } catch (error) {
+        list.innerHTML = '<div class="review-empty">검수 목록을 불러오지 못했습니다.</div>';
+        setReviewStatus(error.message, true);
+    }
+}
+
+function renderReviewNoticeList() {
+    const list = document.getElementById('review-notice-list');
+    list.innerHTML = '';
+    for (const notice of reviewNotices) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = `review-list-item ${
+            String(notice.id) === String(selectedReviewNoticeId) ? 'active' : ''
+        }`;
+        button.innerHTML = `
+            <span class="review-list-title">${escapeHtml(notice.title || '제목 없음')}</span>
+            <span class="review-list-meta">
+                ${escapeHtml(notice.sourcePublishedAt?.slice(0, 10) || '날짜 미상')}
+                · 분석 ${escapeHtml(notice.analysisStatus || '대기')}
+            </span>`;
+        button.addEventListener('click', () => openReviewNotice(notice.id));
+        list.appendChild(button);
+    }
+}
+
+async function openReviewNotice(id) {
+    selectedReviewNoticeId = String(id);
+    renderReviewNoticeList();
+    setReviewStatus('공지 상세를 불러오는 중입니다.');
+    try {
+        const result = await apiRequest(
+            `/api/admin/review-notices/${encodeURIComponent(id)}`,
+            { method: 'GET', headers: getNoticeAdminHeaders() }
+        );
+        renderReviewEditor(result.notice);
+        setReviewStatus('원문과 AI 분석 결과를 확인한 뒤 승인 또는 반려하세요.');
+    } catch (error) {
+        setReviewStatus(error.message, true);
+    }
+}
+
+function renderReviewEditor(notice) {
+    const editor = document.getElementById('review-editor');
+    const summaries = Array.isArray(notice.aiSummary) ? notice.aiSummary : [];
+    const attachments = Array.isArray(notice.attachments) ? notice.attachments : [];
+    const keywords = Array.isArray(notice.keywords) ? notice.keywords : [];
+    const attachmentHtml = attachments.length
+        ? `<ul class="review-attachments">${attachments.map(file => `
+            <li><a href="${escapeHtml(file.url || '#')}" target="_blank" rel="noopener noreferrer">${escapeHtml(file.name || '첨부파일')}</a></li>
+        `).join('')}</ul>`
+        : '<p class="review-list-meta">첨부파일 없음</p>';
+    editor.innerHTML = `
+        <div class="review-source">
+            <strong>출처</strong>
+            <a href="${escapeHtml(notice.sourceUrl || '#')}" target="_blank" rel="noopener noreferrer">ECE 원문 열기</a>
+            <span>분석 상태: ${escapeHtml(notice.analysisStatus || '대기')}</span>
+            <span>신뢰도: ${notice.analysisConfidence == null ? '—' : escapeHtml(notice.analysisConfidence)}</span>
+        </div>
+        <div class="review-editor-grid">
+            <div class="form-group wide">
+                <label for="review-title">공지 제목</label>
+                <input id="review-title" type="text" value="${escapeHtml(notice.title || '')}">
+            </div>
+            <div class="form-group">
+                <label for="review-targets">대상 학번 (쉼표로 구분)</label>
+                <input id="review-targets" type="text" value="${escapeHtml((notice.targets || []).join(', '))}">
+            </div>
+            <div class="form-group">
+                <label for="review-host">주관 기관</label>
+                <input id="review-host" type="text" value="${escapeHtml(notice.host || '')}">
+            </div>
+            <div class="form-group">
+                <label for="review-deadline">마감일</label>
+                <input id="review-deadline" type="date" value="${escapeHtml(notice.deadline || '')}">
+            </div>
+            <div class="form-group">
+                <label for="review-keywords">키워드 (쉼표로 구분)</label>
+                <input id="review-keywords" type="text" value="${escapeHtml(keywords.join(', '))}">
+            </div>
+            <div class="form-group wide">
+                <label for="review-summary">AI 요약 (한 줄에 하나)</label>
+                <textarea id="review-summary">${escapeHtml(summaries.join('\n'))}</textarea>
+            </div>
+            <div class="form-group wide">
+                <label for="review-content">공지 원문</label>
+                <textarea id="review-content">${escapeHtml(notice.content || '')}</textarea>
+            </div>
+        </div>
+        <div class="review-analysis">
+            <strong>카테고리</strong>
+            <div id="review-category-checkboxes" class="review-keywords">
+                <span class="review-list-meta">활성 카테고리는 카테고리 관리 기능과 함께 표시됩니다.</span>
+            </div>
+            <div class="review-keywords">${keywords.map(keyword =>
+                `<span class="review-keyword">${escapeHtml(keyword)}</span>`
+            ).join('')}</div>
+        </div>
+        <strong>첨부파일</strong>
+        ${attachmentHtml}
+        <div class="review-actions">
+            <button class="btn btn-outline btn-small review-action" type="button" onclick="reanalyzeReviewNotice()">재분석</button>
+            <button class="btn btn-danger btn-small review-action" type="button" onclick="rejectReviewNotice()">반려</button>
+            <button class="btn btn-outline btn-small review-action" type="button" onclick="publishReviewNotice(false)">승인만</button>
+            <button class="btn btn-small review-action" type="button" onclick="publishReviewNotice(true)">승인 및 알림</button>
+        </div>`;
+}
+
+function setReviewMutationBusy(busy) {
+    reviewMutationInFlight = busy;
+    document.querySelectorAll('.review-action').forEach(button => {
+        button.disabled = busy;
+    });
+}
+
+function collectReviewEdits() {
+    return {
+        title: document.getElementById('review-title').value.trim(),
+        content: document.getElementById('review-content').value.trim(),
+        host: document.getElementById('review-host').value.trim(),
+        deadline: document.getElementById('review-deadline').value || null,
+        targets: splitReviewValues(document.getElementById('review-targets').value),
+        keywords: splitReviewValues(document.getElementById('review-keywords').value),
+        aiSummary: document.getElementById('review-summary').value
+            .split('\n').map(item => item.trim()).filter(Boolean)
+    };
+}
+
+async function refreshPublishedNotices() {
+    const result = await apiRequest('/api/notices', { method: 'GET' });
+    notices = Array.isArray(result?.notices) ? result.notices : [];
+    filterCards();
+}
+
+async function publishReviewNotice(notify) {
+    if (reviewMutationInFlight || !selectedReviewNoticeId) return;
+    const edits = collectReviewEdits();
+    if (!edits.title || !edits.content || edits.targets.length === 0) {
+        setReviewStatus('제목, 원문, 대상 학번을 확인해주세요.', true);
+        return;
+    }
+    setReviewMutationBusy(true);
+    setReviewStatus(notify ? '승인하고 알림 작업을 만들고 있습니다.' : '공지를 승인하고 있습니다.');
+    try {
+        await apiRequest(`/api/admin/review-notices/${encodeURIComponent(selectedReviewNoticeId)}/publish`, {
+            method: 'POST',
+            headers: getNoticeAdminHeaders(),
+            body: JSON.stringify({ edits, notify })
+        });
+        selectedReviewNoticeId = null;
+        await Promise.all([loadReviewNotices(), refreshPublishedNotices()]);
+        setReviewStatus(notify ? '공지 승인과 알림 예약이 완료되었습니다.' : '공지가 승인되었습니다.');
+    } catch (error) {
+        setReviewStatus(error.message, true);
+    } finally {
+        setReviewMutationBusy(false);
+    }
+}
+
+async function rejectReviewNotice() {
+    if (reviewMutationInFlight || !selectedReviewNoticeId) return;
+    const reason = window.prompt('반려 사유를 입력하세요. (선택)') ?? '';
+    setReviewMutationBusy(true);
+    setReviewStatus('공지를 반려하고 있습니다.');
+    try {
+        await apiRequest(`/api/admin/review-notices/${encodeURIComponent(selectedReviewNoticeId)}/reject`, {
+            method: 'POST',
+            headers: getNoticeAdminHeaders(),
+            body: JSON.stringify({ reason })
+        });
+        selectedReviewNoticeId = null;
+        await loadReviewNotices();
+        setReviewStatus('공지가 반려되었습니다.');
+    } catch (error) {
+        setReviewStatus(error.message, true);
+    } finally {
+        setReviewMutationBusy(false);
+    }
+}
+
+async function reanalyzeReviewNotice() {
+    if (reviewMutationInFlight || !selectedReviewNoticeId) return;
+    setReviewMutationBusy(true);
+    setReviewStatus('AI가 원문을 다시 분석하고 있습니다.');
+    try {
+        const result = await apiRequest(
+            `/api/admin/review-notices/${encodeURIComponent(selectedReviewNoticeId)}/reanalyze`,
+            { method: 'POST', headers: getNoticeAdminHeaders() }
+        );
+        const index = reviewNotices.findIndex(item =>
+            String(item.id) === String(selectedReviewNoticeId));
+        if (index >= 0) reviewNotices[index] = result.notice;
+        renderReviewEditor(result.notice);
+        renderReviewNoticeList();
+        setReviewStatus('AI 재분석이 완료되었습니다.');
+    } catch (error) {
+        setReviewStatus(error.message, true);
+    } finally {
+        setReviewMutationBusy(false);
+    }
+}
+
+async function runManualCrawl() {
+    if (reviewMutationInFlight) return;
+    setReviewMutationBusy(true);
+    setReviewStatus('ECE 사이트에서 새 공지를 확인하고 있습니다.');
+    try {
+        const result = await apiRequest('/api/admin/crawl/ece-academics', {
+            method: 'POST',
+            headers: getNoticeAdminHeaders()
+        });
+        await loadReviewNotices();
+        setReviewStatus(`확인 완료: 새 검수 공지 ${Number(result.createdCount) || 0}건`);
+    } catch (error) {
+        setReviewStatus(error.message, true);
+    } finally {
+        setReviewMutationBusy(false);
+    }
+}
+
+window.addEventListener('keydown', event => {
+    if (event.key === 'Escape'
+        && document.getElementById('review-manager-modal')?.style.display === 'flex') {
+        closeReviewManager();
+    }
 });

@@ -25,3 +25,18 @@ test('preparePublic copies canonical frontend files', async () => {
         'window.ok=true'
     );
 });
+
+test('canonical HTML includes the administrator review manager contract', async () => {
+    const html = await readFile('index.html', 'utf8');
+
+    for (const id of [
+        'review-manager-modal',
+        'review-notice-list',
+        'review-editor',
+        'review-pending-count'
+    ]) {
+        assert.match(html, new RegExp(`id="${id}"`));
+    }
+    assert.match(html, /role="dialog"/);
+    assert.match(html, /aria-live="polite"/);
+});
