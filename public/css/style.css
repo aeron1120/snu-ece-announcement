@@ -203,6 +203,14 @@ body {
 /* 마감 3일 이내. D-1 전용이 아니라 태그가 붉어지는 조건과 같은 범위다. */
 .card.card-urgent { background-color: var(--urgent-bg); border-left-color: var(--danger); }
 .card.card-urgent:hover { border-color: #e3c6c1; border-left-color: var(--danger); }
+.card.card-expired {
+    background-color: #f7f8fa;
+    border-left-color: #8b929d;
+}
+.card.card-expired:hover {
+    border-color: #c5c9d0;
+    border-left-color: #737b87;
+}
 
 /* 포스터 썸네일 — 이미지가 있는 공지에만 붙고, 카드 맨 위에 온다 */
 .card-img-preview {
@@ -229,6 +237,10 @@ body {
 .tags .tag:first-child { background: var(--primary-light); color: var(--primary); }
 /* 마감 3일 이내면 .d-day가 붙는다. 같은 특이도이므로 뒤에 와서 이긴다. */
 .tags .tag.d-day { background: var(--danger-bg); color: var(--danger); }
+.tags .tag.expired {
+    background: #e8eaee;
+    color: #59616d;
+}
 .tag.target { background: var(--ok-bg); color: var(--ok); }
 
 .card h3 {

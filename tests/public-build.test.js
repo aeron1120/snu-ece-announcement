@@ -53,6 +53,19 @@ test('PWA manifest and service worker include install and push contracts', async
     assert.match(worker, /!APP_SHELL\.includes\(url\.pathname\)/);
 });
 
+test('expired notices use a neutral card and badge state in list and detail views', async () => {
+    const app = await readFile('js/app.js', 'utf8');
+    const css = await readFile('css/style.css', 'utf8');
+
+    assert.match(app, /isExpired:\s*true/);
+    assert.match(app, /card-expired/);
+    assert.match(app, /dDay\.isExpired\s*\?\s*'expired'/);
+    assert.match(css, /\.card\.card-expired\s*\{/);
+    assert.match(css, /\.tags \.tag\.expired\s*\{/);
+    assert.doesNotMatch(css, /\.card\.card-expired[^{]*\{[^}]*opacity\s*:/s);
+    assert.doesNotMatch(css, /\.card\.card-expired[^{]*\{[^}]*text-decoration\s*:/s);
+});
+
 test('Cloudflare scheduled worker triggers the protected crawl endpoint', async () => {
     const worker = (await import('../cloudflare/crawl-worker.js')).default;
     const calls = [];

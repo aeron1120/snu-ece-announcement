@@ -256,14 +256,14 @@ function copyAdminPhone() { copyToClipboard(adminInfo.phone); }
 function getBase64(file) { return new Promise((resolve, reject) => { const reader = new FileReader(); reader.readAsDataURL(file); reader.onload = () => resolve(reader.result); reader.onerror = e => reject(e); }); }
 
 function calcDDay(deadlineStr) {
-    if (!deadlineStr) return { text: "상시", isUrgent: false, isD1: false };
+    if (!deadlineStr) return { text: "상시", isUrgent: false, isD1: false, isExpired: false };
     const dDate = new Date(deadlineStr + "T23:59:59");
     const diffDays = Math.ceil((dDate - getCurrentDate()) / (1000 * 60 * 60 * 24));
-    if (diffDays < 0) return { text: "마감됨", isUrgent: false, isD1: false };
-    if (diffDays === 0) return { text: "D-Day", isUrgent: true, isD1: false };
-    if (diffDays === 1) return { text: "D-1", isUrgent: true, isD1: true };
-    if (diffDays <= 3) return { text: `D-${diffDays}`, isUrgent: true, isD1: false };
-    return { text: `D-${diffDays}`, isUrgent: false, isD1: false };
+    if (diffDays < 0) return { text: "마감됨", isUrgent: false, isD1: false, isExpired: true };
+    if (diffDays === 0) return { text: "D-Day", isUrgent: true, isD1: false, isExpired: false };
+    if (diffDays === 1) return { text: "D-1", isUrgent: true, isD1: true, isExpired: false };
+    if (diffDays <= 3) return { text: `D-${diffDays}`, isUrgent: true, isD1: false, isExpired: false };
+    return { text: `D-${diffDays}`, isUrgent: false, isD1: false, isExpired: false };
 }
 
 // 공지 제목·기관·배너 문구는 관리자가 자유롭게 입력하므로, HTML로 조립하기 전에 반드시 이스케이프한다.
@@ -1370,7 +1370,16 @@ function filterCards() {
         const safeTitle = escapeHtml(notice.title || "");
         let imgHtml = (notice.images && notice.images.length > 0) ? `<img src="${escapeHtml(notice.images[0])}" class="card-img-preview" style="display:block;">` : '';
         // 태그 색과 같은 기준(마감 3일 이내)으로 카드 왼쪽 세로선을 붉게 한다.
-        const cardClass = dDay.isUrgent ? "card card-urgent" : "card";
+        const cardClass = dDay.isExpired
+            ? "card card-expired"
+            : dDay.isUrgent
+                ? "card card-urgent"
+                : "card";
+        const deadlineTagClass = dDay.isExpired
+            ? 'expired'
+            : dDay.isUrgent
+                ? 'd-day'
+                : '';
         const starClass = isSaved ? 'star-icon active' : 'star-icon';
         const starChar = isSaved ? '★' : '☆';
 
@@ -1383,7 +1392,7 @@ function filterCards() {
             <div class="card-body">
                 <div class="${starClass}" onclick="toggleSave(event, '${escapeHtml(notice.id)}')">${starChar}</div>
                 <div class="tags">
-                    <span class="tag ${dDay.isUrgent ? 'd-day' : ''}">${dDay.text}</span>
+                    <span class="tag ${deadlineTagClass}">${dDay.text}</span>
                     <span class="tag target">${escapeHtml(notice.target || '전체')}</span>
                     <span class="tag">${escapeHtml(notice.host || '')}</span>
                 </div>
@@ -1502,8 +1511,13 @@ function openDetail(idStr) {
         });
 
     const dDay = calcDDay(notice.deadline);
+    const deadlineTagClass = dDay.isExpired
+        ? 'expired'
+        : dDay.isUrgent
+            ? 'd-day'
+            : '';
     document.getElementById('detail-tags').innerHTML = `
-        <span class="tag ${dDay.isUrgent ? 'd-day' : ''}">${dDay.text}</span>
+        <span class="tag ${deadlineTagClass}">${dDay.text}</span>
         <span class="tag target">${escapeHtml(notice.target || '전체')}</span>
         <span class="tag">${escapeHtml(notice.host || '')}</span>
     `;
