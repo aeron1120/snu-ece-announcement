@@ -1272,7 +1272,7 @@ async function updateBannerSlide(slideId) {
                 description: descriptionInput ? descriptionInput.value.trim() : (prevSlide.description || ''),
                 linkUrl: linkInput ? linkInput.value.trim() : (prevSlide.linkUrl || ''),
                 altText: altInput ? altInput.value.trim() : (prevSlide.altText || ''),
-                expiresAt: expiresAt ? new Date(expiresAt).toISOString() : ''
+                expiresAt
             })
         });
 

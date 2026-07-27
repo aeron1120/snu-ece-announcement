@@ -116,6 +116,25 @@ test('banner manager preserves an untouched expiry ISO value', async () => {
         }),
         new Date('2030-04-05T06:08').toISOString()
     );
+
+    const originalOffsetIso = '2030-04-05T15:07:08.987+09:00';
+    assert.equal(
+        resolveUpdateExpiresAt({
+            value: '2030-04-05T15:07',
+            dataset: {
+                originalExpiresAt: originalOffsetIso,
+                originalLocalValue: '2030-04-05T15:07'
+            }
+        }),
+        originalOffsetIso
+    );
+
+    const updateSource = app.slice(
+        app.indexOf('async function updateBannerSlide(slideId)'),
+        app.indexOf('\nasync function moveBanner(', app.indexOf('async function updateBannerSlide(slideId)'))
+    );
+    assert.match(updateSource, /expiresAt\s*\n\s*\}\)/);
+    assert.doesNotMatch(updateSource, /expiresAt:\s*expiresAt\s*\?\s*new Date\(expiresAt\)\.toISOString\(\)\s*:\s*''/);
 });
 
 test('PWA manifest and service worker include install and push contracts', async () => {
