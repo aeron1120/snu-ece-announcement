@@ -1094,9 +1094,8 @@ function toDateTimeLocalValue(value) {
 
 function resolveUpdateExpiresAt(input) {
     const value = input?.value || '';
-    const originalExpiresAt = input?.dataset?.originalExpiresAt || '';
     const originalLocalValue = input?.dataset?.originalLocalValue || '';
-    if (value === originalLocalValue) return originalExpiresAt;
+    if (value === originalLocalValue) return '';
     return value ? new Date(value).toISOString() : '';
 }
 
@@ -1138,7 +1137,7 @@ function renderBannerSection(placement, title) {
                 <input type="text" maxlength="50" placeholder="관리용 이름" value="${escapeHtml(slide.name || '')}" class="banner-input-name-${safeId}">
                 <input type="text" maxlength="100" placeholder="배너 텍스트" value="${safeText}" class="banner-input-text-${safeId}">
                 <input type="color" value="${escapeHtml(slide.textColor || '#000000')}" class="banner-input-color-${safeId}">
-                <input type="datetime-local" value="${localExpiresAt}" data-original-expires-at="${escapeHtml(slide.expiresAt || '')}" data-original-local-value="${localExpiresAt}" class="banner-input-expires-at-${safeId}">
+                <input type="datetime-local" value="${localExpiresAt}" data-original-local-value="${localExpiresAt}" class="banner-input-expires-at-${safeId}">
                 ${rightRailFields}
                 <input type="file" accept="image/*" class="banner-input-file-${safeId}">
                 <button class="btn btn-small" onclick="updateBannerSlide(${safeId})">수정</button>

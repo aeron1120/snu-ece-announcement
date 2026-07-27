@@ -88,7 +88,7 @@ test('banner manager separates header slides from right rail ads', async () => {
     assert.match(app, /async function moveBanner\(placement, idx, dir\)/);
 });
 
-test('banner manager preserves an untouched expiry ISO value', async () => {
+test('banner manager omits an untouched expiry so storage preserves it', async () => {
     const app = await readFile('js/app.js', 'utf8');
     const source = app.match(/function resolveUpdateExpiresAt\(input\) \{[\s\S]*?\n\}/)?.[0];
 
@@ -104,7 +104,7 @@ test('banner manager preserves an untouched expiry ISO value', async () => {
                 originalLocalValue: '2030-04-05T06:07'
             }
         }),
-        originalIso
+        ''
     );
     assert.equal(
         resolveUpdateExpiresAt({
@@ -126,7 +126,7 @@ test('banner manager preserves an untouched expiry ISO value', async () => {
                 originalLocalValue: '2030-04-05T15:07'
             }
         }),
-        originalOffsetIso
+        ''
     );
 
     const updateSource = app.slice(
