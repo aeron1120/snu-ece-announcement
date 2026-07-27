@@ -1818,7 +1818,12 @@ function filterCards() {
         const isSaved = savedPosts.includes(noticeIdStr);
         const dDay = calcDDay(notice.deadline);
         const safeTitle = escapeHtml(notice.title || "");
-        let imgHtml = (notice.images && notice.images.length > 0) ? `<img src="${escapeHtml(notice.images[0])}" class="card-img-preview" style="display:block;">` : '';
+        const thumbnailUrl = notice.thumbnailUrl || '/icons/default-notice-thumbnail.png';
+        const imgHtml = `
+            <div class="card-thumbnail">
+                <img class="card-img-preview" alt="" data-thumbnail-src="${escapeHtml(thumbnailUrl)}">
+            </div>
+        `;
         // 태그 색과 같은 기준(마감 3일 이내)으로 카드 왼쪽 세로선을 붉게 한다.
         const cardClass = dDay.isExpired
             ? "card card-expired"
@@ -1860,8 +1865,8 @@ function filterCards() {
         grid.innerHTML = '<div class="notice-empty-state">조건에 맞는 공지가 없습니다.</div>';
     }
 
-    grid.querySelectorAll('img[data-thumbnail-src]')
-        .forEach(image => noticeViewportLoader.observeThumbnail(image));
+    grid.querySelectorAll?.('img[data-thumbnail-src]')
+        ?.forEach(image => noticeViewportLoader.observeThumbnail(image));
 
     const countEl = document.getElementById('filter-result-count');
     if (countEl) countEl.innerHTML = `결과 <strong>${filtered.length}</strong>건 / 전체 ${notices.length}건`;

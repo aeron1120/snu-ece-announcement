@@ -258,18 +258,16 @@ body {
 
 /* ---------- 공지 그리드 & 카드 ---------- */
 .grid {
-    column-count: 4;
-    column-gap: 20px;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 20px;
 }
 .grid .card {
     width: 100%;
-    display: inline-flex;
-    break-inside: avoid;
     margin: 0;
-    margin-bottom: 20px;
 }
 .notice-empty-state {
-    column-span: all;
+    grid-column: 1 / -1;
     text-align: center;
     padding: 60px 0;
     color: var(--text-sub);
@@ -292,6 +290,9 @@ body {
     background: var(--card-bg);
     border: 1px solid var(--border);
     border-left: 3px solid var(--border);
+    height: 420px;
+    min-width: 0;
+    overflow: hidden;
     display: flex; flex-direction: column;
     cursor: pointer;
     transition: border-color 0.15s;
@@ -310,11 +311,27 @@ body {
 }
 
 /* 포스터 썸네일 — 이미지가 있는 공지에만 붙고, 카드 맨 위에 온다 */
-.card-img-preview {
-    width: 100%; height: 150px; object-fit: cover;
-    display: none; border-bottom: 1px solid var(--border);
+.card-thumbnail {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+    background: #f4f5f7;
 }
-.card-body { padding: 16px 18px 14px; position: relative; display: flex; flex-direction: column; gap: 10px; }
+.card-img-preview {
+    width: 100%; height: 100%;
+    object-fit: cover;
+    object-position: center;
+    display: block;
+    border-bottom: 1px solid var(--border);
+}
+.card-body {
+    flex: 0 0 auto;
+    padding: 16px 18px 14px;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
 
 .star-icon {
     position: absolute; top: 14px; right: 15px;
@@ -343,6 +360,10 @@ body {
 .card h3 {
     margin: 0; font-size: 16.5px; line-height: 1.45;
     word-break: keep-all; font-weight: 700; color: var(--text-main);
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
 }
 .card-meta {
     display: flex; justify-content: space-between; gap: 10px;
@@ -353,11 +374,11 @@ body {
 .view-count { white-space: nowrap; }
 
 @media (max-width: 1200px) {
-    .grid { column-count: 3; }
+    .grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 
 @media (max-width: 900px) {
-    .grid { column-count: 2; }
+    .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 /* ---------- 모달 ---------- */
@@ -605,8 +626,8 @@ body {
     .btn { min-height: 40px; }
     .header-actions .btn { min-width: 110px; }
     .header-banner { height: 36px; max-width: 100%; }
-    .grid { column-count: 1; column-gap: 0; }
-    .grid .card { margin-bottom: 14px; }
+    .grid { grid-template-columns: 1fr; gap: 14px; }
+    .card { height: 390px; }
     .search-container { flex-direction: column; align-items: stretch; }
     .search-container select, .search-container input, .search-container .btn { width: 100%; min-width: 0; }
     .filter-toggle-bar { padding: 8px 12px; height: auto; }

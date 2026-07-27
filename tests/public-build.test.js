@@ -480,18 +480,32 @@ test('deadline-soon sorting renders dated notices without an undefined current-d
     assert.match(cards[1].innerHTML, /Later deadline/);
 });
 
-test('notice list uses masonry columns without splitting cards', async () => {
+test('notice cards always render a deferred thumbnail with a default fallback', async () => {
+    const app = await readFile('js/app.js', 'utf8');
+    const start = app.indexOf('function filterCards()');
+    const end = app.indexOf('\nfunction toggleViewMode()', start);
+    const filterCardsSource = app.slice(start, end);
+
+    assert.match(filterCardsSource, /class="card-thumbnail"/);
+    assert.match(filterCardsSource, /data-thumbnail-src="\$\{escapeHtml\(thumbnailUrl\)\}"/);
+    assert.match(filterCardsSource, /notice\.thumbnailUrl\s*\|\|\s*['"]\/icons\/default-notice-thumbnail\.png['"]/);
+    assert.doesNotMatch(filterCardsSource, /<img src="\$\{escapeHtml\(notice\.images\[0\]\)\}"/);
+});
+
+test('notice list uses equal-height responsive grid cards with cover images', async () => {
     const app = await readFile('js/app.js', 'utf8');
     const css = await readFile('css/style.css', 'utf8');
 
-    assert.match(css, /\.grid\s*\{[^}]*column-count:\s*4/s);
-    assert.match(css, /\.card\s*\{[^}]*break-inside:\s*avoid/s);
-    assert.match(css, /\.card\s*\{[^}]*margin-bottom:\s*20px/s);
-    assert.match(css, /@media \(max-width:\s*1200px\)[\s\S]*column-count:\s*3/);
-    assert.match(css, /@media \(max-width:\s*900px\)[\s\S]*column-count:\s*2/);
-    assert.match(css, /@media \(max-width:\s*768px\)[\s\S]*column-count:\s*1/);
+    assert.match(css, /\.grid\s*\{[^}]*display:\s*grid[^}]*grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\)/s);
+    assert.match(css, /\.card\s*\{[^}]*height:\s*420px/s);
+    assert.match(css, /\.card-thumbnail\s*\{[^}]*flex:\s*1\s+1\s+auto[^}]*overflow:\s*hidden/s);
+    assert.match(css, /\.card-img-preview\s*\{[^}]*width:\s*100%[^}]*height:\s*100%[^}]*object-fit:\s*cover[^}]*object-position:\s*center/s);
+    assert.match(css, /\.card-body\s*\{[^}]*flex:\s*0\s+0\s+auto/s);
+    assert.match(css, /@media \(max-width:\s*1200px\)[\s\S]*grid-template-columns:\s*repeat\(3/);
+    assert.match(css, /@media \(max-width:\s*900px\)[\s\S]*grid-template-columns:\s*repeat\(2/);
+    assert.match(css, /@media \(max-width:\s*768px\)[\s\S]*grid-template-columns:\s*1fr/);
     assert.match(app, /class="notice-empty-state"/);
-    assert.doesNotMatch(css, /\.grid\s*\{[^}]*display:\s*grid/s);
+    assert.doesNotMatch(css, /\.grid\s*\{[^}]*column-count/s);
 });
 
 test('notice paging loads one page at a time without duplicate summaries', async () => {
