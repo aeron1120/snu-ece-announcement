@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, readFile, writeFile, mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { runInNewContext } from 'node:vm';
 import { preparePublic } from '../scripts/prepare-public.mjs';
 
 test('preparePublic copies canonical frontend files', async () => {
@@ -195,6 +196,146 @@ test('PWA manifest and service worker include install and push contracts', async
     assert.match(worker, /showNotification/);
     assert.match(worker, /notificationclick/);
     assert.match(worker, /!APP_SHELL\.includes\(url\.pathname\)/);
+});
+
+test('service worker replaces the stale app-shell cache during activation', async () => {
+    const worker = await readFile('service-worker.js', 'utf8');
+    const handlers = {};
+    const openedCaches = [];
+    const deletedCaches = [];
+    const cache = {
+        async addAll() {},
+        async put() {}
+    };
+    const context = {
+        URL,
+        Promise,
+        fetch: async () => ({ ok: true, type: 'basic', clone() { return this; } }),
+        caches: {
+            async open(name) {
+                openedCaches.push(name);
+                return cache;
+            },
+            async keys() {
+                return ['ece-notices-v1'];
+            },
+            async delete(name) {
+                deletedCaches.push(name);
+                return true;
+            },
+            async match() {
+                return null;
+            }
+        },
+        self: {
+            location: { origin: 'http://localhost' },
+            addEventListener(name, handler) {
+                handlers[name] = handler;
+            },
+            async skipWaiting() {},
+            clients: {
+                async claim() {},
+                async openWindow() {}
+            }
+        }
+    };
+    runInNewContext(worker, context);
+
+    let installWork;
+    handlers.install({ waitUntil(promise) { installWork = promise; } });
+    await installWork;
+    let activateWork;
+    handlers.activate({ waitUntil(promise) { activateWork = promise; } });
+    await activateWork;
+
+    assert.notEqual(openedCaches[0], 'ece-notices-v1');
+    assert.deepEqual(deletedCaches, ['ece-notices-v1']);
+});
+
+test('service worker loads app-shell files from the network before cached fallback', async () => {
+    const worker = await readFile('service-worker.js', 'utf8');
+    const handlers = {};
+    const calls = [];
+    const pendingWrites = [];
+    const state = { networkFails: false };
+    const cachedResponse = { source: 'cache' };
+    const networkResponse = {
+        source: 'network',
+        ok: true,
+        type: 'basic',
+        clone() {
+            return this;
+        }
+    };
+    const cache = {
+        async addAll() {},
+        async put() {}
+    };
+    const context = {
+        URL,
+        Promise,
+        async fetch() {
+            calls.push('network');
+            if (state.networkFails) throw new Error('offline');
+            return networkResponse;
+        },
+        caches: {
+            async open() {
+                return cache;
+            },
+            async keys() {
+                return [];
+            },
+            async delete() {
+                return true;
+            },
+            async match() {
+                calls.push('cache');
+                return cachedResponse;
+            }
+        },
+        self: {
+            location: { origin: 'http://localhost' },
+            addEventListener(name, handler) {
+                handlers[name] = handler;
+            },
+            async skipWaiting() {},
+            clients: {
+                async claim() {},
+                async openWindow() {}
+            }
+        }
+    };
+    runInNewContext(worker, context);
+
+    const request = { method: 'GET', url: 'http://localhost/css/style.css' };
+    let responseWork;
+    handlers.fetch({
+        request,
+        respondWith(promise) {
+            responseWork = promise;
+        },
+        waitUntil(promise) {
+            pendingWrites.push(promise);
+        }
+    });
+    assert.equal((await responseWork).source, 'network');
+    assert.deepEqual(calls, ['network']);
+    await Promise.all(pendingWrites);
+
+    calls.length = 0;
+    state.networkFails = true;
+    handlers.fetch({
+        request,
+        respondWith(promise) {
+            responseWork = promise;
+        },
+        waitUntil(promise) {
+            pendingWrites.push(promise);
+        }
+    });
+    assert.equal((await responseWork).source, 'cache');
+    assert.deepEqual(calls, ['network', 'cache']);
 });
 
 test('expired notices use a neutral card and badge state in list and detail views', async () => {
