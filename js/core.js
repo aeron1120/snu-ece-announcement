@@ -26,7 +26,7 @@ let currentImageIndex = 0;
 
 let notices = [];
 let bannerSlides = [];
-let compareBlocks = [];   // 비교 패널에 담긴 공지 id들 (최대 4)
+let compareBlocks = [];   // 인라인 비교 블록에 담긴 공지 id들 (데스크탑 6, 모바일 2)
 
 let adminInfo = { name: "ECE 학생회장 (이름 : 박지호)", phone: "010-1234-5678", kakao: "snu_ece_pres" };
 let bannerAdminInfo = { name: "학생회 대외협력국 (국장 : 이배너)", phone: "010-8888-9999", kakao: "snu_ece_ads" };
@@ -908,11 +908,11 @@ function filterCards() {
     const grid = document.getElementById('notice-grid');
     grid.innerHTML = "";
 
-    // 비교 블록(2개 이상)에 담긴 공지는 목록 맨 위 인라인 블록으로 묶어 보여주고,
+    // 비교 블록에 담긴 공지는 목록 맨 위 인라인 블록으로 묶어 보여주고,
     // 아래 일반 목록에서는 뺀다.
     const blockIds = compareBlocks.filter(id => notices.some(n => String(n.id) === String(id)));
     const blockSet = new Set(blockIds);
-    if (blockIds.length >= 2) grid.appendChild(buildCompareInline(blockIds));
+    if (blockIds.length >= 1) grid.appendChild(buildCompareInline(blockIds));
 
     let filtered = [];
 
@@ -996,15 +996,16 @@ function filterCards() {
         const card = document.createElement('div');
         card.className = cardClass;
         card.onclick = () => openDetail(notice.id);
-        // 노션처럼: 카드를 다른 카드 위로 끌어다 놓으면 둘이 비교 블록으로 묶인다.
-        card.draggable = true;
-        card.addEventListener('dragstart', event => onCardDragStart(event, notice.id));
-        card.addEventListener('dragend', onCardDragEnd);
+        // 노션처럼: 6점 핸들만 드래그하고, 카드는 평소처럼 눌러 상세를 연다.
         card.addEventListener('dragover', event => onCardDragOver(event, card));
         card.addEventListener('dragleave', () => onCardDragLeave(card));
         card.addEventListener('drop', event => onCardDrop(event, notice.id));
         card.innerHTML = `
-            <span class="card-drag-handle" aria-hidden="true" title="끌어서 비교 블록 만들기"><svg width="10" height="16" viewBox="0 0 10 16"><g fill="currentColor"><circle cx="2.5" cy="3" r="1.3"/><circle cx="7.5" cy="3" r="1.3"/><circle cx="2.5" cy="8" r="1.3"/><circle cx="7.5" cy="8" r="1.3"/><circle cx="2.5" cy="13" r="1.3"/><circle cx="7.5" cy="13" r="1.3"/></g></svg></span>
+            <button class="card-drag-handle" type="button" draggable="true"
+                    aria-label="비교 블록에 추가" aria-pressed="false"
+                    title="끌거나 눌러서 비교 블록에 추가">
+                <svg width="10" height="16" viewBox="0 0 10 16" aria-hidden="true"><g fill="currentColor"><circle cx="2.5" cy="3" r="1.3"/><circle cx="7.5" cy="3" r="1.3"/><circle cx="2.5" cy="8" r="1.3"/><circle cx="7.5" cy="8" r="1.3"/><circle cx="2.5" cy="13" r="1.3"/><circle cx="7.5" cy="13" r="1.3"/></g></svg>
+            </button>
             ${posterHtml}
             <div class="card-body">
                 <div class="tags">
@@ -1020,6 +1021,10 @@ function filterCards() {
                 </div>
             </div>
         `;
+        const dragHandle = card.querySelector('.card-drag-handle');
+        dragHandle.addEventListener('click', event => onHandleClick(event, notice.id));
+        dragHandle.addEventListener('dragstart', event => onCardDragStart(event, notice.id));
+        dragHandle.addEventListener('dragend', onCardDragEnd);
         grid.appendChild(card);
     });
 
@@ -1193,13 +1198,18 @@ function closeDetail() {
 // ========================================
 
 const NOTICE_DRAG_TYPE = 'application/x-ece-notice';
+const DESKTOP_MAX_COMPARE_BLOCKS = 6;
+const MOBILE_MAX_COMPARE_BLOCKS = 2;
 
-// 블록 최대 개수: 데스크탑 4개(가로), 모바일 2개(세로).
+// 넓은 화면에서는 최대 6개, 폰에서는 읽을 수 있는 최대치인 2개만 둔다.
 function maxCompareBlocks() {
-    return getLayoutMode() === 'mobile' ? 2 : 4;
+    return getLayoutMode() === 'mobile'
+        ? MOBILE_MAX_COMPARE_BLOCKS
+        : DESKTOP_MAX_COMPARE_BLOCKS;
 }
 
 function onCardDragStart(event, id) {
+    event.stopPropagation();
     event.dataTransfer.setData(NOTICE_DRAG_TYPE, String(id));
     event.dataTransfer.setData('text/plain', String(id));
     event.dataTransfer.effectAllowed = 'move';
@@ -1209,6 +1219,13 @@ function onCardDragStart(event, id) {
 function onCardDragEnd() {
     document.body.classList.remove('dragging-notice');
     document.querySelectorAll('.is-drop-target').forEach(el => el.classList.remove('is-drop-target'));
+}
+
+// 모바일에는 마우스 드래그가 없으므로 같은 핸들을 탭해도 블록에 담긴다.
+// 데스크탑에서도 클릭과 키보드로 쓸 수 있어 드래그만 가능한 UI가 되지 않는다.
+async function onHandleClick(event, id) {
+    event.stopPropagation();
+    await addNoticeToCompareBlock(id);
 }
 
 function draggedNoticeId(event) {
@@ -1266,22 +1283,46 @@ async function groupIntoCompareBlock(targetId, draggedId) {
         console.error('비교 블록 상세 불러오기 실패:', error);
     }
     toAdd.forEach(id => compareBlocks.push(id));
+    renderCompareChange();
+}
+
+async function addNoticeToCompareBlock(id) {
+    const normalizedId = String(id);
+    if (compareBlocks.includes(normalizedId)) return;
+    if (compareBlocks.length >= maxCompareBlocks()) {
+        alert(`비교 블록은 최대 ${maxCompareBlocks()}개까지 묶을 수 있습니다.`);
+        return;
+    }
+
+    try {
+        await getNoticeDetail(normalizedId);
+    } catch (error) {
+        console.error('비교 블록 상세 불러오기 실패:', error);
+    }
+    compareBlocks.push(normalizedId);
+    renderCompareChange();
+}
+
+// 지원 브라우저에서는 블록을 닫거나 추가할 때 주변 카드가 새 자리로 부드럽게 이동한다.
+function renderCompareChange() {
+    if (typeof document.startViewTransition === 'function') {
+        document.startViewTransition(() => filterCards());
+        return;
+    }
     filterCards();
 }
 
 function removeFromCompareBlock(idStr) {
     compareBlocks = compareBlocks.filter(x => x !== String(idStr));
-    // 블록은 2개 이상일 때만 의미가 있다. 하나만 남으면 해제한다.
-    if (compareBlocks.length < 2) compareBlocks = [];
-    filterCards();
+    renderCompareChange();
 }
 
 function clearCompareBlock() {
     compareBlocks = [];
-    filterCards();
+    renderCompareChange();
 }
 
-// 목록 맨 위에 들어갈 비교 블록 DOM. 최소 2개일 때만 만든다.
+// 목록 맨 위에 들어갈 비교 블록 DOM. 한 개부터 보여 주므로 첫 선택이 사라지지 않는다.
 function buildCompareInline(blockIds) {
     const wrap = document.createElement('div');
     wrap.className = 'compare-inline';

@@ -26,7 +26,7 @@ let currentImageIndex = 0;
 
 let notices = [];
 let bannerSlides = [];
-let compareBlocks = [];   // 비교 패널에 담긴 공지 id들 (최대 4)
+let compareBlocks = [];   // 인라인 비교 블록에 담긴 공지 id들 (데스크탑 6, 모바일 2)
 
 let adminInfo = { name: "ECE 학생회장 (이름 : 박지호)", phone: "010-1234-5678", kakao: "snu_ece_pres" };
 let bannerAdminInfo = { name: "학생회 대외협력국 (국장 : 이배너)", phone: "010-8888-9999", kakao: "snu_ece_ads" };
@@ -143,12 +143,6 @@ function closeDevicePreview() {
     document.body.style.overflow = '';
     // iframe을 완전히 멈춰 리소스·소리·타이머가 뒤에서 계속 돌지 않게 한다.
     if (iframe) iframe.src = 'about:blank';
-}
-
-// 공지 비교는 3열을 나란히 놓아야 쓸모가 있다. 모바일 모듈은 이 값을 false로
-// 신고해서 비교 UI 자체를 감춘다.
-function supportsCompare() {
-    return activeViewModule?.supportsCompare !== false;
 }
 
 function createNoticeViewportLoader(options) {
@@ -914,6 +908,12 @@ function filterCards() {
     const grid = document.getElementById('notice-grid');
     grid.innerHTML = "";
 
+    // 비교 블록에 담긴 공지는 목록 맨 위 인라인 블록으로 묶어 보여주고,
+    // 아래 일반 목록에서는 뺀다.
+    const blockIds = compareBlocks.filter(id => notices.some(n => String(n.id) === String(id)));
+    const blockSet = new Set(blockIds);
+    if (blockIds.length >= 1) grid.appendChild(buildCompareInline(blockIds));
+
     let filtered = [];
 
     notices.forEach(notice => {
@@ -967,6 +967,7 @@ function filterCards() {
     }
 
     filtered.forEach(notice => {
+        if (blockSet.has(String(notice.id))) return;   // 비교 블록에 든 공지는 목록에서 뺀다
         const dDay = calcDDay(notice.deadline);
         const safeTitle = escapeHtml(notice.title || "제목 없음");
         const hasImg = Object.hasOwn(notice, 'hasImages')
@@ -995,13 +996,16 @@ function filterCards() {
         const card = document.createElement('div');
         card.className = cardClass;
         card.onclick = () => openDetail(notice.id);
-        // 데스크탑에서는 카드를 오른쪽 비교 패널로 끌어다 놓을 수 있다.
-        if (supportsCompare()) {
-            card.draggable = true;
-            card.addEventListener('dragstart', event => onCardDragStart(event, notice.id));
-            card.addEventListener('dragend', onCardDragEnd);
-        }
+        // 노션처럼: 6점 핸들만 드래그하고, 카드는 평소처럼 눌러 상세를 연다.
+        card.addEventListener('dragover', event => onCardDragOver(event, card));
+        card.addEventListener('dragleave', () => onCardDragLeave(card));
+        card.addEventListener('drop', event => onCardDrop(event, notice.id));
         card.innerHTML = `
+            <button class="card-drag-handle" type="button" draggable="true"
+                    aria-label="비교 블록에 추가" aria-pressed="false"
+                    title="끌거나 눌러서 비교 블록에 추가">
+                <svg width="10" height="16" viewBox="0 0 10 16" aria-hidden="true"><g fill="currentColor"><circle cx="2.5" cy="3" r="1.3"/><circle cx="7.5" cy="3" r="1.3"/><circle cx="2.5" cy="8" r="1.3"/><circle cx="7.5" cy="8" r="1.3"/><circle cx="2.5" cy="13" r="1.3"/><circle cx="7.5" cy="13" r="1.3"/></g></svg>
+            </button>
             ${posterHtml}
             <div class="card-body">
                 <div class="tags">
@@ -1017,6 +1021,10 @@ function filterCards() {
                 </div>
             </div>
         `;
+        const dragHandle = card.querySelector('.card-drag-handle');
+        dragHandle.addEventListener('click', event => onHandleClick(event, notice.id));
+        dragHandle.addEventListener('dragstart', event => onCardDragStart(event, notice.id));
+        dragHandle.addEventListener('dragend', onCardDragEnd);
         grid.appendChild(card);
     });
 
@@ -1183,117 +1191,147 @@ function closeDetail() {
 }
 
 // ========================================
-// 🧩 노션식 블록 비교
-// 카드를 오른쪽 비교 패널로 끌어다 놓으면 그 공지가 블록으로 담긴다. 최대 4개.
+// 🧩 노션식 인라인 블록 비교
+// 카드에 마우스를 올리면 6점 핸들이 뜨고, 카드를 다른 카드 위로 끌어다 놓으면
+// 목록 맨 위에 두 공지가 나란히(모바일은 위아래로) 묶인 비교 블록이 생긴다.
+// 별도 창이 아니라 기존 화면 안에서 블록화된다.
 // ========================================
 
 const NOTICE_DRAG_TYPE = 'application/x-ece-notice';
-const MAX_COMPARE_BLOCKS = 4;
+const DESKTOP_MAX_COMPARE_BLOCKS = 6;
+const MOBILE_MAX_COMPARE_BLOCKS = 2;
 
-function isComparePanelOpen() {
-    const panel = document.getElementById('compare-panel');
-    return panel ? !panel.hidden : false;
+// 넓은 화면에서는 최대 6개, 폰에서는 읽을 수 있는 최대치인 2개만 둔다.
+function maxCompareBlocks() {
+    return getLayoutMode() === 'mobile'
+        ? MOBILE_MAX_COMPARE_BLOCKS
+        : DESKTOP_MAX_COMPARE_BLOCKS;
 }
 
-function openComparePanel() {
-    const layout = document.getElementById('board-layout');
-    const panel = document.getElementById('compare-panel');
-    if (!layout || !panel) return;
-    panel.hidden = false;
-    layout.classList.add('has-compare');
-}
-
-function closeComparePanel() {
-    const layout = document.getElementById('board-layout');
-    const panel = document.getElementById('compare-panel');
-    if (!layout || !panel) return;
-    panel.hidden = true;
-    layout.classList.remove('has-compare');
-    panel.classList.remove('is-drop-over');
-}
-
-// 카드 드래그 시작: 어느 공지인지 dataTransfer에 싣고, 빈 비교 패널이면 드롭 힌트를 띄운다.
 function onCardDragStart(event, id) {
+    event.stopPropagation();
     event.dataTransfer.setData(NOTICE_DRAG_TYPE, String(id));
     event.dataTransfer.setData('text/plain', String(id));
-    event.dataTransfer.effectAllowed = 'copy';
+    event.dataTransfer.effectAllowed = 'move';
     document.body.classList.add('dragging-notice');
-    if (compareBlocks.length === 0) {
-        openComparePanel();
-        document.getElementById('compare-panel')?.classList.add('is-empty-hint');
-    }
 }
 
 function onCardDragEnd() {
     document.body.classList.remove('dragging-notice');
-    document.getElementById('compare-panel')?.classList.remove('is-drop-over');
-    // 드롭 없이 끝났고 담긴 블록이 없으면 힌트 패널을 닫는다.
-    if (compareBlocks.length === 0) closeComparePanel();
-    document.getElementById('compare-panel')?.classList.remove('is-empty-hint');
+    document.querySelectorAll('.is-drop-target').forEach(el => el.classList.remove('is-drop-target'));
 }
 
-function onComparePanelDragOver(event) {
-    // 공지 드래그일 때만 드롭을 허용한다.
+// 모바일에는 마우스 드래그가 없으므로 같은 핸들을 탭해도 블록에 담긴다.
+// 데스크탑에서도 클릭과 키보드로 쓸 수 있어 드래그만 가능한 UI가 되지 않는다.
+async function onHandleClick(event, id) {
+    event.stopPropagation();
+    await addNoticeToCompareBlock(id);
+}
+
+function draggedNoticeId(event) {
+    return event.dataTransfer.getData(NOTICE_DRAG_TYPE) || event.dataTransfer.getData('text/plain') || '';
+}
+
+function onCardDragOver(event, targetEl) {
     if (![...event.dataTransfer.types].includes(NOTICE_DRAG_TYPE)) return;
     event.preventDefault();
-    event.dataTransfer.dropEffect = 'copy';
-    document.getElementById('compare-panel')?.classList.add('is-drop-over');
+    event.dataTransfer.dropEffect = 'move';
+    if (targetEl) targetEl.classList.add('is-drop-target');
 }
 
-function onComparePanelDragLeave(event) {
-    // 패널 밖으로 완전히 나갔을 때만 강조 해제(자식 요소 간 이동은 무시).
-    const panel = document.getElementById('compare-panel');
-    if (panel && !panel.contains(event.relatedTarget)) panel.classList.remove('is-drop-over');
+function onCardDragLeave(targetEl) {
+    if (targetEl) targetEl.classList.remove('is-drop-target');
 }
 
-function onComparePanelDrop(event) {
+// 카드 위에 다른 카드를 놓으면 둘을 하나의 비교 블록으로 묶는다.
+async function onCardDrop(event, targetId) {
     event.preventDefault();
-    document.getElementById('compare-panel')?.classList.remove('is-drop-over');
-    const id = event.dataTransfer.getData(NOTICE_DRAG_TYPE) || event.dataTransfer.getData('text/plain');
-    if (id) addCompareBlock(id);
+    document.querySelectorAll('.is-drop-target').forEach(el => el.classList.remove('is-drop-target'));
+    const draggedId = draggedNoticeId(event);
+    if (!draggedId) return;
+    await groupIntoCompareBlock(targetId, draggedId);
 }
 
-async function addCompareBlock(idStr) {
-    const id = String(idStr);
-    document.getElementById('compare-panel')?.classList.remove('is-empty-hint');
-    if (compareBlocks.includes(id)) { openComparePanel(); renderCompareBlocks(); return; }
-    if (compareBlocks.length >= MAX_COMPARE_BLOCKS) {
-        alert(`비교 블록은 최대 ${MAX_COMPARE_BLOCKS}개까지 담을 수 있습니다.`);
+// 이미 만들어진 비교 블록 위에 카드를 놓으면 블록에 추가한다.
+async function onBlockDrop(event) {
+    event.preventDefault();
+    document.querySelectorAll('.is-drop-target').forEach(el => el.classList.remove('is-drop-target'));
+    const draggedId = draggedNoticeId(event);
+    if (!draggedId) return;
+    await groupIntoCompareBlock(null, draggedId);
+}
+
+async function groupIntoCompareBlock(targetId, draggedId) {
+    const dragged = String(draggedId);
+    const target = targetId == null ? null : String(targetId);
+    if (target !== null && target === dragged) return;
+
+    const toAdd = [];
+    if (target !== null && !compareBlocks.includes(target)) toAdd.push(target);
+    if (!compareBlocks.includes(dragged)) toAdd.push(dragged);
+    if (toAdd.length === 0) return;
+
+    if (compareBlocks.length + toAdd.length > maxCompareBlocks()) {
+        alert(`비교 블록은 최대 ${maxCompareBlocks()}개까지 묶을 수 있습니다.`);
         return;
     }
+
     try {
-        await getNoticeDetail(id);   // 원문·요약·이미지까지 확보
+        // 원문·요약을 나란히 보여주려면 상세를 확보해야 한다.
+        await Promise.all(toAdd.map(id => getNoticeDetail(id)));
     } catch (error) {
         console.error('비교 블록 상세 불러오기 실패:', error);
-        alert('공지 내용을 불러오지 못했습니다.');
+    }
+    toAdd.forEach(id => compareBlocks.push(id));
+    renderCompareChange();
+}
+
+async function addNoticeToCompareBlock(id) {
+    const normalizedId = String(id);
+    if (compareBlocks.includes(normalizedId)) return;
+    if (compareBlocks.length >= maxCompareBlocks()) {
+        alert(`비교 블록은 최대 ${maxCompareBlocks()}개까지 묶을 수 있습니다.`);
         return;
     }
-    compareBlocks.push(id);
-    openComparePanel();
-    renderCompareBlocks();
+
+    try {
+        await getNoticeDetail(normalizedId);
+    } catch (error) {
+        console.error('비교 블록 상세 불러오기 실패:', error);
+    }
+    compareBlocks.push(normalizedId);
+    renderCompareChange();
 }
 
-function removeCompareBlock(idStr) {
+// 지원 브라우저에서는 블록을 닫거나 추가할 때 주변 카드가 새 자리로 부드럽게 이동한다.
+function renderCompareChange() {
+    if (typeof document.startViewTransition === 'function') {
+        document.startViewTransition(() => filterCards());
+        return;
+    }
+    filterCards();
+}
+
+function removeFromCompareBlock(idStr) {
     compareBlocks = compareBlocks.filter(x => x !== String(idStr));
-    renderCompareBlocks();
-    if (compareBlocks.length === 0) closeComparePanel();
+    renderCompareChange();
 }
 
-function clearCompareBlocks() {
+function clearCompareBlock() {
     compareBlocks = [];
-    renderCompareBlocks();
-    closeComparePanel();
+    renderCompareChange();
 }
 
-function renderCompareBlocks() {
-    const wrap = document.getElementById('compare-blocks');
-    const count = document.getElementById('compare-count');
-    const panel = document.getElementById('compare-panel');
-    if (!wrap) return;
-    if (count) count.textContent = String(compareBlocks.length);
-    if (panel) panel.dataset.blocks = String(compareBlocks.length);
+// 목록 맨 위에 들어갈 비교 블록 DOM. 한 개부터 보여 주므로 첫 선택이 사라지지 않는다.
+function buildCompareInline(blockIds) {
+    const wrap = document.createElement('div');
+    wrap.className = 'compare-inline';
+    wrap.dataset.blocks = String(blockIds.length);
+    wrap.addEventListener('dragover', event => onCardDragOver(event, wrap));
+    wrap.addEventListener('dragleave', () => onCardDragLeave(wrap));
+    wrap.addEventListener('drop', event => onBlockDrop(event));
 
-    wrap.innerHTML = compareBlocks.map((id, index) => {
+    const columns = blockIds.map((id, index) => {
         const notice = notices.find(n => String(n.id) === String(id));
         if (!notice) return '';
         const dDay = calcDDay(notice.deadline);
@@ -1301,38 +1339,43 @@ function renderCompareBlocks() {
         const summary = (notice.aiSummary || []).map(item => `<li>${escapeHtml(item)}</li>`).join('')
             || '<li style="color:var(--text-sub)">요약 없음</li>';
         const thumb = (notice.images && notice.images.length > 0)
-            ? `<img class="compare-block-thumb" src="${escapeHtml(notice.images[0])}" alt="">`
+            ? `<img class="compare-col-thumb" src="${escapeHtml(notice.images[0])}" alt="">`
             : '';
         const dateText = notice.deadline ? `마감 ${formatDateWithWeekday(notice.deadline)}` : '상시 접수';
         const safeId = escapeHtml(String(id));
         return `
-            <article class="compare-block">
-                <header class="compare-block-head">
-                    <span class="compare-block-idx">${index + 1}</span>
-                    <button class="compare-block-remove" type="button" aria-label="블록 제거"
-                            onclick="removeCompareBlock('${safeId}')">×</button>
+            <article class="compare-col">
+                <header class="compare-col-head">
+                    <span class="compare-col-idx">${index + 1}</span>
+                    <button class="compare-col-remove" type="button" aria-label="블록에서 빼기"
+                            onclick="removeFromCompareBlock('${safeId}')">×</button>
                 </header>
-                <div class="compare-block-body">
+                <div class="compare-col-body">
                     ${thumb}
                     <div class="tags">
                         <span class="tag ${deadlineTagClass}">${dDay.text}</span>
                         <span class="tag target">${escapeHtml(notice.target || '전체')}</span>
                         ${notice.host ? `<span class="tag">${escapeHtml(notice.host)}</span>` : ''}
                     </div>
-                    <h3 class="compare-block-title">${escapeHtml(notice.title || '')}</h3>
-                    <div class="compare-block-meta">${escapeHtml(dateText)} · 조회 ${Number(notice.views) || 0}</div>
-                    <div class="compare-block-section">
-                        <h4>AI 3줄 요약</h4>
-                        <ul class="compare-block-summary">${summary}</ul>
-                    </div>
-                    <div class="compare-block-section compare-block-original">
-                        <h4>공지 원문</h4>
-                        <div class="compare-block-content">${linkify(notice.content || '')}</div>
-                    </div>
-                    <button class="btn btn-outline btn-small compare-block-open" type="button" onclick="openDetail('${safeId}')">전체 보기</button>
+                    <h3 class="compare-col-title">${escapeHtml(notice.title || '')}</h3>
+                    <div class="compare-col-meta">${escapeHtml(dateText)} · 조회 ${Number(notice.views) || 0}</div>
+                    <h4 class="compare-col-label">AI 3줄 요약</h4>
+                    <ul class="compare-col-summary">${summary}</ul>
+                    <h4 class="compare-col-label">공지 원문</h4>
+                    <div class="compare-col-content">${linkify(notice.content || '')}</div>
+                    <button class="btn btn-outline btn-small" type="button" onclick="openDetail('${safeId}')">전체 보기</button>
                 </div>
             </article>`;
     }).join('');
+
+    wrap.innerHTML = `
+        <div class="compare-inline-head">
+            <span class="compare-inline-title">공지 비교 <strong>${blockIds.length}</strong> / ${maxCompareBlocks()}
+                <span class="compare-inline-hint">— 카드를 더 끌어다 놓아 추가</span></span>
+            <button class="btn btn-outline btn-small" type="button" onclick="clearCompareBlock()">비교 해제</button>
+        </div>
+        <div class="compare-inline-cols">${columns}</div>`;
+    return wrap;
 }
 
 // ========================================
@@ -1554,6 +1597,5 @@ document.addEventListener('DOMContentLoaded', async function () {
         document.getElementById('notice-scroll-sentinel'),
         loadMoreNotices
     );
-    renderCompareBlocks();
     openNoticeFromUrl();   // 카톡 링크로 들어온 경우 해당 공지를 바로 연다
 });

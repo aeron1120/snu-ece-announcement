@@ -211,30 +211,25 @@ test('mobile mode opens a blurred phone preview instead of reflowing the desktop
     assert.match(html, /params\.get\('view'\)/);
 });
 
-test('notice comparison is a Notion-style drag-to-block panel, not a modal', async () => {
-    const html = await readFile('index.html', 'utf8');
+test('notice comparison uses a Notion-style six-dot handle and responsive inline blocks', async () => {
     const css = await readFile('css/core.css', 'utf8');
+    const mobileCss = await readFile('css/mobile.css', 'utf8');
     const app = await readFile('js/core.js', 'utf8');
 
-    // 옛 비교 UI(하단 바·모달·목록 담기 버튼)는 사라졌다.
-    assert.doesNotMatch(html, /id="compare-bar"/);
-    assert.doesNotMatch(html, /id="compare-modal"/);
-    assert.doesNotMatch(html, /id="compare-toggle-btn"/);
-    assert.doesNotMatch(app, /function openCompareModal|function toggleCompare\b|function updateCompareBar/);
-
-    // 오른쪽 비교 패널 + 블록.
-    assert.match(html, /id="compare-panel"/);
-    assert.match(html, /id="compare-blocks"/);
-    assert.match(html, /ondrop="onComparePanelDrop\(event\)"/);
+    // 기존 화면 안에 블록을 만들고 카드 전체가 아닌 6점 핸들만 드래그한다.
+    assert.match(app, /class="card-drag-handle"/);
+    assert.equal((app.match(/<circle /g) || []).length, 6);
+    assert.match(app, /draggable="true"/);
     assert.match(app, /function onCardDragStart/);
-    assert.match(app, /function addCompareBlock/);
-    assert.match(app, /function renderCompareBlocks/);
-    assert.match(app, /MAX_COMPARE_BLOCKS\s*=\s*4/);
-    // 카드는 데스크탑에서 드래그 가능해야 한다.
-    assert.match(app, /card\.draggable = true/);
-    assert.match(app, /addEventListener\('dragstart'/);
-    // 담긴 블록 수에 따라 1~2열로 배치.
-    assert.match(css, /\.compare-panel\[data-blocks="2"\][\s\S]*grid-template-columns:\s*1fr 1fr/);
+    assert.match(app, /function addNoticeToCompareBlock/);
+    assert.match(app, /function buildCompareInline/);
+    assert.match(app, /DESKTOP_MAX_COMPARE_BLOCKS\s*=\s*6/);
+    assert.match(app, /MOBILE_MAX_COMPARE_BLOCKS\s*=\s*2/);
+    assert.match(css, /\.card:hover \.card-drag-handle/);
+    assert.match(css, /\.compare-inline\[data-blocks="6"\][\s\S]*repeat\(3,/);
+    assert.match(mobileCss, /\.compare-inline\[data-blocks\][\s\S]*grid-template-columns:\s*1fr/);
+    // 닫을 때 지원 브라우저에서는 View Transition으로 자연스럽게 재배치한다.
+    assert.match(app, /document\.startViewTransition/);
 });
 
 test('the notice board opens a full-page detail instead of a modal', async () => {
@@ -375,7 +370,7 @@ test('view modules register themselves and only one is active at a time', async 
     assert.match(mobile, /registerViewModule\('mobile'/);
     // 비교 UI는 데스크탑에서만 쓴다.
     assert.match(desktop, /supportsCompare:\s*true/);
-    assert.match(mobile, /supportsCompare:\s*false/);
+    assert.match(mobile, /supportsCompare:\s*true/);
 });
 
 test('the notice title is assembled from a fixed template instead of free text', async () => {
@@ -709,7 +704,7 @@ test('expired notices use a neutral card and badge state in list and detail view
     const css = await readFile('css/core.css', 'utf8');
     const listStart = app.indexOf('function filterCards()');
     const detailStart = app.indexOf('async function openDetail');
-    const compareStart = app.indexOf('function renderCompareBlocks');
+    const compareStart = app.indexOf('function buildCompareInline');
     const expiredTagBinding = /dDay\.isExpired\s*\?\s*'expired'/;
 
     assert.match(app, /isExpired:\s*true/);
@@ -790,13 +785,21 @@ test('deadline-soon sorting renders dated notices without an undefined current-d
             return elements[id] || null;
         },
         createElement() {
-            return {};
+            return {
+                addEventListener() {},
+                querySelector() {
+                    return { addEventListener() {} };
+                }
+            };
         }
     };
     const filterCards = new Function(
         'document', 'notices', 'filterState',
         'selectedCategoryFilters', 'calcDDay', 'matchesDeadlineStatus',
-        'escapeHtml', 'openDetail', 'formatDateWithWeekday', 'supportsCompare',
+        'escapeHtml', 'openDetail', 'formatDateWithWeekday', 'compareBlocks',
+        'buildCompareInline', 'noticeViewportLoader',
+        'onCardDragOver', 'onCardDragLeave', 'onCardDrop',
+        'onHandleClick', 'onCardDragStart', 'onCardDragEnd',
         `${filterCardsSource}; return filterCards;`
     )(
         document,
@@ -814,7 +817,15 @@ test('deadline-soon sorting renders dated notices without an undefined current-d
         value => String(value),
         () => {},
         value => String(value),
-        () => false   // 비교 드래그 비활성 → 가짜 DOM에서 addEventListener 호출 안 함
+        [],
+        () => ({}),
+        { observeThumbnail() {} },
+        () => {},
+        () => {},
+        () => {},
+        () => {},
+        () => {},
+        () => {}
     );
 
     assert.doesNotThrow(() => filterCards());

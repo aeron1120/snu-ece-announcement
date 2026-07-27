@@ -1,8 +1,8 @@
 // ========================================
 // SNU ECE 공지방 — mobile.js
 // data-view="mobile"일 때만 동작하는 뷰 모듈.
-// 왼쪽 브랜드 레일을 서랍으로 열고 닫는 동작과, 좁은 화면에서 의미가 없는
-// 기능(공지 비교)을 감추는 일을 맡는다. 레이아웃은 css/mobile.css가 맡는다.
+// 왼쪽 브랜드 레일을 서랍으로 열고 닫는 동작과 터치 동작을 맡는다.
+// 공지 비교는 좁은 화면에 맞춰 최대 두 블록으로 core가 제한한다.
 // ========================================
 
 // 서랍 제어는 index.html의 onclick에서 직접 부르므로 전역에 둔다.
@@ -56,8 +56,7 @@ function isMobileDrawerOpen() {
     }
 
     registerViewModule('mobile', {
-        // 3열 비교는 좁은 화면에서 읽을 수 없다. 담아둔 목록은 core가 그대로 들고 있다.
-        supportsCompare: false,
+        supportsCompare: true,
 
         activate() {
             if (!escapeHandler) {

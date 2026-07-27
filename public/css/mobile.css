@@ -109,13 +109,17 @@ html[data-view="mobile"] .filter-panel-grid { grid-template-columns: 1fr; }
 /* ---------- 모달 ---------- */
 html[data-view="mobile"] .modal { padding: 24px 18px; }
 html[data-view="mobile"] .form-row { flex-direction: column; gap: 0; }
-/* 모바일에서는 목록과 비교 패널을 세로로 쌓고, 패널을 목록 아래 전체폭으로. */
-html[data-view="mobile"] .board-layout { flex-direction: column; }
-html[data-view="mobile"] .compare-panel {
-    flex-basis: auto; width: 100%; margin-left: 0; padding-left: 0;
-    border-left: 0; position: static; max-height: none; margin-top: 20px;
+/* 폰에서는 드래그 대신 6점 핸들을 탭할 수 있고, 최대 두 블록을 세로로 읽는다. */
+html[data-view="mobile"] .card-drag-handle {
+    opacity: 1;
+    transform: none;
+    pointer-events: auto;
+    touch-action: manipulation;
 }
-html[data-view="mobile"] .compare-panel[data-blocks] .compare-blocks { grid-template-columns: 1fr; }
+html[data-view="mobile"] .compare-inline { padding: 12px; }
+html[data-view="mobile"] .compare-inline-head { align-items: flex-start; }
+html[data-view="mobile"] .compare-inline-hint { display: block; margin-top: 4px; }
+html[data-view="mobile"] .compare-inline[data-blocks] .compare-inline-cols { grid-template-columns: 1fr; }
 html[data-view="mobile"] .detail-actions { flex-direction: column; }
 html[data-view="mobile"] .detail-actions .btn { width: 100%; }
 html[data-view="mobile"] .detail-actions .btn-spacer { margin-right: 0; }

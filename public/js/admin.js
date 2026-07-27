@@ -218,7 +218,7 @@ function resetComposeForm() {
     document.getElementById('post-content').value = '';
     document.getElementById('post-images').value = '';
     document.getElementById('panel-compose-title').textContent = '새 공지 등록';
-    document.getElementById('submit-btn-text').textContent = '공지 등록 및 AI 요약 실행';
+    document.getElementById('submit-btn-text').textContent = '공지 업로드';
     document.getElementById('compose-cancel').hidden = true;
     refreshTitlePreview();
 }
@@ -611,7 +611,7 @@ async function editAdminNotice(id) {
     document.getElementById('post-content').value = notice.content || '';
     document.getElementById('post-images').value = '';
     document.getElementById('panel-compose-title').textContent = '공지 수정';
-    document.getElementById('submit-btn-text').textContent = '수정 완료 (AI 요약 업데이트)';
+    document.getElementById('submit-btn-text').textContent = '수정 업로드';
     document.getElementById('compose-cancel').hidden = false;
 
     selectAdminTab('compose');

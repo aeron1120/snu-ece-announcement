@@ -84,7 +84,6 @@
     </aside>
 
     <main class="page-main" id="page-main">
-<div class="board-layout" id="board-layout">
 <div class="board-view" id="board-view">
 <div class="header">
     <button type="button" class="mobile-menu-btn" aria-label="메뉴 열기" onclick="openMobileDrawer()">☰</button>
@@ -217,18 +216,6 @@
     <p id="notice-load-more-status" aria-live="polite"></p>
 </div>
 </div><!-- /board-view -->
-
-    <!-- 노션 블록형 비교 패널: 카드를 이 오른쪽 영역으로 끌어다 놓으면 그 공지가 블록으로 담긴다. 최대 4개. -->
-    <aside class="compare-panel" id="compare-panel" hidden aria-label="공지 비교"
-           ondragover="onComparePanelDragOver(event)" ondragleave="onComparePanelDragLeave(event)" ondrop="onComparePanelDrop(event)">
-        <div class="compare-panel-head">
-            <span class="compare-panel-title">공지 비교 <strong id="compare-count">0</strong> / 4</span>
-            <button class="btn btn-outline btn-small" type="button" onclick="clearCompareBlocks()">모두 비우기</button>
-        </div>
-        <div class="compare-drop-hint" id="compare-drop-hint">공지 카드를 여기로 끌어다 놓으면 블록으로 비교됩니다.</div>
-        <div class="compare-blocks" id="compare-blocks"></div>
-    </aside>
-</div><!-- /board-layout -->
 
 <!-- 공지 상세: 모달이 아니라 목록을 대체하는 전체 페이지. 뒤로가기로 목록에 돌아온다. -->
 <article class="notice-detail-view" id="notice-detail-view" hidden>
