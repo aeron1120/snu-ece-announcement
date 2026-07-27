@@ -76,7 +76,7 @@ The list summary exposes:
 
 For a notice with images, `thumbnailUrl` points to:
 
-`GET /api/notices/:id/thumbnail`
+`GET /api/notices/:id/thumbnail?v=:updatedAt`
 
 For a notice without images, it points directly to the static default asset.
 
@@ -92,8 +92,8 @@ The thumbnail endpoint:
 7. Returns cache headers and an ETag.
 
 The first request performs the conversion; later requests reuse the cached
-thumbnail. An update to the notice changes the cache key, so stale thumbnails
-are not reused.
+thumbnail. An update to the notice changes both the cache key and the versioned
+URL, so browser and server caches do not reuse stale thumbnails.
 
 File mode stores generated thumbnails under
 `server/data/thumbnail-cache/`. The directory remains ignored by Git. A later
