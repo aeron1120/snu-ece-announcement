@@ -72,6 +72,22 @@ test('right-rail image errors restore the inquiry fallback', async () => {
     assert.match(app, /onerror="renderRightRailInquiryFallback\(\)"/);
 });
 
+test('banner manager separates header slides from right rail ads', async () => {
+    const html = await readFile('index.html', 'utf8');
+    const app = await readFile('js/app.js', 'utf8');
+
+    assert.match(html, /id="header-banner-slides-list"/);
+    assert.match(html, /id="right-rail-slides-list"/);
+    assert.match(app, /function renderBannerSection/);
+    assert.match(app, /new-right_rail-description/);
+    assert.match(app, /new-right_rail-link-url/);
+    assert.match(app, /new-right_rail-alt-text/);
+    assert.match(app, /new-right_rail-expires-at/);
+    assert.match(app, /new-right_rail-name/);
+    assert.match(app, /async function addNewBannerSlide\(placement\)/);
+    assert.match(app, /async function moveBanner\(placement, idx, dir\)/);
+});
+
 test('PWA manifest and service worker include install and push contracts', async () => {
     const manifest = JSON.parse(await readFile('manifest.webmanifest', 'utf8'));
     const worker = await readFile('service-worker.js', 'utf8');
