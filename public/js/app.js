@@ -255,15 +255,29 @@ function copyToClipboard(text) { navigator.clipboard.writeText(text).then(() => 
 function copyAdminPhone() { copyToClipboard(adminInfo.phone); }
 function getBase64(file) { return new Promise((resolve, reject) => { const reader = new FileReader(); reader.readAsDataURL(file); reader.onload = () => resolve(reader.result); reader.onerror = e => reject(e); }); }
 
+function getCalendarDayDifference(firstDate, secondDate) {
+    const firstDay = Date.UTC(firstDate.getFullYear(), firstDate.getMonth(), firstDate.getDate());
+    const secondDay = Date.UTC(secondDate.getFullYear(), secondDate.getMonth(), secondDate.getDate());
+    return (firstDay - secondDay) / 86400000;
+}
+
 function calcDDay(deadlineStr) {
     if (!deadlineStr) return { text: "상시", isUrgent: false, isD1: false, isExpired: false };
-    const dDate = new Date(deadlineStr + "T23:59:59");
-    const diffDays = Math.floor((dDate - getCurrentDate()) / (1000 * 60 * 60 * 24));
+    const diffDays = getCalendarDayDifference(new Date(deadlineStr + "T00:00:00"), getCurrentDate());
     if (diffDays < 0) return { text: "마감됨", isUrgent: false, isD1: false, isExpired: true };
     if (diffDays === 0) return { text: "D-Day", isUrgent: true, isD1: false, isExpired: false };
     if (diffDays === 1) return { text: "D-1", isUrgent: true, isD1: true, isExpired: false };
     if (diffDays <= 3) return { text: `D-${diffDays}`, isUrgent: true, isD1: false, isExpired: false };
     return { text: `D-${diffDays}`, isUrgent: false, isD1: false, isExpired: false };
+}
+
+function matchesDeadlineStatus(deadlineStatus, dDay, hasDeadline) {
+    if (deadlineStatus === '전체') return true;
+    if (deadlineStatus === '진행중') return !dDay.isExpired;
+    if (deadlineStatus === '마감임박') return dDay.isUrgent && !dDay.isExpired;
+    if (deadlineStatus === '상시') return !hasDeadline;
+    if (deadlineStatus === '마감됨') return dDay.isExpired;
+    return true;
 }
 
 // 공지 제목·기관·배너 문구는 관리자가 자유롭게 입력하므로, HTML로 조립하기 전에 반드시 이스케이프한다.
@@ -1294,8 +1308,6 @@ function filterCards() {
     const dateFrom = document.getElementById('filter-date-from')?.value || '';
     const dateTo = document.getElementById('filter-date-to')?.value || '';
 
-    const today = getCurrentDate();
-
     const grid = document.getElementById('notice-grid');
     grid.innerHTML = "";
 
@@ -1316,15 +1328,7 @@ function filterCards() {
 
         const dDay = calcDDay(notice.deadline);
 
-        if (fDeadlineStatus !== '전체') {
-            if (fDeadlineStatus === '진행중' && dDay.text === '마감됨') return;
-            if (fDeadlineStatus === '마감임박') {
-                const d = notice.deadline ? Math.ceil((new Date(notice.deadline + 'T23:59:59') - today) / 86400000) : 999;
-                if (d < 0 || d > 3) return;
-            }
-            if (fDeadlineStatus === '상시' && notice.deadline) return;
-            if (fDeadlineStatus === '마감됨' && dDay.text !== '마감됨') return;
-        }
+        if (!matchesDeadlineStatus(fDeadlineStatus, dDay, Boolean(notice.deadline))) return;
 
         if (fHost !== '전체' && (notice.host || '기타') !== fHost) return;
 

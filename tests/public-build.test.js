@@ -56,32 +56,61 @@ test('PWA manifest and service worker include install and push contracts', async
 test('expired notices use a neutral card and badge state in list and detail views', async () => {
     const app = await readFile('js/app.js', 'utf8');
     const css = await readFile('css/style.css', 'utf8');
+    const detailStart = app.indexOf('function openDetail');
+    const expiredTagBinding = /dDay\.isExpired\s*\?\s*'expired'/;
 
     assert.match(app, /isExpired:\s*true/);
     assert.match(app, /card-expired/);
-    assert.match(app, /dDay\.isExpired\s*\?\s*'expired'/);
+    assert.ok(detailStart > 0);
+    assert.match(app.slice(0, detailStart), expiredTagBinding);
+    assert.match(app.slice(detailStart), expiredTagBinding);
+    assert.equal((app.match(/dDay\.isExpired\s*\?\s*'expired'/g) || []).length, 2);
+    assert.match(app, /dDay\.isUrgent\s*\?\s*'d-day'/);
     assert.match(css, /\.card\.card-expired\s*\{/);
     assert.match(css, /\.tags \.tag\.expired\s*\{/);
     assert.doesNotMatch(css, /\.card\.card-expired[^{]*\{[^}]*opacity\s*:/s);
     assert.doesNotMatch(css, /\.card\.card-expired[^{]*\{[^}]*text-decoration\s*:/s);
 });
 
-test('calcDDay keeps a notice active through its deadline date and expires it the following day', async () => {
+test('calcDDay uses calendar-day states for permanent, urgent, and expired notices', async () => {
     const app = await readFile('js/app.js', 'utf8');
+    const calendarDayDifferenceSource = app.match(/function getCalendarDayDifference\([^)]*\) \{[\s\S]*?\r?\n\}/)?.[0];
     const calcDDaySource = app.match(/function calcDDay\(deadlineStr\) \{[\s\S]*?\r?\n\}/)?.[0];
+    assert.ok(calendarDayDifferenceSource);
     assert.ok(calcDDaySource);
 
     const onDeadlineDate = new Function(
         'getCurrentDate',
-        `${calcDDaySource}; return calcDDay;`
+        `${calendarDayDifferenceSource}\n${calcDDaySource}; return calcDDay;`
     )(() => new Date('2026-07-27T00:00:00'));
     const followingDate = new Function(
         'getCurrentDate',
-        `${calcDDaySource}; return calcDDay;`
+        `${calendarDayDifferenceSource}\n${calcDDaySource}; return calcDDay;`
     )(() => new Date('2026-07-28T00:00:00'));
 
+    assert.deepEqual(onDeadlineDate(null), {
+        text: '상시', isUrgent: false, isD1: false, isExpired: false
+    });
+    assert.equal(onDeadlineDate('2026-07-27').isUrgent, true);
     assert.equal(onDeadlineDate('2026-07-27').isExpired, false);
     assert.equal(followingDate('2026-07-27').isExpired, true);
+    assert.equal(followingDate('2026-07-27').isUrgent, false);
+    assert.equal(onDeadlineDate('2026-07-30').isUrgent, true);
+    assert.equal(onDeadlineDate('2026-07-31').isUrgent, false);
+    assert.match(calendarDayDifferenceSource, /Date\.UTC/);
+});
+
+test('deadline-status filtering excludes expired notices from urgent results', async () => {
+    const app = await readFile('js/app.js', 'utf8');
+    const deadlineStatusSource = app.match(/function matchesDeadlineStatus\([^)]*\) \{[\s\S]*?\r?\n\}/)?.[0];
+    assert.ok(deadlineStatusSource);
+    const matchesDeadlineStatus = new Function(
+        `${deadlineStatusSource}; return matchesDeadlineStatus;`
+    )();
+
+    const expired = { isUrgent: false, isExpired: true };
+    assert.equal(matchesDeadlineStatus('마감임박', expired, true), false);
+    assert.equal(matchesDeadlineStatus('마감됨', expired, true), true);
 });
 
 test('Cloudflare scheduled worker triggers the protected crawl endpoint', async () => {
