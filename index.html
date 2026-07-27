@@ -26,6 +26,19 @@
     <link rel="stylesheet" href="./css/style.css">
 </head>
 <body>
+<div class="page-shell">
+    <aside class="site-rail brand-rail" id="left-brand-rail" aria-label="학교 바로가기">
+        <div class="brand-mark" aria-label="SNU 임시 문자 마크">SNU</div>
+        <p class="brand-site-name">SNU ECE<br>공지방</p>
+        <nav class="brand-links" aria-label="서울대학교 관련 링크">
+            <a href="https://www.snu.ac.kr/" target="_blank" rel="noopener noreferrer">서울대학교 홈페이지</a>
+            <a href="https://ece.snu.ac.kr/" target="_blank" rel="noopener noreferrer">전기정보공학부</a>
+            <a href="https://my.snu.ac.kr/" target="_blank" rel="noopener noreferrer">mySNU</a>
+            <button type="button" onclick="openAddNotice()">공지 등록</button>
+        </nav>
+    </aside>
+
+    <main class="page-main" id="page-main">
 <div class="header">
     <div class="header-title-area">
         <h1 class="site-title">SNU ECE 공지방</h1>
@@ -176,6 +189,17 @@
 </div>
 
 <div class="grid" id="notice-grid"></div>
+
+    </main>
+    <aside class="site-rail ad-rail" id="right-ad-rail" aria-label="광고">
+        <div id="right-rail-ad-content" aria-live="polite">
+            <span class="ad-label">AD</span>
+            <h2>배너 광고 문의</h2>
+            <p>학생들에게 소식을 알릴 세로 배너를 등록해보세요.</p>
+            <button class="rail-cta" type="button" onclick="openModal('contact-modal')">문의하기</button>
+        </div>
+    </aside>
+</div>
 
 <div class="overlay" id="contact-modal">
     <div class="modal" style="width: 460px; text-align: center;" onclick="event.stopPropagation()">

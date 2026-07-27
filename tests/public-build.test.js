@@ -41,6 +41,28 @@ test('canonical HTML includes the administrator review manager contract', async 
     assert.match(html, /aria-live="polite"/);
 });
 
+test('desktop shell exposes brand and managed advertising rails', async () => {
+    const html = await readFile('index.html', 'utf8');
+    const app = await readFile('js/app.js', 'utf8');
+
+    for (const id of [
+        'left-brand-rail',
+        'right-ad-rail',
+        'right-rail-ad-content',
+        'page-main'
+    ]) {
+        assert.match(html, new RegExp(`id="${id}"`));
+    }
+    assert.match(html, /class="brand-mark"[^>]*>SNU</);
+    assert.match(html, />서울대학교 홈페이지</);
+    assert.match(html, />전기정보공학부</);
+    assert.match(html, />mySNU</);
+    assert.match(app, /function getBannerSlidesByPlacement/);
+    assert.match(app, /function renderRightRailAd/);
+    assert.match(app, /getBannerSlidesByPlacement\('header'\)/);
+    assert.match(app, /getBannerSlidesByPlacement\('right_rail'\)/);
+});
+
 test('PWA manifest and service worker include install and push contracts', async () => {
     const manifest = JSON.parse(await readFile('manifest.webmanifest', 'utf8'));
     const worker = await readFile('service-worker.js', 'utf8');

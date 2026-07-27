@@ -172,6 +172,7 @@ async function loadBannerSlides() {
         if (Array.isArray(result?.slides) && result.slides.length > 0) {
             bannerSlides = result.slides;
             refreshBannerDOM();
+            renderRightRailAd();
         }
     } catch (error) {
         console.error('배너 슬라이드 로드 실패:', error);
@@ -196,6 +197,7 @@ function startBannerPolling() {
                     bannerSlides = newSlides;
                     currentBannerIdx = 0;
                     refreshBannerDOM();
+                    renderRightRailAd();
                 }
             }
         } catch (error) {
@@ -211,12 +213,18 @@ function stopBannerPolling() {
     }
 }
 
+function getBannerSlidesByPlacement(placement) {
+    return bannerSlides
+        .filter(slide => (slide.placement || 'header') === placement)
+        .sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0));
+}
+
 function refreshBannerDOM() {
     const bannerTrack = document.getElementById('banner-track');
     if (!bannerTrack) return;
 
     bannerTrack.innerHTML = '';
-    bannerSlides.forEach(slide => {
+    getBannerSlidesByPlacement('header').forEach(slide => {
         const slideEl = document.createElement('a');
         slideEl.href = '#';
         slideEl.className = 'banner-slide';
@@ -229,7 +237,7 @@ function refreshBannerDOM() {
         if (slide.src) {
             const imgEl = document.createElement('img');
             imgEl.src = slide.src;
-            imgEl.alt = slide.name || '배너 이미지';
+            imgEl.alt = slide.altText || slide.name || '배너 이미지';
             imgEl.className = 'banner-slide-image';
             slideEl.appendChild(imgEl);
         } else {
@@ -245,6 +253,38 @@ function refreshBannerDOM() {
 
     currentBannerIdx = 0;
     updateBannerPosition();
+}
+
+function renderRightRailAd() {
+    const container = document.getElementById('right-rail-ad-content');
+    if (!container) return;
+    const slide = getBannerSlidesByPlacement('right_rail')[0];
+
+    if (!slide) {
+        container.innerHTML = `
+            <span class="ad-label">AD</span>
+            <h2>배너 광고 문의</h2>
+            <p>학생들에게 소식을 알릴 세로 배너를 등록해보세요.</p>
+            <button class="rail-cta" type="button" onclick="openModal('contact-modal')">문의하기</button>
+        `;
+        return;
+    }
+
+    const image = slide.src
+        ? `<img src="${escapeHtml(slide.src)}" alt="${escapeHtml(slide.altText || slide.name || '광고 이미지')}" onerror="this.hidden=true">`
+        : '';
+    const content = `
+        <span class="ad-label">AD</span>
+        ${image}
+        <h2>${escapeHtml(slide.text || slide.name || '광고')}</h2>
+        ${slide.description ? `<p>${escapeHtml(slide.description)}</p>` : ''}
+        ${slide.linkUrl ? '<span class="rail-cta">자세히 보기</span>' : ''}
+    `;
+    if (slide.linkUrl) {
+        container.innerHTML = `<a class="rail-ad-link" href="${escapeHtml(slide.linkUrl)}" target="_blank" rel="noopener noreferrer">${content}</a>`;
+    } else {
+        container.innerHTML = content;
+    }
 }
 
 // ========================================
@@ -401,7 +441,7 @@ window.addEventListener('popstate', function () {
 
 // 배너 드래그 로직
 function slideBanner() {
-    const total = bannerSlides.length || (document.getElementById('banner-track') ? document.getElementById('banner-track').children.length : 0);
+    const total = getBannerSlidesByPlacement('header').length || (document.getElementById('banner-track') ? document.getElementById('banner-track').children.length : 0);
     if (total === 0) return;
     currentBannerIdx = (currentBannerIdx + 1) % total;
     updateBannerPosition();
@@ -442,7 +482,7 @@ function dragEnd() {
     bannerTrack.classList.remove('dragging');
     
     const movedBy = currentTranslate - prevTranslate;
-    const total = bannerSlides.length || (document.getElementById('banner-track') ? document.getElementById('banner-track').children.length : 0);
+    const total = getBannerSlidesByPlacement('header').length || (document.getElementById('banner-track') ? document.getElementById('banner-track').children.length : 0);
 
     if (movedBy < -20) {
         currentBannerIdx = (currentBannerIdx + 1) % total;
@@ -914,6 +954,7 @@ async function addNewBannerSlide() {
 
         bannerSlides.push(result.slide);
         refreshBannerDOM();
+        renderRightRailAd();
         renderBannerList();
         document.getElementById('new-banner-text').value = '';
         if (imageInput) imageInput.value = '';
@@ -962,6 +1003,7 @@ async function updateBannerSlide(slideId) {
             bannerSlides[idx] = result.slide;
         }
         refreshBannerDOM();
+        renderRightRailAd();
         renderBannerList();
         alert('배너가 수정되었습니다!');
     } catch (error) {
@@ -987,6 +1029,7 @@ async function deleteBannerSlide(slideId) {
 
         bannerSlides = bannerSlides.filter(s => s.id !== slideId);
         refreshBannerDOM();
+        renderRightRailAd();
         renderBannerList();
         alert('배너가 삭제되었습니다!');
     } catch (error) {
@@ -1009,6 +1052,7 @@ async function moveBanner(idx, dir) {
     if (items.length === 0) {
         bannerSlides = reordered;
         refreshBannerDOM();
+        renderRightRailAd();
         renderBannerList();
         return;
     }
@@ -1026,6 +1070,7 @@ async function moveBanner(idx, dir) {
             bannerSlides = reordered;
         }
         refreshBannerDOM();
+        renderRightRailAd();
         renderBannerList();
     } catch (error) {
         alert(`배너 순서 변경 실패: ${error.message}`);
@@ -1722,6 +1767,7 @@ document.addEventListener('DOMContentLoaded', async function () {
     renderAdminInfo();
     renderBannerAdminInfo();
     refreshBannerDOM();
+    renderRightRailAd();
     buildHostButtons();
     filterCards();
     updateCompareBar();
