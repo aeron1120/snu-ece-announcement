@@ -26,6 +26,19 @@
     <link rel="stylesheet" href="./css/style.css">
 </head>
 <body>
+<div class="page-shell">
+    <aside class="site-rail brand-rail" id="left-brand-rail" aria-label="학교 바로가기">
+        <div class="brand-mark" aria-label="SNU 임시 문자 마크">SNU</div>
+        <p class="brand-site-name">SNU ECE<br>공지방</p>
+        <nav class="brand-links" aria-label="서울대학교 관련 링크">
+            <a href="https://www.snu.ac.kr/" target="_blank" rel="noopener noreferrer">서울대학교 홈페이지</a>
+            <a href="https://ece.snu.ac.kr/" target="_blank" rel="noopener noreferrer">전기정보공학부</a>
+            <a href="https://my.snu.ac.kr/" target="_blank" rel="noopener noreferrer">mySNU</a>
+            <button type="button" onclick="openAddNotice()">공지 등록</button>
+        </nav>
+    </aside>
+
+    <main class="page-main" id="page-main">
 <div class="header">
     <div class="header-title-area">
         <h1 class="site-title">SNU ECE 공지방</h1>
@@ -177,6 +190,17 @@
 
 <div class="grid" id="notice-grid"></div>
 
+    </main>
+    <aside class="site-rail ad-rail" id="right-ad-rail" aria-label="광고">
+        <div id="right-rail-ad-content" aria-live="polite">
+            <span class="ad-label">AD</span>
+            <h2>배너 광고 문의</h2>
+            <p>학생들에게 소식을 알릴 세로 배너를 등록해보세요.</p>
+            <button class="rail-cta" type="button" onclick="openModal('contact-modal')">문의하기</button>
+        </div>
+    </aside>
+</div>
+
 <div class="overlay" id="contact-modal">
     <div class="modal" style="width: 460px; text-align: center;" onclick="event.stopPropagation()">
         <button class="close-btn" onclick="closeModal('contact-modal')">×</button>
@@ -269,7 +293,14 @@
                 <!-- 인증 후 노출되는 관리 패널 -->
                 <div id="banner-list-area" class="banner-manage-panel" style="display: none;">
                     <h4 style="margin: 0 0 16px 0; font-size: 15px; color: var(--text-main);">📋 현재 배너 목록</h4>
-                    <div class="banner-slides-list" id="banner-slides-list"></div>
+                    <section class="banner-placement-section" aria-labelledby="header-banner-manager-title">
+                        <h4 id="header-banner-manager-title">상단 배너</h4>
+                        <div class="banner-slides-list" id="header-banner-slides-list"></div>
+                    </section>
+                    <section class="banner-placement-section" aria-labelledby="right-rail-manager-title">
+                        <h4 id="right-rail-manager-title">오른쪽 세로 광고</h4>
+                        <div class="banner-slides-list" id="right-rail-slides-list"></div>
+                    </section>
                     <div style="margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border);">
                         <button class="btn btn-outline btn-small" onclick="closeBannerEditPanel()">관리 종료</button>
                     </div>

@@ -172,6 +172,7 @@ async function loadBannerSlides() {
         if (Array.isArray(result?.slides) && result.slides.length > 0) {
             bannerSlides = result.slides;
             refreshBannerDOM();
+            renderRightRailAd();
         }
     } catch (error) {
         console.error('배너 슬라이드 로드 실패:', error);
@@ -196,6 +197,7 @@ function startBannerPolling() {
                     bannerSlides = newSlides;
                     currentBannerIdx = 0;
                     refreshBannerDOM();
+                    renderRightRailAd();
                 }
             }
         } catch (error) {
@@ -211,12 +213,18 @@ function stopBannerPolling() {
     }
 }
 
+function getBannerSlidesByPlacement(placement) {
+    return bannerSlides
+        .filter(slide => (slide.placement || 'header') === placement)
+        .sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0));
+}
+
 function refreshBannerDOM() {
     const bannerTrack = document.getElementById('banner-track');
     if (!bannerTrack) return;
 
     bannerTrack.innerHTML = '';
-    bannerSlides.forEach(slide => {
+    getBannerSlidesByPlacement('header').forEach(slide => {
         const slideEl = document.createElement('a');
         slideEl.href = '#';
         slideEl.className = 'banner-slide';
@@ -229,7 +237,7 @@ function refreshBannerDOM() {
         if (slide.src) {
             const imgEl = document.createElement('img');
             imgEl.src = slide.src;
-            imgEl.alt = slide.name || '배너 이미지';
+            imgEl.alt = slide.altText || slide.name || '배너 이미지';
             imgEl.className = 'banner-slide-image';
             slideEl.appendChild(imgEl);
         } else {
@@ -245,6 +253,45 @@ function refreshBannerDOM() {
 
     currentBannerIdx = 0;
     updateBannerPosition();
+}
+
+function renderRightRailInquiryFallback() {
+    const container = document.getElementById('right-rail-ad-content');
+    if (!container) return;
+
+    container.innerHTML = `
+        <span class="ad-label">AD</span>
+        <h2>배너 광고 문의</h2>
+        <p>학생들에게 소식을 알릴 세로 배너를 등록해보세요.</p>
+        <button class="rail-cta" type="button" onclick="openModal('contact-modal')">문의하기</button>
+    `;
+}
+
+function renderRightRailAd() {
+    const container = document.getElementById('right-rail-ad-content');
+    if (!container) return;
+    const slide = getBannerSlidesByPlacement('right_rail')[0];
+
+    if (!slide) {
+        renderRightRailInquiryFallback();
+        return;
+    }
+
+    const image = slide.src
+        ? `<img src="${escapeHtml(slide.src)}" alt="${escapeHtml(slide.altText || slide.name || '광고 이미지')}" onerror="renderRightRailInquiryFallback()">`
+        : '';
+    const content = `
+        <span class="ad-label">AD</span>
+        ${image}
+        <h2>${escapeHtml(slide.text || slide.name || '광고')}</h2>
+        ${slide.description ? `<p>${escapeHtml(slide.description)}</p>` : ''}
+        ${slide.linkUrl ? '<span class="rail-cta">자세히 보기</span>' : ''}
+    `;
+    if (slide.linkUrl) {
+        container.innerHTML = `<a class="rail-ad-link" href="${escapeHtml(slide.linkUrl)}" target="_blank" rel="noopener noreferrer">${content}</a>`;
+    } else {
+        container.innerHTML = content;
+    }
 }
 
 // ========================================
@@ -401,7 +448,7 @@ window.addEventListener('popstate', function () {
 
 // 배너 드래그 로직
 function slideBanner() {
-    const total = bannerSlides.length || (document.getElementById('banner-track') ? document.getElementById('banner-track').children.length : 0);
+    const total = getBannerSlidesByPlacement('header').length || (document.getElementById('banner-track') ? document.getElementById('banner-track').children.length : 0);
     if (total === 0) return;
     currentBannerIdx = (currentBannerIdx + 1) % total;
     updateBannerPosition();
@@ -442,7 +489,7 @@ function dragEnd() {
     bannerTrack.classList.remove('dragging');
     
     const movedBy = currentTranslate - prevTranslate;
-    const total = bannerSlides.length || (document.getElementById('banner-track') ? document.getElementById('banner-track').children.length : 0);
+    const total = getBannerSlidesByPlacement('header').length || (document.getElementById('banner-track') ? document.getElementById('banner-track').children.length : 0);
 
     if (movedBy < -20) {
         currentBannerIdx = (currentBannerIdx + 1) % total;
@@ -836,7 +883,7 @@ function toggleBannerModePanel() {
     header.classList.toggle('collapsed', isOpen);
 }
 
-function renderBannerList() {
+function legacyRenderBannerList() {
     const container = document.getElementById('banner-slides-list');
     if (!container) return;
 
@@ -883,7 +930,7 @@ function renderBannerList() {
     container.appendChild(addForm);
 }
 
-async function addNewBannerSlide() {
+async function legacyAddNewBannerSlide() {
     const text = (document.getElementById('new-banner-text').value || '').trim();
     const textColor = document.getElementById('new-banner-color').value || '#000000';
     const bgColor = document.getElementById('new-banner-bg').value || '#ffffff';
@@ -914,6 +961,7 @@ async function addNewBannerSlide() {
 
         bannerSlides.push(result.slide);
         refreshBannerDOM();
+        renderRightRailAd();
         renderBannerList();
         document.getElementById('new-banner-text').value = '';
         if (imageInput) imageInput.value = '';
@@ -923,7 +971,7 @@ async function addNewBannerSlide() {
     }
 }
 
-async function updateBannerSlide(slideId) {
+async function legacyUpdateBannerSlide(slideId) {
     if (!Number.isFinite(Number(slideId))) {
         await loadBannerSlides();
         renderBannerList();
@@ -962,6 +1010,7 @@ async function updateBannerSlide(slideId) {
             bannerSlides[idx] = result.slide;
         }
         refreshBannerDOM();
+        renderRightRailAd();
         renderBannerList();
         alert('배너가 수정되었습니다!');
     } catch (error) {
@@ -987,6 +1036,7 @@ async function deleteBannerSlide(slideId) {
 
         bannerSlides = bannerSlides.filter(s => s.id !== slideId);
         refreshBannerDOM();
+        renderRightRailAd();
         renderBannerList();
         alert('배너가 삭제되었습니다!');
     } catch (error) {
@@ -994,7 +1044,7 @@ async function deleteBannerSlide(slideId) {
     }
 }
 
-async function moveBanner(idx, dir) {
+async function legacyMoveBanner(idx, dir) {
     const nextIdx = idx + dir;
     if (nextIdx < 0 || nextIdx >= bannerSlides.length) return;
 
@@ -1009,6 +1059,7 @@ async function moveBanner(idx, dir) {
     if (items.length === 0) {
         bannerSlides = reordered;
         refreshBannerDOM();
+        renderRightRailAd();
         renderBannerList();
         return;
     }
@@ -1026,6 +1077,244 @@ async function moveBanner(idx, dir) {
             bannerSlides = reordered;
         }
         refreshBannerDOM();
+        renderRightRailAd();
+        renderBannerList();
+    } catch (error) {
+        alert(`배너 순서 변경 실패: ${error.message}`);
+    }
+}
+
+function toDateTimeLocalValue(value) {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+    return local.toISOString().slice(0, 16);
+}
+
+function resolveUpdateExpiresAt(input) {
+    const value = input?.value || '';
+    const originalLocalValue = input?.dataset?.originalLocalValue || '';
+    if (value === originalLocalValue) return '';
+    return value ? new Date(value).toISOString() : '';
+}
+
+function renderBannerList() {
+    renderBannerSection('header', '상단 배너');
+    renderBannerSection('right_rail', '오른쪽 세로 광고');
+}
+
+function renderBannerSection(placement, title) {
+    const containerId = placement === 'header' ? 'header-banner-slides-list' : 'right-rail-slides-list';
+    const container = document.getElementById(containerId);
+    if (!container) return;
+
+    const slides = getBannerSlidesByPlacement(placement);
+    container.setAttribute('aria-label', title);
+    container.innerHTML = '';
+
+    slides.forEach((slide, idx) => {
+        const safeId = Number(slide.id);
+        const safeText = escapeHtml(slide.text || '');
+        const localExpiresAt = toDateTimeLocalValue(slide.expiresAt);
+        const rightRailFields = placement === 'right_rail' ? `
+            <textarea class="banner-input-description-${safeId}" maxlength="240" placeholder="짧은 광고 설명">${escapeHtml(slide.description || '')}</textarea>
+            <input type="url" class="banner-input-link-${safeId}" value="${escapeHtml(slide.linkUrl || '')}" placeholder="https://...">
+            <input type="text" class="banner-input-alt-${safeId}" maxlength="160" value="${escapeHtml(slide.altText || '')}" placeholder="이미지 대체 텍스트">
+        ` : '';
+        const slideItem = document.createElement('div');
+        slideItem.className = 'banner-item';
+        slideItem.innerHTML = `
+            <div class="banner-item-header">
+                <span class="banner-item-text">${safeText}</span>
+                <div class="banner-item-actions">
+                    <button class="btn btn-outline btn-small" onclick="moveBanner('${placement}', ${idx}, -1)" ${idx === 0 ? 'disabled' : ''}>↑</button>
+                    <button class="btn btn-outline btn-small" onclick="moveBanner('${placement}', ${idx}, 1)" ${idx === slides.length - 1 ? 'disabled' : ''}>↓</button>
+                    <button class="btn btn-small btn-danger" onclick="deleteBannerSlide(${safeId})">삭제</button>
+                </div>
+            </div>
+            <div class="banner-item-form">
+                <input type="text" maxlength="50" placeholder="관리용 이름" value="${escapeHtml(slide.name || '')}" class="banner-input-name-${safeId}">
+                <input type="text" maxlength="100" placeholder="배너 텍스트" value="${safeText}" class="banner-input-text-${safeId}">
+                <input type="color" value="${escapeHtml(slide.textColor || '#000000')}" class="banner-input-color-${safeId}">
+                <input type="datetime-local" value="${localExpiresAt}" data-original-local-value="${localExpiresAt}" class="banner-input-expires-at-${safeId}">
+                ${rightRailFields}
+                <input type="file" accept="image/*" class="banner-input-file-${safeId}">
+                <button class="btn btn-small" onclick="updateBannerSlide(${safeId})">수정</button>
+            </div>
+        `;
+        container.appendChild(slideItem);
+    });
+
+    const addForm = document.createElement('div');
+    const addInputIds = placement === 'right_rail'
+        ? {
+            name: 'new-right_rail-name', text: 'new-right_rail-text', color: 'new-right_rail-color', bg: 'new-right_rail-bg',
+            description: 'new-right_rail-description', linkUrl: 'new-right_rail-link-url', altText: 'new-right_rail-alt-text',
+            expiresAt: 'new-right_rail-expires-at', image: 'new-right_rail-image'
+        }
+        : {
+            name: 'new-header-name', text: 'new-header-text', color: 'new-header-color', bg: 'new-header-bg',
+            expiresAt: 'new-header-expires-at', image: 'new-header-image'
+        };
+    const rightRailAddFields = placement === 'right_rail' ? `
+        <textarea id="${addInputIds.description}" maxlength="240" placeholder="짧은 광고 설명"></textarea>
+        <input type="url" id="${addInputIds.linkUrl}" placeholder="https://...">
+        <input type="text" id="${addInputIds.altText}" maxlength="160" placeholder="이미지 대체 텍스트">
+    ` : '';
+    addForm.className = 'banner-item banner-item-add';
+    addForm.innerHTML = `
+        <div class="banner-item-header"><span>새 ${title} 추가</span></div>
+        <div class="banner-item-form">
+            <input type="text" id="${addInputIds.name}" maxlength="50" placeholder="관리용 이름">
+            <input type="text" id="${addInputIds.text}" maxlength="100" placeholder="배너 텍스트">
+            <input type="color" id="${addInputIds.color}" value="#000000" placeholder="텍스트 색">
+            <input type="color" id="${addInputIds.bg}" value="#ffffff" placeholder="배경 색">
+            ${rightRailAddFields}
+            <input type="datetime-local" id="${addInputIds.expiresAt}">
+            <input type="file" id="${addInputIds.image}" accept="image/*">
+            <button class="btn btn-small" type="button" onclick="addNewBannerSlide('${placement}')">추가</button>
+        </div>
+    `;
+    container.appendChild(addForm);
+}
+
+async function addNewBannerSlide(placement) {
+    const text = (document.getElementById(`new-${placement}-text`)?.value || '').trim();
+    const name = (document.getElementById(`new-${placement}-name`)?.value || '').trim();
+    const textColor = document.getElementById(`new-${placement}-color`)?.value || '#000000';
+    const bgColor = document.getElementById(`new-${placement}-bg`)?.value || '#ffffff';
+    const description = (document.getElementById(`new-${placement}-description`)?.value || '').trim();
+    const linkUrl = (document.getElementById(`new-${placement}-link-url`)?.value || '').trim();
+    const altText = (document.getElementById(`new-${placement}-alt-text`)?.value || '').trim();
+    const expiresAt = document.getElementById(`new-${placement}-expires-at`)?.value || '';
+    const imageInput = document.getElementById(`new-${placement}-image`);
+    const imageFile = imageInput?.files?.[0] || null;
+
+    if (!text && !imageFile) {
+        alert('배너 텍스트 또는 이미지를 입력해주세요.');
+        return;
+    }
+
+    const imageSrc = imageFile ? await getBase64(imageFile) : null;
+    const normalizedText = text || '이미지 배너';
+
+    try {
+        const result = await apiRequest('/api/banner-slides', {
+            method: 'POST',
+            headers: getBannerManageHeaders(),
+            body: JSON.stringify({
+                name: name || normalizedText.substring(0, 50),
+                text: normalizedText,
+                bgStyle: `background: ${bgColor};`,
+                textColor,
+                src: imageSrc,
+                order: getBannerSlidesByPlacement(placement).length,
+                placement,
+                description,
+                linkUrl,
+                altText,
+                expiresAt: expiresAt ? new Date(expiresAt).toISOString() : ''
+            })
+        });
+
+        bannerSlides.push(result.slide);
+        refreshBannerDOM();
+        renderRightRailAd();
+        renderBannerList();
+        alert('배너가 추가되었습니다!');
+    } catch (error) {
+        alert(`배너 추가 실패: ${error.message}`);
+    }
+}
+
+async function updateBannerSlide(slideId) {
+    if (!Number.isFinite(Number(slideId))) {
+        await loadBannerSlides();
+        renderBannerList();
+        alert('서버 배너와 동기화 중입니다. 잠시 후 다시 시도해주세요.');
+        return;
+    }
+
+    const prevSlide = bannerSlides.find(slide => Number(slide.id) === Number(slideId));
+    if (!prevSlide) return;
+
+    const newText = (document.querySelector(`.banner-input-text-${slideId}`)?.value || '').trim();
+    const newName = (document.querySelector(`.banner-input-name-${slideId}`)?.value || '').trim();
+    const newColor = document.querySelector(`.banner-input-color-${slideId}`)?.value || prevSlide.textColor || '#000000';
+    const descriptionInput = document.querySelector(`.banner-input-description-${slideId}`);
+    const linkInput = document.querySelector(`.banner-input-link-${slideId}`);
+    const altInput = document.querySelector(`.banner-input-alt-${slideId}`);
+    const expiresInput = document.querySelector(`.banner-input-expires-at-${slideId}`);
+    const expiresAt = resolveUpdateExpiresAt(expiresInput);
+    const imageInput = document.querySelector(`.banner-input-file-${slideId}`);
+    const imageFile = imageInput?.files?.[0] || null;
+    const imageSrc = imageFile ? await getBase64(imageFile) : null;
+
+    if (!newText && !imageSrc && !prevSlide.src) {
+        alert('배너 텍스트 또는 이미지를 입력해주세요.');
+        return;
+    }
+
+    try {
+        const result = await apiRequest(`/api/banner-slides/${slideId}`, {
+            method: 'PUT',
+            headers: getBannerManageHeaders(),
+            body: JSON.stringify({
+                name: (newName || prevSlide.name || newText || '이미지 배너').substring(0, 50),
+                text: newText || prevSlide.text || '이미지 배너',
+                textColor: newColor,
+                bgStyle: prevSlide.bgStyle || 'background: #ffffff;',
+                src: imageSrc || prevSlide.src || null,
+                order: Number(prevSlide.order) || 0,
+                placement: prevSlide.placement || 'header',
+                description: descriptionInput ? descriptionInput.value.trim() : (prevSlide.description || ''),
+                linkUrl: linkInput ? linkInput.value.trim() : (prevSlide.linkUrl || ''),
+                altText: altInput ? altInput.value.trim() : (prevSlide.altText || ''),
+                expiresAt
+            })
+        });
+
+        const idx = bannerSlides.findIndex(slide => Number(slide.id) === Number(slideId));
+        if (idx !== -1) bannerSlides[idx] = result.slide;
+        refreshBannerDOM();
+        renderRightRailAd();
+        renderBannerList();
+        alert('배너가 수정되었습니다!');
+    } catch (error) {
+        alert(`배너 수정 실패: ${error.message}`);
+    }
+}
+
+async function moveBanner(placement, idx, dir) {
+    const slides = getBannerSlidesByPlacement(placement);
+    const nextIdx = idx + dir;
+    if (nextIdx < 0 || nextIdx >= slides.length) return;
+
+    const reordered = [...slides];
+    const [moved] = reordered.splice(idx, 1);
+    reordered.splice(nextIdx, 0, moved);
+    const items = reordered
+        .filter(slide => Number.isFinite(Number(slide.id)))
+        .map((slide, order) => ({ id: Number(slide.id), order }));
+
+    if (items.length === 0) return;
+
+    try {
+        const result = await apiRequest('/api/banner-slides/reorder', {
+            method: 'PUT',
+            headers: getBannerManageHeaders(),
+            body: JSON.stringify({ items })
+        });
+
+        if (Array.isArray(result?.slides)) {
+            bannerSlides = result.slides;
+        } else {
+            const nextById = new Map(reordered.map((slide, order) => [Number(slide.id), { ...slide, order }]));
+            bannerSlides = bannerSlides.map(slide => nextById.get(Number(slide.id)) || slide);
+        }
+        refreshBannerDOM();
+        renderRightRailAd();
         renderBannerList();
     } catch (error) {
         alert(`배너 순서 변경 실패: ${error.message}`);
@@ -1410,8 +1699,8 @@ function filterCards() {
         grid.appendChild(card);
     });
 
-    if (grid.innerHTML === "") {
-        grid.innerHTML = `<div style="grid-column: 1 / -1; text-align: center; padding: 60px 0; color: var(--text-sub); font-size: 16px;">조건에 맞는 공지가 없습니다.</div>`;
+    if (grid.childElementCount === 0) {
+        grid.innerHTML = '<div class="notice-empty-state">조건에 맞는 공지가 없습니다.</div>';
     }
 
     const countEl = document.getElementById('filter-result-count');
@@ -1722,6 +2011,7 @@ document.addEventListener('DOMContentLoaded', async function () {
     renderAdminInfo();
     renderBannerAdminInfo();
     refreshBannerDOM();
+    renderRightRailAd();
     buildHostButtons();
     filterCards();
     updateCompareBar();
