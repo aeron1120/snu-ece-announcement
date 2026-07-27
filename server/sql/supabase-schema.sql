@@ -7,6 +7,7 @@ create table if not exists public.notices (
   deadline date,
   ai_summary jsonb not null default '[]'::jsonb,
   images jsonb not null default '[]'::jsonb,
+  has_images boolean generated always as (jsonb_array_length(images) > 0) stored,
   views integer not null default 0,
   is_deleted boolean not null default false,
   deleted_at timestamptz,
@@ -77,6 +78,8 @@ create index if not exists banner_slides_placement_active_order_idx
   on public.banner_slides (placement, is_deleted, "order" asc);
 
 alter table public.notices
+  add column if not exists has_images boolean
+    generated always as (jsonb_array_length(images) > 0) stored,
   add column if not exists status text not null default 'published'
     check (status in ('pending_review', 'published', 'rejected')),
   add column if not exists source_type text not null default 'manual',

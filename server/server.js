@@ -412,6 +412,9 @@ function normalizeDeadline(deadline) {
 
 function toClientNotice(row) {
     if (!row) return null;
+    const categoryIds = Array.isArray(row.categoryIds)
+        ? row.categoryIds
+        : (row.notice_categories || []).map(item => Number(item.category_id));
     return {
         id: Number(row.id),
         title: row.title || '',
@@ -420,16 +423,42 @@ function toClientNotice(row) {
         targets: Array.isArray(row.targets) ? row.targets : [],
         host: row.host || '기타',
         deadline: row.deadline || '',
-        aiSummary: Array.isArray(row.ai_summary) ? row.ai_summary : [],
+        aiSummary: Array.isArray(row.aiSummary)
+            ? row.aiSummary
+            : (Array.isArray(row.ai_summary) ? row.ai_summary : []),
         keywords: Array.isArray(row.keywords) ? row.keywords : [],
-        sourceUrl: row.source_url || null,
-        sourcePublishedAt: row.source_published_at || null,
+        sourceUrl: row.sourceUrl || row.source_url || null,
+        sourcePublishedAt: row.sourcePublishedAt || row.source_published_at || null,
         attachments: Array.isArray(row.attachments) ? row.attachments : [],
         images: Array.isArray(row.images) ? row.images : [],
-        categoryIds: (row.notice_categories || []).map(item => Number(item.category_id)),
+        categoryIds: categoryIds.map(Number),
         views: Number(row.views) || 0,
-        createdAt: row.created_at || null,
-        updatedAt: row.updated_at || null
+        createdAt: row.createdAt || row.created_at || null,
+        updatedAt: row.updatedAt || row.updated_at || null
+    };
+}
+
+function toNoticeSummary(row) {
+    const notice = toClientNotice(row);
+    return {
+        id: notice.id,
+        title: notice.title,
+        target: notice.target,
+        targets: notice.targets,
+        host: notice.host,
+        deadline: notice.deadline,
+        aiSummary: notice.aiSummary,
+        keywords: notice.keywords,
+        categoryIds: notice.categoryIds,
+        views: notice.views,
+        sourcePublishedAt: notice.sourcePublishedAt,
+        createdAt: notice.createdAt,
+        updatedAt: notice.updatedAt,
+        hasImages: typeof row.hasImages === 'boolean'
+            ? row.hasImages
+            : (typeof row.has_images === 'boolean'
+                ? row.has_images
+                : notice.images.length > 0)
     };
 }
 
@@ -686,6 +715,93 @@ async function listNotices() {
     }
 
     return (data || []).map(toClientNotice);
+}
+
+async function listNoticeSummaries({ page, limit, categoryIds = [] }) {
+    const offset = (page - 1) * limit;
+
+    if (!useSupabase) {
+        let notices = await listNotices();
+        if (categoryIds.length > 0) {
+            notices = notices.filter(notice => categoryIds.some(id =>
+                (notice.categoryIds || []).map(Number).includes(id)
+            ));
+        }
+        const total = notices.length;
+        return {
+            notices: notices.slice(offset, offset + limit).map(toNoticeSummary),
+            pagination: {
+                page,
+                limit,
+                total,
+                totalPages: Math.ceil(total / limit)
+            }
+        };
+    }
+
+    const categoryJoin = categoryIds.length > 0
+        ? 'notice_categories!inner(category_id)'
+        : 'notice_categories(category_id)';
+    let query = supabase
+        .from(SUPABASE_NOTICES_TABLE)
+        .select(`
+            id,title,target,targets,host,deadline,ai_summary,keywords,views,
+            source_published_at,created_at,updated_at,has_images,${categoryJoin}
+        `, { count: 'exact' })
+        .eq('is_deleted', false)
+        .eq('status', 'published');
+
+    if (categoryIds.length > 0) {
+        query = query.in('notice_categories.category_id', categoryIds);
+    }
+
+    const { data, count, error } = await query
+        .order('created_at', { ascending: false })
+        .order('id', { ascending: false })
+        .range(offset, offset + limit - 1);
+
+    if (error) throw error;
+    const total = Number(count) || 0;
+    return {
+        notices: (data || []).map(toNoticeSummary),
+        pagination: {
+            page,
+            limit,
+            total,
+            totalPages: Math.ceil(total / limit)
+        }
+    };
+}
+
+async function getPublishedNoticeById(id) {
+    if (!useSupabase) {
+        const manualNotices = await readNotices();
+        const manualNotice = manualNotices.find(notice =>
+            Number(notice.id) === id
+            && !notice.isDeleted
+            && (!notice.status || notice.status === 'published')
+        );
+        if (manualNotice) return toClientNotice(manualNotice);
+
+        const automatedNotice = await automationStore.getAutomationNotice(id);
+        if (!automatedNotice
+            || automatedNotice.isDeleted
+            || automatedNotice.status !== 'published') {
+            return null;
+        }
+        return toClientNotice(automatedNotice);
+    }
+
+    const { data, error } = await supabase
+        .from(SUPABASE_NOTICES_TABLE)
+        .select('*, notice_categories(category_id)')
+        .eq('id', id)
+        .eq('is_deleted', false)
+        .eq('status', 'published')
+        .maybeSingle();
+
+    if (error) throw error;
+    return data ? toClientNotice(data) : null;
 }
 
 async function createNotice(payload) {
@@ -1209,29 +1325,12 @@ app.put('/api/settings/passwords', requireSuperAdmin, async (req, res) => {
 app.get('/api/notices', async (req, res) => {
     try {
         const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
-        const limit = Math.min(50, Math.max(1, Number.parseInt(req.query.limit, 10) || 50));
+        const limit = Math.min(50, Math.max(1, Number.parseInt(req.query.limit, 10) || 20));
         const categoryIds = String(req.query.category || '')
             .split(',')
             .map(Number)
             .filter(id => Number.isSafeInteger(id) && id > 0);
-        let notices = await listNotices();
-        if (categoryIds.length > 0) {
-            notices = notices.filter(notice => {
-                const noticeCategoryIds = (notice.categoryIds || []).map(Number);
-                return categoryIds.some(id => noticeCategoryIds.includes(id));
-            });
-        }
-        const total = notices.length;
-        const offset = (page - 1) * limit;
-        res.json({
-            notices: notices.slice(offset, offset + limit),
-            pagination: {
-                page,
-                limit,
-                total,
-                totalPages: Math.ceil(total / limit)
-            }
-        });
+        res.json(await listNoticeSummaries({ page, limit, categoryIds }));
     } catch (error) {
         res.status(500).json({ error: error.message || '공지 조회 실패' });
     }
@@ -1243,7 +1342,7 @@ app.get('/api/notices/:id', async (req, res) => {
         if (!Number.isSafeInteger(id)) {
             return res.status(400).json({ error: '유효하지 않은 id입니다.' });
         }
-        const notice = (await listNotices()).find(item => Number(item.id) === id);
+        const notice = await getPublishedNoticeById(id);
         if (!notice) return res.status(404).json({ error: '공지 없음' });
         res.json({ notice });
     } catch (error) {
@@ -1450,6 +1549,7 @@ export {
     isBannerExpiryActive,
     listBannerSlides,
     normalizeBannerPayload,
+    toNoticeSummary,
     toClientBannerSlide
 };
 
