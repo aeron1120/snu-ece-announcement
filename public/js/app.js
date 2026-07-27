@@ -107,17 +107,114 @@ async function apiRequest(path, options = {}) {
     return data;
 }
 
-async function fetchAllPublishedNotices() {
-    const collected = [];
-    let page = 1;
-    let totalPages = 1;
-    do {
-        const result = await apiRequest(`/api/notices?page=${page}&limit=50`, { method: 'GET' });
-        collected.push(...(Array.isArray(result?.notices) ? result.notices : []));
-        totalPages = Math.max(1, Number(result?.pagination?.totalPages) || 1);
-        page += 1;
-    } while (page <= totalPages && page <= 100);
-    return collected;
+function createNoticeRepository(request) {
+    const pageSize = 20;
+    let items = [];
+    let pageState = { page: 0, limit: pageSize, total: 0, totalPages: 0 };
+    const detailRequests = new Map();
+
+    async function loadPage(page, { replace = false } = {}) {
+        const result = await request(`/api/notices?page=${page}&limit=${pageSize}`, { method: 'GET' });
+        const incoming = Array.isArray(result?.notices) ? result.notices : [];
+        if (replace) {
+            items = [...incoming];
+        } else {
+            const knownIds = new Set(items.map(notice => String(notice.id)));
+            items = [
+                ...items,
+                ...incoming.filter(notice => !knownIds.has(String(notice.id)))
+            ];
+        }
+        pageState = {
+            page: Number(result?.pagination?.page) || page,
+            limit: Number(result?.pagination?.limit) || pageSize,
+            total: Number(result?.pagination?.total) || 0,
+            totalPages: Number(result?.pagination?.totalPages) || 0
+        };
+        return { notices: items, pagination: pageState };
+    }
+
+    async function getDetail(id) {
+        const noticeId = String(id);
+        const existing = items.find(notice => String(notice.id) === noticeId);
+        if (existing && Object.hasOwn(existing, 'content')) return existing;
+        if (detailRequests.has(noticeId)) return detailRequests.get(noticeId);
+
+        const pending = request(`/api/notices/${encodeURIComponent(noticeId)}`, { method: 'GET' })
+            .then(result => {
+                if (!result?.notice) throw new Error('공지 상세를 불러오지 못했습니다.');
+                const index = items.findIndex(notice => String(notice.id) === noticeId);
+                if (index === -1) {
+                    items.push(result.notice);
+                    return result.notice;
+                }
+                items[index] = { ...items[index], ...result.notice };
+                return items[index];
+            })
+            .finally(() => detailRequests.delete(noticeId));
+        detailRequests.set(noticeId, pending);
+        return pending;
+    }
+
+    return {
+        loadPage,
+        getDetail,
+        get notices() { return items; },
+        get pagination() { return pageState; }
+    };
+}
+
+const noticeRepository = createNoticeRepository(apiRequest);
+let noticePageLoading = false;
+
+function updateNoticePaginationUI(
+    pagination = noticeRepository.pagination,
+    loadedCount = notices.length,
+    isLoading = noticePageLoading
+) {
+    const button = document.getElementById('notice-load-more');
+    const status = document.getElementById('notice-load-more-status');
+    if (!button || !status) return;
+
+    const page = Number(pagination?.page) || 0;
+    const totalPages = Number(pagination?.totalPages) || 0;
+    const total = Number(pagination?.total) || 0;
+    status.textContent = `${Math.min(Number(loadedCount) || 0, total)} / ${total}`;
+    button.hidden = totalPages === 0 || page >= totalPages;
+    button.disabled = Boolean(isLoading);
+    button.textContent = isLoading ? '불러오는 중...' : '더 보기';
+}
+
+async function loadNoticePage(page, { replace = false } = {}) {
+    const result = await noticeRepository.loadPage(page, { replace });
+    notices = result.notices;
+    updateNoticePaginationUI(result.pagination, notices.length, noticePageLoading);
+    return result;
+}
+
+async function loadMoreNotices() {
+    const { page, totalPages } = noticeRepository.pagination;
+    if (noticePageLoading || page >= totalPages) return;
+
+    noticePageLoading = true;
+    updateNoticePaginationUI(noticeRepository.pagination, notices.length, true);
+    try {
+        await loadNoticePage(page + 1);
+        buildHostButtons();
+        filterCards();
+    } catch (error) {
+        console.error('공지 목록 추가 로드 실패:', error);
+        alert('공지 목록을 더 불러오지 못했습니다. 잠시 후 다시 시도해주세요.');
+    } finally {
+        noticePageLoading = false;
+        updateNoticePaginationUI(noticeRepository.pagination, notices.length, false);
+    }
+}
+
+async function getNoticeDetail(id) {
+    const notice = await noticeRepository.getDetail(id);
+    notices = noticeRepository.notices;
+    return notice;
 }
 
 // ========================================
@@ -151,7 +248,7 @@ async function loadData() {
     }
 
     try {
-        notices = await fetchAllPublishedNotices();
+        await loadNoticePage(1, { replace: true });
     } catch (error) {
         console.error('공지 목록 불러오기 실패:', error);
         // 가짜 공지를 대신 보여주면 안 되므로 빈 목록으로 두고 실패 사실만 알린다.
@@ -400,14 +497,8 @@ async function openNoticeFromUrl() {
     let exists = notices.some(n => String(n.id) === String(requestedId));
     if (!exists) {
         try {
-            const result = await apiRequest(
-                `/api/notices/${encodeURIComponent(requestedId)}`,
-                { method: 'GET' }
-            );
-            if (result?.notice) {
-                notices.push(result.notice);
-                exists = true;
-            }
+            await getNoticeDetail(requestedId);
+            exists = true;
         } catch {
             // 아래의 사용자 안내로 통합한다.
         }
@@ -418,7 +509,7 @@ async function openNoticeFromUrl() {
         }
     }
 
-    openDetail(requestedId);
+    await openDetail(requestedId);
 }
 
 async function copyNoticeLink() {
@@ -714,7 +805,7 @@ async function verifyPassword() {
             return;
         }
 
-        notices = notices.filter(n => String(n.id) !== currentViewId);
+        await loadNoticePage(1, { replace: true });
         const saveIdx = savedPosts.findIndex(savedId => String(savedId) === currentViewId);
         if(saveIdx > -1) { savedPosts.splice(saveIdx, 1); localStorage.setItem('eceSaved', JSON.stringify(savedPosts)); }
         alert("삭제되었습니다.");
@@ -1405,20 +1496,19 @@ async function generateAIAndSave() {
 
     try {
         if (editingNoticeId && noticeIndex !== -1) {
-            const result = await apiRequest(`/api/notices/${editingNoticeId}`, {
+            await apiRequest(`/api/notices/${editingNoticeId}`, {
                 method: 'PUT',
                 headers: getNoticeAdminHeaders(),
                 body: JSON.stringify(newNoticeData)
             });
-            notices[noticeIndex] = result.notice;
         } else {
-            const result = await apiRequest('/api/notices', {
+            await apiRequest('/api/notices', {
                 method: 'POST',
                 headers: getNoticeAdminHeaders(),
                 body: JSON.stringify(newNoticeData)
             });
-            notices.unshift(result.notice);
         }
+        await loadNoticePage(1, { replace: true });
     } catch (error) {
         document.getElementById('ai-loading').style.display = 'none';
         alert(`공지 저장 실패: ${error.message}`);
@@ -1626,7 +1716,9 @@ function filterCards() {
             if (![...selectedCategoryFilters].some(id => noticeCategoryIds.includes(id))) return;
         }
 
-        const hasImg = notice.images && notice.images.length > 0;
+        const hasImg = Object.hasOwn(notice, 'hasImages')
+            ? notice.hasImages
+            : Boolean(notice.images && notice.images.length > 0);
         if (fHasImage === '있음' && !hasImg) return;
         if (fHasImage === '없음' && hasImg) return;
 
@@ -1778,12 +1870,17 @@ function updateImageViewer() {
     document.getElementById('img-counter').innerText = `${currentImageIndex + 1} / ${currentImageArray.length}`;
 }
 
-function openDetail(idStr) {
+async function openDetail(idStr) {
     currentViewId = String(idStr); 
-    const noticeIndex = notices.findIndex(n => String(n.id) === currentViewId);
-    if(noticeIndex === -1) return;
+    let notice;
+    try {
+        notice = await getNoticeDetail(currentViewId);
+    } catch (error) {
+        console.error('공지 상세 불러오기 실패:', error);
+        alert('공지 상세를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.');
+        return;
+    }
 
-    const notice = notices[noticeIndex];
     notice.views = (notice.views || 0) + 1;
     filterCards(); 
 
@@ -1910,8 +2007,15 @@ function clearCompare() {
     updateCompareButton(currentViewId);
 }
 
-function openCompareModal() {
+async function openCompareModal() {
     if (compareList.length < 2) { alert("2개 이상의 공지를 선택해주세요."); return; }
+    try {
+        await Promise.all(compareList.map(id => getNoticeDetail(id)));
+    } catch (error) {
+        console.error('공지 비교 상세 불러오기 실패:', error);
+        alert('비교할 공지의 상세 내용을 불러오지 못했습니다.');
+        return;
+    }
     const grid = document.getElementById('compare-modal-grid');
     grid.style.gridTemplateColumns = `repeat(${compareList.length}, 1fr)`;
     grid.innerHTML = '';
@@ -2210,7 +2314,7 @@ function collectReviewEdits() {
 }
 
 async function refreshPublishedNotices() {
-    notices = await fetchAllPublishedNotices();
+    await loadNoticePage(1, { replace: true });
     filterCards();
 }
 

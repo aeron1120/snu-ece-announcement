@@ -559,6 +559,51 @@ test('lazy notice detail shares an in-flight request and upgrades its summary', 
     ]);
 });
 
+test('notice load-more control reflects paging and loading state', async () => {
+    const html = await readFile('index.html', 'utf8');
+    const app = await readFile('js/app.js', 'utf8');
+    assert.match(html, /id="notice-load-more"/);
+    assert.match(html, /onclick="loadMoreNotices\(\)"/);
+
+    const source = readNamedFunction(app, 'updateNoticePaginationUI');
+    const button = { hidden: false, disabled: false };
+    const status = { textContent: '' };
+    const context = {
+        document: {
+            getElementById(id) {
+                if (id === 'notice-load-more') return button;
+                if (id === 'notice-load-more-status') return status;
+                return null;
+            }
+        }
+    };
+    runInNewContext(`${source}; this.updateNoticePaginationUI = updateNoticePaginationUI;`, context);
+
+    context.updateNoticePaginationUI(
+        { page: 1, totalPages: 2, total: 3 },
+        2,
+        false
+    );
+    assert.equal(button.hidden, false);
+    assert.equal(button.disabled, false);
+    assert.equal(status.textContent, '2 / 3');
+
+    context.updateNoticePaginationUI(
+        { page: 2, totalPages: 2, total: 3 },
+        3,
+        false
+    );
+    assert.equal(button.hidden, true);
+
+    context.updateNoticePaginationUI(
+        { page: 1, totalPages: 2, total: 3 },
+        2,
+        true
+    );
+    assert.equal(button.hidden, false);
+    assert.equal(button.disabled, true);
+});
+
 test('Cloudflare scheduled worker triggers the protected crawl endpoint', async () => {
     const worker = (await import('../cloudflare/crawl-worker.js')).default;
     const calls = [];

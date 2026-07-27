@@ -165,19 +165,50 @@ function createNoticeRepository(request) {
 }
 
 const noticeRepository = createNoticeRepository(apiRequest);
+let noticePageLoading = false;
+
+function updateNoticePaginationUI(
+    pagination = noticeRepository.pagination,
+    loadedCount = notices.length,
+    isLoading = noticePageLoading
+) {
+    const button = document.getElementById('notice-load-more');
+    const status = document.getElementById('notice-load-more-status');
+    if (!button || !status) return;
+
+    const page = Number(pagination?.page) || 0;
+    const totalPages = Number(pagination?.totalPages) || 0;
+    const total = Number(pagination?.total) || 0;
+    status.textContent = `${Math.min(Number(loadedCount) || 0, total)} / ${total}`;
+    button.hidden = totalPages === 0 || page >= totalPages;
+    button.disabled = Boolean(isLoading);
+    button.textContent = isLoading ? '불러오는 중...' : '더 보기';
+}
 
 async function loadNoticePage(page, { replace = false } = {}) {
     const result = await noticeRepository.loadPage(page, { replace });
     notices = result.notices;
+    updateNoticePaginationUI(result.pagination, notices.length, noticePageLoading);
     return result;
 }
 
 async function loadMoreNotices() {
     const { page, totalPages } = noticeRepository.pagination;
-    if (page >= totalPages) return;
-    await loadNoticePage(page + 1);
-    buildHostButtons();
-    filterCards();
+    if (noticePageLoading || page >= totalPages) return;
+
+    noticePageLoading = true;
+    updateNoticePaginationUI(noticeRepository.pagination, notices.length, true);
+    try {
+        await loadNoticePage(page + 1);
+        buildHostButtons();
+        filterCards();
+    } catch (error) {
+        console.error('공지 목록 추가 로드 실패:', error);
+        alert('공지 목록을 더 불러오지 못했습니다. 잠시 후 다시 시도해주세요.');
+    } finally {
+        noticePageLoading = false;
+        updateNoticePaginationUI(noticeRepository.pagination, notices.length, false);
+    }
 }
 
 async function getNoticeDetail(id) {
