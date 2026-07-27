@@ -72,6 +72,54 @@ test('right-rail image errors restore the inquiry fallback', async () => {
     assert.match(app, /onerror="renderRightRailInquiryFallback\(\)"/);
 });
 
+test('right-rail images retain their layout contract with and without a link', async () => {
+    const app = await readFile('js/app.js', 'utf8');
+    const css = await readFile('css/style.css', 'utf8');
+    const source = app.match(/function renderRightRailAd\(\) \{[\s\S]*?\n\}/)?.[0];
+    assert.ok(source);
+
+    const render = slide => {
+        const container = { innerHTML: '' };
+        const renderRightRailAd = new Function(
+            'document', 'getBannerSlidesByPlacement', 'escapeHtml', 'renderRightRailInquiryFallback',
+            `${source}; return renderRightRailAd;`
+        )(
+            { getElementById: () => container },
+            () => [slide],
+            value => String(value),
+            () => { container.innerHTML = 'fallback'; }
+        );
+        renderRightRailAd();
+        return container.innerHTML;
+    };
+
+    const linked = render({ src: 'https://example.test/linked.png', linkUrl: 'https://example.test', text: 'Linked' });
+    const linkless = render({ src: 'https://example.test/linkless.png', linkUrl: '', text: 'Linkless' });
+
+    assert.match(linked, /class="rail-ad-link"/);
+    assert.match(linked, /class="rail-ad-image"/);
+    assert.doesNotMatch(linkless, /class="rail-ad-link"/);
+    assert.match(linkless, /class="rail-ad-image"/);
+    assert.match(css, /\.rail-ad-image\s*\{[^}]*width:\s*100%[^}]*aspect-ratio:\s*9\s*\/\s*16[^}]*object-fit:\s*cover/s);
+});
+
+test('right rail chooses the smallest numeric order', async () => {
+    const app = await readFile('js/app.js', 'utf8');
+    const source = app.match(/function getBannerSlidesByPlacement\(placement\) \{[\s\S]*?\n\}/)?.[0];
+    assert.ok(source);
+
+    const getBannerSlidesByPlacement = new Function(
+        'bannerSlides',
+        `${source}; return getBannerSlidesByPlacement;`
+    )([
+        { id: 10, placement: 'right_rail', order: '10' },
+        { id: 2, placement: 'right_rail', order: '2' },
+        { id: 1, placement: 'header', order: '1' }
+    ]);
+
+    assert.equal(getBannerSlidesByPlacement('right_rail')[0].id, 2);
+});
+
 test('banner manager separates header slides from right rail ads', async () => {
     const html = await readFile('index.html', 'utf8');
     const app = await readFile('js/app.js', 'utf8');

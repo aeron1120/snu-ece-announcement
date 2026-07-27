@@ -815,12 +815,19 @@ async function incrementViewCount(id) {
     return toClientNotice(data[0]);
 }
 
-async function listBannerSlides() {
+function isBannerExpiryActive(expiresAt, now = Date.now()) {
+    const value = String(expiresAt || '').trim();
+    if (!value) return true;
+
+    const expiresAtMs = Date.parse(value);
+    return Number.isFinite(expiresAtMs) && expiresAtMs > now;
+}
+
+async function listBannerSlides(now = Date.now()) {
     if (!useSupabase || bannerStorageMode === 'file') {
         const rows = await readBannerFile();
-        const nowIso = new Date().toISOString();
         return rows
-            .filter(row => !row?.isDeleted && (!row?.expiresAt || row.expiresAt > nowIso))
+            .filter(row => !row?.isDeleted && isBannerExpiryActive(row?.expiresAt, now))
             .sort((a, b) => {
                 const orderDiff = (Number(a?.order) || 0) - (Number(b?.order) || 0);
                 if (orderDiff !== 0) return orderDiff;
@@ -1058,14 +1065,12 @@ async function softDeleteBannerSlide(id) {
     return Array.isArray(data) && data.length > 0;
 }
 
-async function cleanupExpiredBanners() {
+async function cleanupExpiredBanners(now = Date.now()) {
     if (!useSupabase || bannerStorageMode === 'file') {
         const rows = await readBannerFile();
-        const nowIso = new Date().toISOString();
         const nextRows = rows.map(row => {
             if (row?.isDeleted) return row;
-            if (!row?.expiresAt) return row;
-            if (String(row.expiresAt) > nowIso) return row;
+            if (isBannerExpiryActive(row?.expiresAt, now)) return row;
             return { ...row, isDeleted: true };
         });
         await writeBannerFile(nextRows);
@@ -1438,7 +1443,15 @@ app.delete('/api/banner-slides/:id', requireBannerAdmin, async (req, res) => {
     }
 });
 
-export { app, buildBannerSlideUpdate, normalizeBannerPayload, toClientBannerSlide };
+export {
+    app,
+    buildBannerSlideUpdate,
+    cleanupExpiredBanners,
+    isBannerExpiryActive,
+    listBannerSlides,
+    normalizeBannerPayload,
+    toClientBannerSlide
+};
 
 const isDirectRun = process.argv[1]
     && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url));

@@ -278,7 +278,7 @@ function renderRightRailAd() {
     }
 
     const image = slide.src
-        ? `<img src="${escapeHtml(slide.src)}" alt="${escapeHtml(slide.altText || slide.name || '광고 이미지')}" onerror="renderRightRailInquiryFallback()">`
+        ? `<img class="rail-ad-image" src="${escapeHtml(slide.src)}" alt="${escapeHtml(slide.altText || slide.name || '광고 이미지')}" onerror="renderRightRailInquiryFallback()">`
         : '';
     const content = `
         <span class="ad-label">AD</span>

@@ -1,10 +1,21 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFile, writeFile } from 'node:fs/promises';
+import path from 'node:path';
 import {
     buildBannerSlideUpdate,
     normalizeBannerPayload,
     toClientBannerSlide
 } from '../server/server.js';
+import * as server from '../server/server.js';
+
+const bannerFilePath = path.join(process.cwd(), 'server', 'data', 'banner-slides.json');
+
+async function replaceBannerRows(t, rows) {
+    const original = await readFile(bannerFilePath, 'utf8');
+    t.after(() => writeFile(bannerFilePath, original, 'utf8'));
+    await writeFile(bannerFilePath, JSON.stringify(rows, null, 2), 'utf8');
+}
 
 test('legacy banner rows default to header and preserve new metadata', () => {
     assert.deepEqual(
@@ -110,4 +121,55 @@ test('banner payload enforces text limits and requires text or image', () => {
         () => normalizeBannerPayload({ placement: 'right_rail' }),
         /텍스트 또는 이미지/
     );
+});
+
+test('file banner storage evaluates expiration chronologically and preserves numeric order', async t => {
+    await replaceBannerRows(t, [
+        {
+            id: 1,
+            order: 5,
+            createdAt: '2030-04-01T00:00:00.000Z',
+            expiresAt: '2030-04-05T15:07:08.987+09:00',
+            isDeleted: false
+        },
+        {
+            id: 2,
+            order: 10,
+            createdAt: '2030-04-01T00:00:00.000Z',
+            expiresAt: '2030-04-06T00:00:00.000Z',
+            isDeleted: false
+        },
+        {
+            id: 3,
+            order: 1,
+            createdAt: '2030-04-01T00:00:00.000Z',
+            expiresAt: 'not-a-date',
+            isDeleted: false
+        },
+        {
+            id: 4,
+            order: 3,
+            createdAt: '2030-04-01T00:00:00.000Z',
+            expiresAt: '',
+            isDeleted: false
+        }
+    ]);
+
+    const slides = await server.listBannerSlides?.(Date.parse('2030-04-05T06:07:08.988Z'));
+    assert.deepEqual(slides?.map(slide => slide.id), [4, 2]);
+});
+
+test('file banner cleanup soft-deletes expired and invalid expiration values only', async t => {
+    await replaceBannerRows(t, [
+        { id: 1, expiresAt: '2030-04-05T15:07:08.987+09:00', isDeleted: false },
+        { id: 2, expiresAt: 'not-a-date', isDeleted: false },
+        { id: 3, expiresAt: '', isDeleted: false },
+        { id: 4, isDeleted: false },
+        { id: 5, expiresAt: '2030-04-06T00:00:00.000Z', isDeleted: false }
+    ]);
+
+    await server.cleanupExpiredBanners?.(Date.parse('2030-04-05T06:07:08.988Z'));
+    const rows = JSON.parse(await readFile(bannerFilePath, 'utf8'));
+
+    assert.deepEqual(rows.map(row => row.isDeleted), [true, true, false, false, false]);
 });
