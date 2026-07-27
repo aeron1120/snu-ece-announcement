@@ -1,0 +1,18 @@
+[
+  {
+    "id": 1,
+    "name": "배너 광고 안내",
+    "text": "📢 배너 광고 제휴 문의는 상단 '문의' 버튼을 눌러주세요",
+    "bgStyle": "background: linear-gradient(90deg, #eff6ff, #dbeafe);",
+    "textColor": "#1e40af",
+    "src": null,
+    "order": 0,
+    "placement": "header",
+    "linkUrl": "",
+    "altText": "",
+    "description": "",
+    "createdAt": "2026-07-27T00:00:00.000Z",
+    "expiresAt": "2999-12-31T23:59:59.000Z",
+    "isDeleted": false
+  }
+]

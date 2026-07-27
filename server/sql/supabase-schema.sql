@@ -41,13 +41,40 @@ create table if not exists public.banner_slides (
   text_color text not null,
   src text,
   "order" integer not null default 0,
+  placement text not null default 'header'
+    check (placement in ('header', 'right_rail')),
+  link_url text,
+  alt_text text,
+  description text,
   created_at timestamptz not null default now(),
   expires_at timestamptz not null,
   is_deleted boolean not null default false
 );
 
+alter table public.banner_slides
+  add column if not exists placement text not null default 'header',
+  add column if not exists link_url text,
+  add column if not exists alt_text text,
+  add column if not exists description text;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conname = 'banner_slides_placement_check'
+      and conrelid = 'public.banner_slides'::regclass
+  ) then
+    alter table public.banner_slides
+      add constraint banner_slides_placement_check
+      check (placement in ('header', 'right_rail'));
+  end if;
+end;
+$$;
+
 create index if not exists banner_slides_active_order_idx on public.banner_slides (is_deleted, "order" asc);
 create index if not exists banner_slides_expires_idx on public.banner_slides (expires_at);
+create index if not exists banner_slides_placement_active_order_idx
+  on public.banner_slides (placement, is_deleted, "order" asc);
 
 alter table public.notices
   add column if not exists status text not null default 'published'

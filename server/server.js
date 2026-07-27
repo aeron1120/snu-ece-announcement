@@ -91,7 +91,11 @@ const defaultBannerSlides = [
         bgStyle: 'background: linear-gradient(90deg, #eff6ff, #dbeafe);',
         textColor: '#1e40af',
         src: null,
-        order: 0
+        order: 0,
+        placement: 'header',
+        linkUrl: '',
+        altText: '',
+        description: ''
     }
 ];
 
@@ -253,6 +257,10 @@ function createDefaultBannerFileRows() {
         textColor: slide.textColor,
         src: slide.src,
         order: Number.isFinite(Number(slide.order)) ? Number(slide.order) : index,
+        placement: slide.placement || 'header',
+        linkUrl: slide.linkUrl || '',
+        altText: slide.altText || '',
+        description: slide.description || '',
         createdAt: new Date(now + index).toISOString(),
         expiresAt: new Date(now + sevenDaysMs).toISOString(),
         isDeleted: false
@@ -283,6 +291,65 @@ async function readBannerFile() {
 async function writeBannerFile(slides) {
     await fs.mkdir(path.dirname(bannerFilePath), { recursive: true });
     await fs.writeFile(bannerFilePath, JSON.stringify(slides, null, 2), 'utf-8');
+}
+
+function normalizeBannerPayload(body = {}) {
+    const placement = String(body.placement || 'header').trim() || 'header';
+    if (!['header', 'right_rail'].includes(placement)) {
+        throw new TypeError('배너 표시 위치는 header 또는 right_rail이어야 합니다.');
+    }
+
+    const linkUrl = String(body.linkUrl || '').trim();
+    if (linkUrl) {
+        let parsed;
+        try {
+            parsed = new URL(linkUrl);
+        } catch {
+            throw new TypeError('광고 링크는 유효한 http 또는 https URL이어야 합니다.');
+        }
+        if (!['http:', 'https:'].includes(parsed.protocol)) {
+            throw new TypeError('광고 링크는 http 또는 https URL이어야 합니다.');
+        }
+    }
+
+    const payload = {
+        name: String(body.name || '').trim(),
+        text: String(body.text || '').trim(),
+        bgStyle: String(body.bgStyle || '').trim(),
+        textColor: String(body.textColor || '').trim(),
+        src: body.src || null,
+        order: Number(body.order) || 0,
+        placement,
+        linkUrl,
+        altText: String(body.altText || '').trim(),
+        description: String(body.description || '').trim(),
+        expiresAt: ''
+    };
+
+    const rawExpiresAt = String(body.expiresAt || '').trim();
+    if (rawExpiresAt) {
+        const expiresAt = new Date(rawExpiresAt);
+        if (Number.isNaN(expiresAt.getTime()) || expiresAt.getTime() <= Date.now()) {
+            throw new TypeError('만료일은 유효한 미래 날짜여야 합니다.');
+        }
+        payload.expiresAt = expiresAt.toISOString();
+    }
+
+    const limits = [
+        ['name', 50, '이름'],
+        ['text', 100, '배너 텍스트'],
+        ['description', 240, '광고 설명'],
+        ['altText', 160, '대체 텍스트']
+    ];
+    for (const [field, max, label] of limits) {
+        if (payload[field].length > max) {
+            throw new TypeError(`${label}은 ${max}자 이하여야 합니다.`);
+        }
+    }
+    if (!payload.text && !payload.src) {
+        throw new TypeError('배너 텍스트 또는 이미지는 필수입니다.');
+    }
+    return payload;
 }
 
 async function switchBannerStorageToFile(error) {
@@ -563,6 +630,10 @@ async function ensureDefaultData() {
             text_color: slide.textColor,
             src: slide.src,
             order: slide.order,
+            placement: slide.placement || 'header',
+            link_url: slide.linkUrl || '',
+            alt_text: slide.altText || '',
+            description: slide.description || '',
             expires_at: sevenDaysLater.toISOString(),
             is_deleted: false
         }));
@@ -791,7 +862,11 @@ async function createBannerSlide(payload) {
             src: payload.src || null,
             order: Number(payload.order) || 0,
             createdAt: new Date().toISOString(),
-            expiresAt: sevenDaysLater.toISOString(),
+            expiresAt: payload.expiresAt || sevenDaysLater.toISOString(),
+            placement: payload.placement || 'header',
+            linkUrl: payload.linkUrl || '',
+            altText: payload.altText || '',
+            description: payload.description || '',
             isDeleted: false
         };
 
@@ -812,7 +887,11 @@ async function createBannerSlide(payload) {
             text_color: String(payload.textColor || '').trim(),
             src: payload.src || null,
             order: Number(payload.order) || 0,
-            expires_at: sevenDaysLater.toISOString(),
+            expires_at: payload.expiresAt || sevenDaysLater.toISOString(),
+            placement: payload.placement || 'header',
+            link_url: payload.linkUrl || '',
+            alt_text: payload.altText || '',
+            description: payload.description || '',
             is_deleted: false
         })
         .select('*')
@@ -846,7 +925,11 @@ async function updateBannerSlide(id, payload) {
             textColor: String(payload.textColor || '').trim(),
             src: payload.src || null,
             order: Number(payload.order) || 0,
-            expiresAt: sevenDaysLater.toISOString()
+            expiresAt: payload.expiresAt || sevenDaysLater.toISOString(),
+            placement: payload.placement || 'header',
+            linkUrl: payload.linkUrl || '',
+            altText: payload.altText || '',
+            description: payload.description || ''
         };
 
         await writeBannerFile(rows);
@@ -865,7 +948,11 @@ async function updateBannerSlide(id, payload) {
             text_color: String(payload.textColor || '').trim(),
             src: payload.src || null,
             order: Number(payload.order) || 0,
-            expires_at: sevenDaysLater.toISOString()
+            expires_at: payload.expiresAt || sevenDaysLater.toISOString(),
+            placement: payload.placement || 'header',
+            link_url: payload.linkUrl || '',
+            alt_text: payload.altText || '',
+            description: payload.description || ''
         })
         .eq('id', id)
         .eq('is_deleted', false)
@@ -1010,7 +1097,11 @@ function toClientBannerSlide(row) {
         textColor: row.text_color || row.textColor || '',
         src: row.src || null,
         order: Number(row.order) || 0,
-        expiresAt: row.expires_at || row.expiresAt || null
+        expiresAt: row.expires_at || row.expiresAt || null,
+        placement: row.placement || 'header',
+        linkUrl: row.link_url || row.linkUrl || '',
+        altText: row.alt_text || row.altText || '',
+        description: row.description || ''
     };
 }
 
@@ -1273,22 +1364,14 @@ app.get('/api/banner-slides', async (req, res) => {
 
 app.post('/api/banner-slides', requireBannerAdmin, async (req, res) => {
     try {
-        const payload = {
-            name: String(req.body?.name || '').trim(),
-            text: String(req.body?.text || '').trim(),
-            bgStyle: String(req.body?.bgStyle || '').trim(),
-            textColor: String(req.body?.textColor || '').trim(),
-            src: req.body?.src || null,
-            order: Number(req.body?.order) || 0
-        };
-
-        if (!payload.text && !payload.src) {
-            return res.status(400).json({ error: '배너 텍스트 또는 이미지는 필수입니다.' });
-        }
+        const payload = normalizeBannerPayload(req.body);
 
         const newSlide = await createBannerSlide(payload);
         res.status(201).json({ slide: newSlide });
     } catch (error) {
+        if (error instanceof TypeError) {
+            return res.status(400).json({ error: error.message });
+        }
         res.status(500).json({ error: error.message || '배너 등록 실패' });
     }
 });
@@ -1314,18 +1397,7 @@ app.put('/api/banner-slides/:id', requireBannerAdmin, async (req, res) => {
             return res.status(400).json({ error: '유효하지 않은 id입니다.' });
         }
 
-        const payload = {
-            name: String(req.body?.name || '').trim(),
-            text: String(req.body?.text || '').trim(),
-            bgStyle: String(req.body?.bgStyle || '').trim(),
-            textColor: String(req.body?.textColor || '').trim(),
-            src: req.body?.src || null,
-            order: Number(req.body?.order) || 0
-        };
-
-        if (!payload.text && !payload.src) {
-            return res.status(400).json({ error: '배너 텍스트 또는 이미지는 필수입니다.' });
-        }
+        const payload = normalizeBannerPayload(req.body);
 
         const updated = await updateBannerSlide(id, payload);
         if (!updated) {
@@ -1334,6 +1406,9 @@ app.put('/api/banner-slides/:id', requireBannerAdmin, async (req, res) => {
 
         res.json({ slide: updated });
     } catch (error) {
+        if (error instanceof TypeError) {
+            return res.status(400).json({ error: error.message });
+        }
         res.status(500).json({ error: error.message || '배너 수정 실패' });
     }
 });
@@ -1356,7 +1431,7 @@ app.delete('/api/banner-slides/:id', requireBannerAdmin, async (req, res) => {
     }
 });
 
-export { app };
+export { app, normalizeBannerPayload, toClientBannerSlide };
 
 const isDirectRun = process.argv[1]
     && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url));
