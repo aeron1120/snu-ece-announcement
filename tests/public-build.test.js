@@ -88,6 +88,36 @@ test('banner manager separates header slides from right rail ads', async () => {
     assert.match(app, /async function moveBanner\(placement, idx, dir\)/);
 });
 
+test('banner manager preserves an untouched expiry ISO value', async () => {
+    const app = await readFile('js/app.js', 'utf8');
+    const source = app.match(/function resolveUpdateExpiresAt\(input\) \{[\s\S]*?\n\}/)?.[0];
+
+    assert.ok(source);
+    const resolveUpdateExpiresAt = new Function(`${source}; return resolveUpdateExpiresAt;`)();
+    const originalIso = '2030-04-05T06:07:08.987Z';
+
+    assert.equal(
+        resolveUpdateExpiresAt({
+            value: '2030-04-05T06:07',
+            dataset: {
+                originalExpiresAt: originalIso,
+                originalLocalValue: '2030-04-05T06:07'
+            }
+        }),
+        originalIso
+    );
+    assert.equal(
+        resolveUpdateExpiresAt({
+            value: '2030-04-05T06:08',
+            dataset: {
+                originalExpiresAt: originalIso,
+                originalLocalValue: '2030-04-05T06:07'
+            }
+        }),
+        new Date('2030-04-05T06:08').toISOString()
+    );
+});
+
 test('PWA manifest and service worker include install and push contracts', async () => {
     const manifest = JSON.parse(await readFile('manifest.webmanifest', 'utf8'));
     const worker = await readFile('service-worker.js', 'utf8');

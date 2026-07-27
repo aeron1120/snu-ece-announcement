@@ -1092,6 +1092,14 @@ function toDateTimeLocalValue(value) {
     return local.toISOString().slice(0, 16);
 }
 
+function resolveUpdateExpiresAt(input) {
+    const value = input?.value || '';
+    const originalExpiresAt = input?.dataset?.originalExpiresAt || '';
+    const originalLocalValue = input?.dataset?.originalLocalValue || '';
+    if (value === originalLocalValue) return originalExpiresAt;
+    return value ? new Date(value).toISOString() : '';
+}
+
 function renderBannerList() {
     renderBannerSection('header', '상단 배너');
     renderBannerSection('right_rail', '오른쪽 세로 광고');
@@ -1109,6 +1117,7 @@ function renderBannerSection(placement, title) {
     slides.forEach((slide, idx) => {
         const safeId = Number(slide.id);
         const safeText = escapeHtml(slide.text || '');
+        const localExpiresAt = toDateTimeLocalValue(slide.expiresAt);
         const rightRailFields = placement === 'right_rail' ? `
             <textarea class="banner-input-description-${safeId}" maxlength="240" placeholder="짧은 광고 설명">${escapeHtml(slide.description || '')}</textarea>
             <input type="url" class="banner-input-link-${safeId}" value="${escapeHtml(slide.linkUrl || '')}" placeholder="https://...">
@@ -1129,7 +1138,7 @@ function renderBannerSection(placement, title) {
                 <input type="text" maxlength="50" placeholder="관리용 이름" value="${escapeHtml(slide.name || '')}" class="banner-input-name-${safeId}">
                 <input type="text" maxlength="100" placeholder="배너 텍스트" value="${safeText}" class="banner-input-text-${safeId}">
                 <input type="color" value="${escapeHtml(slide.textColor || '#000000')}" class="banner-input-color-${safeId}">
-                <input type="datetime-local" value="${toDateTimeLocalValue(slide.expiresAt)}" class="banner-input-expires-at-${safeId}">
+                <input type="datetime-local" value="${localExpiresAt}" data-original-expires-at="${escapeHtml(slide.expiresAt || '')}" data-original-local-value="${localExpiresAt}" class="banner-input-expires-at-${safeId}">
                 ${rightRailFields}
                 <input type="file" accept="image/*" class="banner-input-file-${safeId}">
                 <button class="btn btn-small" onclick="updateBannerSlide(${safeId})">수정</button>
@@ -1237,7 +1246,8 @@ async function updateBannerSlide(slideId) {
     const descriptionInput = document.querySelector(`.banner-input-description-${slideId}`);
     const linkInput = document.querySelector(`.banner-input-link-${slideId}`);
     const altInput = document.querySelector(`.banner-input-alt-${slideId}`);
-    const expiresAt = document.querySelector(`.banner-input-expires-at-${slideId}`)?.value || '';
+    const expiresInput = document.querySelector(`.banner-input-expires-at-${slideId}`);
+    const expiresAt = resolveUpdateExpiresAt(expiresInput);
     const imageInput = document.querySelector(`.banner-input-file-${slideId}`);
     const imageFile = imageInput?.files?.[0] || null;
     const imageSrc = imageFile ? await getBase64(imageFile) : null;

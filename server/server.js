@@ -910,51 +910,56 @@ async function createBannerSlide(payload) {
     return toClientBannerSlide(data);
 }
 
+function buildBannerSlideUpdate(payload, expiresAtField) {
+    const update = {
+        name: String(payload.name || '').trim(),
+        text: String(payload.text || '').trim(),
+        bgStyle: String(payload.bgStyle || '').trim(),
+        textColor: String(payload.textColor || '').trim(),
+        src: payload.src || null,
+        order: Number(payload.order) || 0,
+        placement: payload.placement || 'header',
+        linkUrl: payload.linkUrl || '',
+        altText: payload.altText || '',
+        description: payload.description || ''
+    };
+    if (payload.expiresAt) update[expiresAtField] = payload.expiresAt;
+    return update;
+}
+
 async function updateBannerSlide(id, payload) {
     if (!useSupabase || bannerStorageMode === 'file') {
         const rows = await readBannerFile();
         const idx = rows.findIndex(row => Number(row?.id) === id && !row?.isDeleted);
         if (idx === -1) return null;
 
-        const sevenDaysLater = new Date();
-        sevenDaysLater.setDate(sevenDaysLater.getDate() + 7);
-
+        const update = buildBannerSlideUpdate(payload, 'expiresAt');
         rows[idx] = {
             ...rows[idx],
-            name: String(payload.name || '').trim(),
-            text: String(payload.text || '').trim(),
-            bgStyle: String(payload.bgStyle || '').trim() || rows[idx].bgStyle || '',
-            textColor: String(payload.textColor || '').trim(),
-            src: payload.src || null,
-            order: Number(payload.order) || 0,
-            expiresAt: payload.expiresAt || sevenDaysLater.toISOString(),
-            placement: payload.placement || 'header',
-            linkUrl: payload.linkUrl || '',
-            altText: payload.altText || '',
-            description: payload.description || ''
+            ...update,
+            bgStyle: update.bgStyle || rows[idx].bgStyle || ''
         };
 
         await writeBannerFile(rows);
         return toClientBannerSlide(rows[idx]);
     }
 
-    const sevenDaysLater = new Date();
-    sevenDaysLater.setDate(sevenDaysLater.getDate() + 7);
+    const update = buildBannerSlideUpdate(payload, 'expires_at');
 
     const { data, error } = await supabase
         .from('banner_slides')
         .update({
-            name: String(payload.name || '').trim(),
-            text: String(payload.text || '').trim(),
-            bg_style: String(payload.bgStyle || '').trim(),
-            text_color: String(payload.textColor || '').trim(),
-            src: payload.src || null,
-            order: Number(payload.order) || 0,
-            expires_at: payload.expiresAt || sevenDaysLater.toISOString(),
-            placement: payload.placement || 'header',
-            link_url: payload.linkUrl || '',
-            alt_text: payload.altText || '',
-            description: payload.description || ''
+            name: update.name,
+            text: update.text,
+            bg_style: update.bgStyle,
+            text_color: update.textColor,
+            src: update.src,
+            order: update.order,
+            placement: update.placement,
+            link_url: update.linkUrl,
+            alt_text: update.altText,
+            description: update.description,
+            ...(Object.hasOwn(update, 'expires_at') ? { expires_at: update.expires_at } : {})
         })
         .eq('id', id)
         .eq('is_deleted', false)
@@ -1433,7 +1438,7 @@ app.delete('/api/banner-slides/:id', requireBannerAdmin, async (req, res) => {
     }
 });
 
-export { app, normalizeBannerPayload, toClientBannerSlide };
+export { app, buildBannerSlideUpdate, normalizeBannerPayload, toClientBannerSlide };
 
 const isDirectRun = process.argv[1]
     && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url));

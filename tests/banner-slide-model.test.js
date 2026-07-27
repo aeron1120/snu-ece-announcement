@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+    buildBannerSlideUpdate,
     normalizeBannerPayload,
     toClientBannerSlide
 } from '../server/server.js';
@@ -34,6 +35,29 @@ test('legacy banner rows default to header and preserve new metadata', () => {
             description: '이번 달 혜택'
         }
     );
+});
+
+test('banner updates omit an empty expiry so the stored value is preserved', () => {
+    const update = buildBannerSlideUpdate({
+        name: 'updated',
+        text: 'updated',
+        bgStyle: 'background:#fff;',
+        textColor: '#111',
+        src: null,
+        order: 1,
+        placement: 'header',
+        linkUrl: '',
+        altText: '',
+        description: '',
+        expiresAt: ''
+    }, 'expiresAt');
+
+    assert.equal(Object.hasOwn(update, 'expiresAt'), false);
+    assert.equal({ expiresAt: null, ...update }.expiresAt, null);
+
+    const exactExpiry = '2030-04-05T06:07:08.987Z';
+    const supabaseUpdate = buildBannerSlideUpdate({ ...update, expiresAt: exactExpiry }, 'expires_at');
+    assert.equal(supabaseUpdate.expires_at, exactExpiry);
 });
 
 test('banner payload accepts only known placements and web links', () => {
