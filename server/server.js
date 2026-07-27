@@ -294,7 +294,9 @@ async function writeBannerFile(slides) {
 }
 
 function normalizeBannerPayload(body = {}) {
-    const placement = String(body.placement || 'header').trim() || 'header';
+    const placement = Object.hasOwn(body, 'placement')
+        ? String(body.placement).trim()
+        : 'header';
     if (!['header', 'right_rail'].includes(placement)) {
         throw new TypeError('배너 표시 위치는 header 또는 right_rail이어야 합니다.');
     }

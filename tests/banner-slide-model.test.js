@@ -55,6 +55,18 @@ test('banner payload accepts only known placements and web links', () => {
         () => normalizeBannerPayload({ text: '광고', placement: 'footer' }),
         /표시 위치/
     );
+    assert.equal(
+        normalizeBannerPayload({ text: '광고' }).placement,
+        'header'
+    );
+    assert.throws(
+        () => normalizeBannerPayload({ text: '광고', placement: false }),
+        /표시 위치/
+    );
+    assert.throws(
+        () => normalizeBannerPayload({ text: '광고', placement: 0 }),
+        /표시 위치/
+    );
     assert.throws(
         () => normalizeBannerPayload({ text: '광고', linkUrl: 'javascript:alert(1)' }),
         /http 또는 https/
