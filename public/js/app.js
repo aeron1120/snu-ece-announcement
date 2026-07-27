@@ -258,7 +258,7 @@ function getBase64(file) { return new Promise((resolve, reject) => { const reade
 function calcDDay(deadlineStr) {
     if (!deadlineStr) return { text: "상시", isUrgent: false, isD1: false, isExpired: false };
     const dDate = new Date(deadlineStr + "T23:59:59");
-    const diffDays = Math.ceil((dDate - getCurrentDate()) / (1000 * 60 * 60 * 24));
+    const diffDays = Math.floor((dDate - getCurrentDate()) / (1000 * 60 * 60 * 24));
     if (diffDays < 0) return { text: "마감됨", isUrgent: false, isD1: false, isExpired: true };
     if (diffDays === 0) return { text: "D-Day", isUrgent: true, isD1: false, isExpired: false };
     if (diffDays === 1) return { text: "D-1", isUrgent: true, isD1: true, isExpired: false };

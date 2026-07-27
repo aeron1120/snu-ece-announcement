@@ -66,6 +66,24 @@ test('expired notices use a neutral card and badge state in list and detail view
     assert.doesNotMatch(css, /\.card\.card-expired[^{]*\{[^}]*text-decoration\s*:/s);
 });
 
+test('calcDDay keeps a notice active through its deadline date and expires it the following day', async () => {
+    const app = await readFile('js/app.js', 'utf8');
+    const calcDDaySource = app.match(/function calcDDay\(deadlineStr\) \{[\s\S]*?\r?\n\}/)?.[0];
+    assert.ok(calcDDaySource);
+
+    const onDeadlineDate = new Function(
+        'getCurrentDate',
+        `${calcDDaySource}; return calcDDay;`
+    )(() => new Date('2026-07-27T00:00:00'));
+    const followingDate = new Function(
+        'getCurrentDate',
+        `${calcDDaySource}; return calcDDay;`
+    )(() => new Date('2026-07-28T00:00:00'));
+
+    assert.equal(onDeadlineDate('2026-07-27').isExpired, false);
+    assert.equal(followingDate('2026-07-27').isExpired, true);
+});
+
 test('Cloudflare scheduled worker triggers the protected crawl endpoint', async () => {
     const worker = (await import('../cloudflare/crawl-worker.js')).default;
     const calls = [];
