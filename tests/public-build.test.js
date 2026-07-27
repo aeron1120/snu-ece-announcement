@@ -616,6 +616,117 @@ test('notice load-more control reflects paging and loading state', async () => {
     assert.equal(button.disabled, true);
 });
 
+test('notice viewport loader defers thumbnails until they intersect', async () => {
+    const app = await readFile('js/app.js', 'utf8');
+    const source = readNamedFunction(app, 'createNoticeViewportLoader');
+    const observers = [];
+    class FakeIntersectionObserver {
+        constructor(callback, options) {
+            this.callback = callback;
+            this.options = options;
+            this.observed = [];
+            this.unobserved = [];
+            observers.push(this);
+        }
+        observe(target) {
+            this.observed.push(target);
+        }
+        unobserve(target) {
+            this.unobserved.push(target);
+        }
+        disconnect() {}
+        emit(target, isIntersecting = true) {
+            return this.callback([{ target, isIntersecting }]);
+        }
+    }
+    const context = {};
+    runInNewContext(`${source}; this.createNoticeViewportLoader = createNoticeViewportLoader;`, context);
+    const loader = context.createNoticeViewportLoader({
+        IntersectionObserverCtor: FakeIntersectionObserver,
+        resolveUrl: value => `https://api.example.test${value}`,
+        defaultUrl: '/icons/default-notice-thumbnail.png'
+    });
+    const listeners = {};
+    const image = {
+        dataset: { thumbnailSrc: '/api/notices/7/thumbnail?v=1' },
+        src: '',
+        addEventListener(type, callback) {
+            listeners[type] = callback;
+        }
+    };
+
+    loader.observeThumbnail(image);
+    assert.equal(image.src, '');
+    assert.equal(observers[0].observed[0], image);
+
+    observers[0].emit(image, false);
+    assert.equal(image.src, '');
+
+    observers[0].emit(image, true);
+    assert.equal(image.src, 'https://api.example.test/api/notices/7/thumbnail?v=1');
+    assert.equal(image.dataset.thumbnailSrc, undefined);
+    assert.equal(observers[0].unobserved[0], image);
+
+    listeners.error();
+    assert.equal(image.src, '/icons/default-notice-thumbnail.png');
+});
+
+test('notice viewport loader guards infinite-scroll requests and has a fallback', async () => {
+    const app = await readFile('js/app.js', 'utf8');
+    const source = readNamedFunction(app, 'createNoticeViewportLoader');
+    const observers = [];
+    class FakeIntersectionObserver {
+        constructor(callback) {
+            this.callback = callback;
+            observers.push(this);
+        }
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+        emit(target) {
+            return this.callback([{ target, isIntersecting: true }]);
+        }
+    }
+    const context = {};
+    runInNewContext(`${source}; this.createNoticeViewportLoader = createNoticeViewportLoader;`, context);
+    const loader = context.createNoticeViewportLoader({
+        IntersectionObserverCtor: FakeIntersectionObserver,
+        resolveUrl: value => value,
+        defaultUrl: '/icons/default-notice-thumbnail.png'
+    });
+    let resolveLoad;
+    let calls = 0;
+    const loadNextPage = () => {
+        calls += 1;
+        return new Promise(resolve => {
+            resolveLoad = resolve;
+        });
+    };
+    const sentinel = {};
+    loader.observePaginationSentinel(sentinel, loadNextPage);
+
+    observers[1].emit(sentinel);
+    observers[1].emit(sentinel);
+    assert.equal(calls, 1);
+    resolveLoad();
+    await new Promise(resolve => setImmediate(resolve));
+    observers[1].emit(sentinel);
+    assert.equal(calls, 2);
+
+    const fallbackLoader = context.createNoticeViewportLoader({
+        IntersectionObserverCtor: undefined,
+        resolveUrl: value => value,
+        defaultUrl: '/icons/default-notice-thumbnail.png'
+    });
+    const fallbackImage = {
+        dataset: { thumbnailSrc: '/icons/default-notice-thumbnail.png' },
+        src: '',
+        addEventListener() {}
+    };
+    fallbackLoader.observeThumbnail(fallbackImage);
+    assert.equal(fallbackImage.src, '/icons/default-notice-thumbnail.png');
+});
+
 test('Cloudflare scheduled worker triggers the protected crawl endpoint', async () => {
     const worker = (await import('../cloudflare/crawl-worker.js')).default;
     const calls = [];

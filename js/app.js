@@ -72,6 +72,71 @@ function buildApiUrl(path) {
     return API_BASE_URL ? `${API_BASE_URL}${path}` : path;
 }
 
+function createNoticeViewportLoader(options) {
+    const {
+        IntersectionObserverCtor,
+        resolveUrl,
+        defaultUrl
+    } = options;
+    let thumbnailObserver = null;
+    let paginationObserver = null;
+    let paginationLoading = false;
+
+    function loadThumbnail(image) {
+        const pendingUrl = image?.dataset?.thumbnailSrc;
+        if (!pendingUrl) return;
+        image.addEventListener('error', () => {
+            if (image.dataset.defaultFallbackApplied === 'true') return;
+            image.dataset.defaultFallbackApplied = 'true';
+            image.src = defaultUrl;
+        });
+        image.src = resolveUrl(pendingUrl);
+        delete image.dataset.thumbnailSrc;
+        thumbnailObserver?.unobserve(image);
+    }
+
+    if (IntersectionObserverCtor) {
+        thumbnailObserver = new IntersectionObserverCtor(entries => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) loadThumbnail(entry.target);
+            });
+        }, { rootMargin: '0px', threshold: 0.01 });
+    }
+
+    function observeThumbnail(image) {
+        if (!image?.dataset?.thumbnailSrc) return;
+        if (thumbnailObserver) {
+            thumbnailObserver.observe(image);
+        } else {
+            loadThumbnail(image);
+        }
+    }
+
+    function observePaginationSentinel(sentinel, loadNextPage) {
+        if (!sentinel || typeof loadNextPage !== 'function' || !IntersectionObserverCtor) return;
+        paginationObserver?.disconnect();
+        paginationObserver = new IntersectionObserverCtor(entries => {
+            if (paginationLoading || !entries.some(entry => entry.isIntersecting)) return;
+            paginationLoading = true;
+            Promise.resolve(loadNextPage()).finally(() => {
+                paginationLoading = false;
+            });
+        }, { rootMargin: '0px 0px 240px 0px', threshold: 0 });
+        paginationObserver.observe(sentinel);
+    }
+
+    return {
+        observeThumbnail,
+        observePaginationSentinel
+    };
+}
+
+const noticeViewportLoader = createNoticeViewportLoader({
+    IntersectionObserverCtor: window.IntersectionObserver,
+    resolveUrl: value => value.startsWith('/api/') ? buildApiUrl(value) : value,
+    defaultUrl: '/icons/default-notice-thumbnail.png'
+});
+
 function getNoticeAdminHeaders(tokenOverride = '') {
     const token = (tokenOverride || noticeAdminAuthToken || '').trim();
     return token ? { 'x-admin-token': token } : {};
@@ -1795,6 +1860,9 @@ function filterCards() {
         grid.innerHTML = '<div class="notice-empty-state">조건에 맞는 공지가 없습니다.</div>';
     }
 
+    grid.querySelectorAll('img[data-thumbnail-src]')
+        .forEach(image => noticeViewportLoader.observeThumbnail(image));
+
     const countEl = document.getElementById('filter-result-count');
     if (countEl) countEl.innerHTML = `결과 <strong>${filtered.length}</strong>건 / 전체 ${notices.length}건`;
 }
@@ -2118,6 +2186,10 @@ document.addEventListener('DOMContentLoaded', async function () {
     renderRightRailAd();
     buildHostButtons();
     filterCards();
+    noticeViewportLoader.observePaginationSentinel(
+        document.getElementById('notice-scroll-sentinel'),
+        loadMoreNotices
+    );
     updateCompareBar();
     openNoticeFromUrl();   // 카톡 링크로 들어온 경우 해당 공지를 바로 연다
 
