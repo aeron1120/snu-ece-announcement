@@ -1699,8 +1699,8 @@ function filterCards() {
         grid.appendChild(card);
     });
 
-    if (grid.innerHTML === "") {
-        grid.innerHTML = `<div style="grid-column: 1 / -1; text-align: center; padding: 60px 0; color: var(--text-sub); font-size: 16px;">조건에 맞는 공지가 없습니다.</div>`;
+    if (grid.childElementCount === 0) {
+        grid.innerHTML = '<div class="notice-empty-state">조건에 맞는 공지가 없습니다.</div>';
     }
 
     const countEl = document.getElementById('filter-result-count');

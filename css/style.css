@@ -258,10 +258,22 @@ body {
 
 /* ---------- 공지 그리드 & 카드 ---------- */
 .grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-    gap: 20px;
-    align-items: start;
+    column-count: 4;
+    column-gap: 20px;
+}
+.grid .card {
+    width: 100%;
+    display: inline-flex;
+    break-inside: avoid;
+    margin: 0;
+    margin-bottom: 20px;
+}
+.notice-empty-state {
+    column-span: all;
+    text-align: center;
+    padding: 60px 0;
+    color: var(--text-sub);
+    font-size: 16px;
 }
 .card {
     background: var(--card-bg);
@@ -326,6 +338,14 @@ body {
     font-variant-numeric: tabular-nums;
 }
 .view-count { white-space: nowrap; }
+
+@media (max-width: 1200px) {
+    .grid { column-count: 3; }
+}
+
+@media (max-width: 900px) {
+    .grid { column-count: 2; }
+}
 
 /* ---------- 모달 ---------- */
 .overlay {
@@ -572,7 +592,8 @@ body {
     .btn { min-height: 40px; }
     .header-actions .btn { min-width: 110px; }
     .header-banner { height: 36px; max-width: 100%; }
-    .grid { grid-template-columns: 1fr; gap: 14px; }
+    .grid { column-count: 1; column-gap: 0; }
+    .grid .card { margin-bottom: 14px; }
     .search-container { flex-direction: column; align-items: stretch; }
     .search-container select, .search-container input, .search-container .btn { width: 100%; min-width: 0; }
     .filter-toggle-bar { padding: 8px 12px; height: auto; }

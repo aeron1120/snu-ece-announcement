@@ -264,6 +264,20 @@ test('deadline-soon sorting renders dated notices without an undefined current-d
     assert.match(cards[1].innerHTML, /Later deadline/);
 });
 
+test('notice list uses masonry columns without splitting cards', async () => {
+    const app = await readFile('js/app.js', 'utf8');
+    const css = await readFile('css/style.css', 'utf8');
+
+    assert.match(css, /\.grid\s*\{[^}]*column-count:\s*4/s);
+    assert.match(css, /\.card\s*\{[^}]*break-inside:\s*avoid/s);
+    assert.match(css, /\.card\s*\{[^}]*margin-bottom:\s*20px/s);
+    assert.match(css, /@media \(max-width:\s*1200px\)[\s\S]*column-count:\s*3/);
+    assert.match(css, /@media \(max-width:\s*900px\)[\s\S]*column-count:\s*2/);
+    assert.match(css, /@media \(max-width:\s*768px\)[\s\S]*column-count:\s*1/);
+    assert.match(app, /class="notice-empty-state"/);
+    assert.doesNotMatch(css, /\.grid\s*\{[^}]*display:\s*grid/s);
+});
+
 test('Cloudflare scheduled worker triggers the protected crawl endpoint', async () => {
     const worker = (await import('../cloudflare/crawl-worker.js')).default;
     const calls = [];
