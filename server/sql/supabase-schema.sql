@@ -115,6 +115,23 @@ create unique index if not exists notices_source_external_unique
 create index if not exists notices_status_created_idx
   on public.notices (status, created_at desc);
 
+create or replace function public.get_notice_thumbnail_source(target_notice_id bigint)
+returns table(id bigint, updated_at timestamptz, image text)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select n.id, n.updated_at, n.images->>0
+  from public.notices n
+  where n.id = target_notice_id
+    and n.status = 'published'
+    and n.is_deleted = false;
+$$;
+
+revoke all on function public.get_notice_thumbnail_source(bigint) from public;
+grant execute on function public.get_notice_thumbnail_source(bigint) to service_role;
+
 create table if not exists public.crawl_runs (
   id bigint generated always as identity primary key,
   source_type text not null,

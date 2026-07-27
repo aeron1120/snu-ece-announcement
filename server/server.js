@@ -12,6 +12,8 @@ import { createEceCrawler } from './services/ece-crawler.js';
 import * as eceParser from './services/ece-parser.js';
 import { createNoticeAnalyzer } from './services/notice-analyzer.js';
 import { createAutomationRouter } from './routes/automation-routes.js';
+import { createNoticeThumbnailRouter } from './routes/notice-thumbnail-route.js';
+import { createNoticeThumbnailService } from './services/notice-thumbnail-service.js';
 import webPush from 'web-push';
 import { createPushService } from './services/push-service.js';
 import { rateLimit } from 'express-rate-limit';
@@ -25,6 +27,7 @@ const noticesFilePath = path.join(__dirname, 'data', 'notices.json');
 const settingsFilePath = path.join(__dirname, 'data', 'settings.json');
 const bannerFilePath = path.join(__dirname, 'data', 'banner-slides.json');
 const automationFilePath = path.join(__dirname, 'data', 'automation.json');
+const thumbnailCacheDir = path.join(__dirname, 'data', 'thumbnail-cache');
 const SUPER_ADMIN_TOKEN = process.env.SUPER_ADMIN_TOKEN || process.env.ADMIN_TOKEN || '';
 const NOTICE_ADMIN_TOKEN = process.env.NOTICE_ADMIN_TOKEN || '';
 const SUPABASE_URL = process.env.SUPABASE_URL || '';
@@ -38,6 +41,9 @@ const automationStore = createAutomationStore({
     supabase,
     useSupabase,
     filePath: automationFilePath
+});
+const noticeThumbnailService = createNoticeThumbnailService({
+    cacheDir: thumbnailCacheDir
 });
 const noticeAnalyzer = process.env.GEMINI_API_KEY
     ? createNoticeAnalyzer({
@@ -440,6 +446,12 @@ function toClientNotice(row) {
 
 function toNoticeSummary(row) {
     const notice = toClientNotice(row);
+    const hasImages = typeof row.hasImages === 'boolean'
+        ? row.hasImages
+        : (typeof row.has_images === 'boolean'
+            ? row.has_images
+            : notice.images.length > 0);
+    const thumbnailVersion = notice.updatedAt || notice.createdAt || '0';
     return {
         id: notice.id,
         title: notice.title,
@@ -454,11 +466,10 @@ function toNoticeSummary(row) {
         sourcePublishedAt: notice.sourcePublishedAt,
         createdAt: notice.createdAt,
         updatedAt: notice.updatedAt,
-        hasImages: typeof row.hasImages === 'boolean'
-            ? row.hasImages
-            : (typeof row.has_images === 'boolean'
-                ? row.has_images
-                : notice.images.length > 0)
+        hasImages,
+        thumbnailUrl: hasImages
+            ? `/api/notices/${notice.id}/thumbnail?v=${encodeURIComponent(thumbnailVersion)}`
+            : '/icons/default-notice-thumbnail.png'
     };
 }
 
@@ -802,6 +813,30 @@ async function getPublishedNoticeById(id) {
 
     if (error) throw error;
     return data ? toClientNotice(data) : null;
+}
+
+async function loadPublishedNoticeThumbnailSource(id) {
+    if (!useSupabase) {
+        const notice = await getPublishedNoticeById(id);
+        if (!notice) return null;
+        return {
+            id: notice.id,
+            updatedAt: notice.updatedAt || notice.createdAt || '',
+            image: notice.images[0] || ''
+        };
+    }
+
+    const { data, error } = await supabase.rpc('get_notice_thumbnail_source', {
+        target_notice_id: id
+    });
+    if (error) throw error;
+    const row = Array.isArray(data) ? data[0] : data;
+    if (!row) return null;
+    return {
+        id: Number(row.id),
+        updatedAt: row.updated_at || '',
+        image: row.image || ''
+    };
 }
 
 async function createNotice(payload) {
@@ -1335,6 +1370,12 @@ app.get('/api/notices', async (req, res) => {
         res.status(500).json({ error: error.message || '공지 조회 실패' });
     }
 });
+
+app.use(createNoticeThumbnailRouter({
+    loadSource: loadPublishedNoticeThumbnailSource,
+    thumbnailService: noticeThumbnailService,
+    defaultUrl: '/icons/default-notice-thumbnail.png'
+}));
 
 app.get('/api/notices/:id', async (req, res) => {
     try {

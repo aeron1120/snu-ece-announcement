@@ -38,8 +38,14 @@ test('notice summaries expose card metadata without heavy detail fields', () => 
         sourcePublishedAt: '2026-07-27T00:00:00.000Z',
         createdAt: '2026-07-27T00:00:00.000Z',
         updatedAt: '2026-07-27T00:00:00.000Z',
-        hasImages: true
+        hasImages: true,
+        thumbnailUrl: '/api/notices/42/thumbnail?v=2026-07-27T00%3A00%3A00.000Z'
     });
+    assert.equal(
+        toNoticeSummary({ id: 43, images: [], hasImages: false }).thumbnailUrl,
+        '/icons/default-notice-thumbnail.png'
+    );
+    assert.doesNotMatch(JSON.stringify(summary), /data:image/);
 });
 
 test('public notice API is paginated, has detail lookup, and hides Express signature', async t => {
@@ -58,6 +64,8 @@ test('public notice API is paginated, has detail lookup, and hides Express signa
     assert.equal(defaultList.pagination.limit, 20);
     for (const notice of defaultList.notices) {
         assert.equal(typeof notice.hasImages, 'boolean');
+        assert.equal(typeof notice.thumbnailUrl, 'string');
+        assert.doesNotMatch(notice.thumbnailUrl, /^data:image/);
         for (const heavyKey of [
             'content', 'rawContent', 'images', 'attachments', 'crawlMetadata'
         ]) {
