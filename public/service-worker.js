@@ -1,5 +1,15 @@
-const CACHE_NAME = 'ece-notices-v2';
-const APP_SHELL = ['/', '/css/style.css', '/js/app.js', '/js/config.js'];
+const CACHE_NAME = 'ece-notices-v3';
+// 공개 화면의 껍데기만 캐시한다. admin.html은 항상 네트워크에서 받아야 하므로 넣지 않는다.
+const APP_SHELL = [
+    '/',
+    '/css/core.css',
+    '/css/desktop.css',
+    '/css/mobile.css',
+    '/js/config.js',
+    '/js/core.js',
+    '/js/desktop.js',
+    '/js/mobile.js'
+];
 
 self.addEventListener('install', event => {
     event.waitUntil(

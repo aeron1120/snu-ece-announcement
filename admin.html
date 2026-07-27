@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="ko" data-view="desktop">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" id="viewport-meta" content="width=device-width, initial-scale=1.0">
+    <title>관리자 · SNU ECE 공지방</title>
+    <meta name="robots" content="noindex, nofollow">
+    <meta name="theme-color" content="#0f2c62">
+    <link rel="icon" href="./icons/app-icon.svg" type="image/svg+xml">
+    <link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Nanum+Myeongjo:wght@700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="./css/core.css">
+    <link rel="stylesheet" href="./css/admin.css">
+</head>
+<body class="admin-body" data-page="admin">
+
+<header class="admin-topbar">
+    <h1>SNU ECE 공지방</h1>
+    <span class="admin-badge">ADMIN</span>
+    <div class="admin-topbar-actions">
+        <a href="./index.html">공개 화면으로</a>
+        <button type="button" id="admin-logout" onclick="logoutAdmin()" hidden>로그아웃</button>
+    </div>
+</header>
+
+<div class="admin-shell">
+
+    <!-- 인증 게이트. 통과 전에는 어떤 관리 화면도 그리지 않는다. -->
+    <section class="admin-gate" id="admin-gate">
+        <h2>공지 관리자 인증</h2>
+        <p>공지 검수·등록·수정을 하려면 공지 관리자 비밀번호를 입력하세요.<br>
+           배너 관리와 관리자 설정은 인증 후 각 탭에서 따로 확인합니다.</p>
+        <input type="password" id="admin-gate-password" autocomplete="current-password"
+               onkeyup="if(event.key==='Enter') submitAdminGate()">
+        <button class="btn" type="button" onclick="submitAdminGate()">인증하기</button>
+        <p class="admin-gate-error" id="admin-gate-error" aria-live="polite"></p>
+    </section>
+
+    <!-- 인증 후 본문 -->
+    <div id="admin-workspace" hidden>
+        <nav class="admin-tabs" aria-label="관리 메뉴">
+            <button type="button" class="admin-tab active" data-tab="review" onclick="selectAdminTab('review')">
+                검수 대기 <span class="tab-count" id="review-pending-count">—</span>
+            </button>
+            <button type="button" class="admin-tab" data-tab="compose" onclick="selectAdminTab('compose')">공지 추가하기</button>
+            <button type="button" class="admin-tab" data-tab="notices" onclick="selectAdminTab('notices')">공지 목록</button>
+            <button type="button" class="admin-tab" data-tab="banner" onclick="selectAdminTab('banner')">배너 관리</button>
+            <button type="button" class="admin-tab" data-tab="category" onclick="selectAdminTab('category')">카테고리 추천</button>
+            <button type="button" class="admin-tab" data-tab="feedback" onclick="selectAdminTab('feedback')">
+                익명 피드백 <span class="tab-count" id="feedback-count" hidden>0</span>
+            </button>
+            <button type="button" class="admin-tab" data-tab="settings" onclick="selectAdminTab('settings')">관리자 설정</button>
+        </nav>
+
+        <!-- ============ 검수 대기 ============ -->
+        <section class="admin-panel active" id="panel-review" aria-labelledby="panel-review-title">
+            <h2 id="panel-review-title">공지 검수함</h2>
+            <p id="review-status" class="review-status" aria-live="polite"></p>
+            <div class="review-layout">
+                <aside class="review-list-pane" aria-label="검수 대기 공지">
+                    <button class="btn btn-outline btn-small" type="button" onclick="runManualCrawl()">지금 새 공지 확인</button>
+                    <div id="review-notice-list" class="review-notice-list"></div>
+                </aside>
+                <section id="review-editor" class="review-editor" aria-label="공지 검수 편집기">
+                    <div class="review-empty">왼쪽에서 검수할 공지를 선택하세요.</div>
+                </section>
+            </div>
+        </section>
+
+        <!-- ============ 공지 추가하기 ============ -->
+        <section class="admin-panel" id="panel-compose" aria-labelledby="panel-compose-title">
+            <h2 id="panel-compose-title">새 공지 등록</h2>
+
+            <div class="loading" id="ai-loading">
+                <div class="spinner"></div>
+                <p style="font-size: 16px; color: var(--text-main);"><strong>Gemini AI</strong>가 원문을 분석 중입니다...</p>
+            </div>
+
+            <!-- 1단계: 원문 · 사진 · 대상 학번을 먼저 넣는다 -->
+            <div class="form-group">
+                <label>① 공지 원문 <span style="color:red;">*필수</span></label>
+                <textarea id="post-content" placeholder="공지 원문을 붙여넣으세요. 링크는 자동으로 클릭 가능하게 변환됩니다."></textarea>
+            </div>
+            <div class="form-group">
+                <label>② 사진 첨부 <span>(최대 20장)</span></label>
+                <input type="file" id="post-images" accept="image/*" multiple style="border: none; padding: 0; background: transparent;">
+                <div class="paste-dropzone" id="paste-dropzone" tabindex="0" aria-label="이미지 붙여넣기 영역">
+                    여기를 클릭한 뒤 <strong>Ctrl+V</strong>로 캡처·복사한 이미지를 붙여넣으세요.
+                </div>
+                <div class="paste-preview" id="paste-preview"></div>
+            </div>
+            <div class="form-group">
+                <label>③ 대상 학번 <span style="color:red;">*필수</span></label>
+                <select id="post-target">
+                    <option value="전체">전체 학번 대상</option>
+                    <option value="26학번">26학번 전용</option>
+                    <option value="25학번">25학번 전용</option>
+                    <option value="24학번 이상">24학번 이상 전용</option>
+                </select>
+            </div>
+
+            <!-- 2단계: AI가 마감일·핵심내용·유형을 정해진 보기 안에서 골라 채운다 -->
+            <div class="analyze-bar">
+                <button class="btn" type="button" id="ai-analyze-btn" onclick="analyzeNotice()">AI 자동 편집</button>
+                <span id="analyze-status" class="review-status" style="margin:0;"></span>
+            </div>
+
+            <div class="analysis-fields">
+                <div class="title-builder-grid">
+                    <div class="title-builder-field">
+                        <label for="title-host">주관 기관</label>
+                        <select id="title-host" onchange="onTitleHostChange()">
+                            <option value="학생회">학생회</option>
+                            <option value="학부 행정실">학부 행정실</option>
+                            <option value="학과 사무실">학과 사무실</option>
+                            <option value="교수님">교수님</option>
+                            <option value="동아리">동아리</option>
+                            <option value="학교 본부">학교 본부</option>
+                            <option value="외부 기관">외부 기관</option>
+                            <option value="기타">기타</option>
+                            <option value="__custom__">직접 입력…</option>
+                        </select>
+                        <input type="text" id="title-host-custom" placeholder="주관 기관 직접 입력"
+                               maxlength="30" hidden oninput="refreshTitlePreview()">
+                    </div>
+                    <div class="title-builder-field">
+                        <label for="title-subject">핵심 내용</label>
+                        <input type="text" id="title-subject" maxlength="60"
+                               placeholder="AI 분석 후 자동 입력" oninput="refreshTitlePreview()">
+                    </div>
+                    <div class="title-builder-field">
+                        <label for="title-kind">공지 유형</label>
+                        <select id="title-kind" onchange="refreshTitlePreview()">
+                            <option value="모집">모집</option>
+                            <option value="안내">안내</option>
+                            <option value="신청">신청</option>
+                            <option value="접수">접수</option>
+                            <option value="공지">공지</option>
+                            <option value="행사">행사</option>
+                            <option value="변경 안내">변경 안내</option>
+                            <option value="결과 발표">결과 발표</option>
+                            <option value="기간 연장">기간 연장</option>
+                        </select>
+                    </div>
+                    <div class="title-builder-field">
+                        <label for="post-deadline">마감일 <span style="font-weight:400;color:var(--text-sub);">(비우면 상시)</span></label>
+                        <input type="date" id="post-deadline">
+                    </div>
+                </div>
+
+                <output class="title-preview is-empty" id="title-preview" for="title-host title-subject title-kind">
+                    분석하거나 핵심 내용을 입력하면 제목이 만들어집니다.
+                </output>
+
+                <label class="title-manual-row">
+                    <input type="checkbox" id="title-manual" onchange="onTitleManualToggle()">
+                    생성된 제목 직접 수정하기
+                </label>
+                <input type="text" id="post-title-manual" maxlength="120"
+                       placeholder="제목 직접 입력" hidden oninput="refreshTitlePreview()">
+                <input type="hidden" id="post-title">
+            </div>
+
+            <div class="review-actions">
+                <button class="btn btn-outline" type="button" id="compose-cancel" onclick="resetComposeForm()" hidden>수정 취소</button>
+                <button id="submit-btn-text" class="btn" type="button" onclick="generateAIAndSave()">공지 업로드</button>
+            </div>
+        </section>
+
+        <!-- ============ 공지 목록 ============ -->
+        <section class="admin-panel" id="panel-notices" aria-labelledby="panel-notices-title">
+            <h2 id="panel-notices-title">등록된 공지</h2>
+            <p id="admin-notice-status" class="review-status" aria-live="polite"></p>
+            <div class="review-actions" style="justify-content: flex-start; border-top: none; padding-top: 0;">
+                <button class="btn btn-outline btn-small" type="button" onclick="loadAdminNoticeList()">목록 새로고침</button>
+                <button class="btn btn-outline btn-small" type="button" onclick="loadMoreAdminNotices()" id="admin-notice-more">더 불러오기</button>
+            </div>
+            <div class="admin-notice-list" id="admin-notice-list"></div>
+        </section>
+
+        <!-- ============ 배너 관리 ============ -->
+        <section class="admin-panel" id="panel-banner" aria-labelledby="panel-banner-title">
+            <h2 id="panel-banner-title">배너 관리</h2>
+            <div id="banner-lock" class="admin-locked">
+                <p>배너를 관리하려면 배너 비밀번호가 필요합니다.</p>
+                <div class="banner-pwd-row" style="display:flex; gap:8px; justify-content:center; max-width:340px; margin:0 auto;">
+                    <input type="password" id="banner-mode-pwd" placeholder="배너 비밀번호" style="flex:1; padding:12px; border:1px solid var(--border);"
+                           onkeyup="if(event.key==='Enter') verifyBannerPassword()">
+                    <button class="btn" type="button" onclick="verifyBannerPassword()">인증</button>
+                </div>
+                <p class="admin-gate-error" id="banner-pwd-error" aria-live="polite"></p>
+            </div>
+            <div id="banner-list-area" hidden>
+                <section class="banner-placement-section" aria-labelledby="right-rail-manager-title">
+                    <h3 id="right-rail-manager-title">오른쪽 세로 광고</h3>
+                    <div class="banner-slides-list" id="right-rail-slides-list"></div>
+                </section>
+                <!-- 상단 배너 시절에 등록된 항목. 노출되는 자리가 없으므로 삭제만 남긴다. -->
+                <section class="banner-placement-section" id="legacy-banner-section" aria-labelledby="legacy-banner-title" hidden>
+                    <h3 id="legacy-banner-title">노출되지 않는 옛 상단 배너</h3>
+                    <div class="banner-slides-list" id="legacy-banner-slides-list"></div>
+                </section>
+            </div>
+        </section>
+
+        <!-- ============ 카테고리 추천 ============ -->
+        <section class="admin-panel" id="panel-category" aria-labelledby="panel-category-title">
+            <h2 id="panel-category-title">카테고리 추천</h2>
+            <p id="category-manager-status" class="review-status" aria-live="polite"></p>
+            <div id="category-candidate-list" class="category-candidate-list"></div>
+        </section>
+
+        <!-- ============ 익명 피드백 ============ -->
+        <section class="admin-panel" id="panel-feedback" aria-labelledby="panel-feedback-title">
+            <h2 id="panel-feedback-title">익명 피드백</h2>
+            <p id="feedback-admin-status" class="review-status" aria-live="polite"></p>
+            <div class="review-actions" style="justify-content: flex-start; border-top: none; padding-top: 0;">
+                <button class="btn btn-outline btn-small" type="button" onclick="loadAdminFeedback()">새로고침</button>
+            </div>
+            <div class="admin-feedback-list" id="admin-feedback-list"></div>
+        </section>
+
+        <!-- ============ 관리자 설정 ============ -->
+        <section class="admin-panel" id="panel-settings" aria-labelledby="panel-settings-title">
+            <h2 id="panel-settings-title">관리자 설정</h2>
+            <div id="settings-lock" class="admin-locked">
+                <p>관리자 설정을 바꾸려면 절대 관리자 비밀번호가 필요합니다.</p>
+                <div style="display:flex; gap:8px; justify-content:center; max-width:340px; margin:0 auto;">
+                    <input type="password" id="super-admin-pwd" placeholder="절대 관리자 비밀번호" style="flex:1; padding:12px; border:1px solid var(--border);"
+                           onkeyup="if(event.key==='Enter') verifySuperAdminPassword()">
+                    <button class="btn" type="button" onclick="verifySuperAdminPassword()">인증</button>
+                </div>
+                <p class="admin-gate-error" id="super-admin-error" aria-live="polite"></p>
+            </div>
+
+            <div class="settings-section" id="settings-area" hidden>
+                <div class="form-group">
+                    <label for="edit-admin-name">관리자 직책 및 이름</label>
+                    <input type="text" id="edit-admin-name" placeholder="예: ECE 학생회장 (이름 : 홍길동)">
+                </div>
+                <div class="form-group">
+                    <label for="edit-admin-phone">전화번호</label>
+                    <input type="text" id="edit-admin-phone">
+                </div>
+                <div class="form-group">
+                    <label for="edit-admin-kakao">카카오톡 ID</label>
+                    <input type="text" id="edit-admin-kakao">
+                </div>
+
+                <div class="settings-divider"></div>
+                <p class="settings-note">📢 배너 관리자 정보</p>
+                <div class="form-group">
+                    <label for="edit-banner-admin-name">배너 관리자 직책 및 이름</label>
+                    <input type="text" id="edit-banner-admin-name" placeholder="예: 학생회 대외협력국 (국장 : 이배너)">
+                </div>
+                <div class="form-group">
+                    <label for="edit-banner-admin-phone">배너 관리자 전화번호</label>
+                    <input type="text" id="edit-banner-admin-phone">
+                </div>
+                <div class="form-group">
+                    <label for="edit-banner-admin-kakao">배너 관리자 카카오톡 ID</label>
+                    <input type="text" id="edit-banner-admin-kakao">
+                </div>
+
+                <div class="settings-divider"></div>
+                <p class="settings-note">🔑 비밀번호 변경 <span>(변경 원하지 않으면 비워두세요)</span></p>
+                <div class="form-group">
+                    <label for="edit-admin-pwd">공지 관리자 비밀번호 변경</label>
+                    <input type="password" id="edit-admin-pwd" placeholder="새 공지 관리자 비밀번호" autocomplete="new-password">
+                </div>
+                <div class="form-group">
+                    <label for="edit-banner-pwd">배너 비밀번호 변경</label>
+                    <input type="password" id="edit-banner-pwd" placeholder="새 배너 비밀번호" autocomplete="new-password">
+                </div>
+                <div class="review-actions">
+                    <button class="btn" type="button" onclick="saveAdminInfo()">저장</button>
+                </div>
+            </div>
+        </section>
+    </div>
+</div>
+
+<script src="./js/config.js"></script>
+<script src="./js/core.js"></script>
+<script src="./js/admin.js"></script>
+</body>
+</html>

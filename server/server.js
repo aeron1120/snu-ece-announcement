@@ -27,6 +27,7 @@ const noticesFilePath = path.join(__dirname, 'data', 'notices.json');
 const settingsFilePath = path.join(__dirname, 'data', 'settings.json');
 const bannerFilePath = path.join(__dirname, 'data', 'banner-slides.json');
 const automationFilePath = path.join(__dirname, 'data', 'automation.json');
+const feedbackFilePath = path.join(__dirname, 'data', 'feedback.json');
 const thumbnailCacheDir = path.join(__dirname, 'data', 'thumbnail-cache');
 const SUPER_ADMIN_TOKEN = process.env.SUPER_ADMIN_TOKEN || process.env.ADMIN_TOKEN || '';
 const NOTICE_ADMIN_TOKEN = process.env.NOTICE_ADMIN_TOKEN || '';
@@ -88,22 +89,10 @@ const initialNoticeAdminToken = NOTICE_ADMIN_TOKEN;
 // 실사용 서비스이므로 가짜 공지를 시드하지 않는다. 첫 공지는 관리자가 직접 등록한다.
 const defaultNotices = [];
 
-// 등록된 배너가 없을 때 배너 영역이 비어 보이지 않도록 쓰는 안내 배너.
-// 실제 광고가 아니므로 마감일·모집 같은 허위 정보를 넣지 않는다.
-const defaultBannerSlides = [
-    {
-        name: '배너 광고 안내',
-        text: "📢 배너 광고 제휴 문의는 상단 '문의' 버튼을 눌러주세요",
-        bgStyle: 'background: linear-gradient(90deg, #eff6ff, #dbeafe);',
-        textColor: '#1e40af',
-        src: null,
-        order: 0,
-        placement: 'header',
-        linkUrl: '',
-        altText: '',
-        description: ''
-    }
-];
+// 상단 가로 배너는 없어졌고 광고는 오른쪽 세로 레일에만 노출된다.
+// 등록된 광고가 하나도 없으면 프런트가 자체 문의 안내를 그리므로 시드는 두지 않는다.
+// (실제 광고가 아닌 항목을 광고 자리에 심어두지 않기 위해서이기도 하다.)
+const defaultBannerSlides = [];
 
 const defaultAdminInfo = {
     name: 'ECE 학생회장 (이름 : 박지호)',
@@ -154,6 +143,14 @@ const analysisLimiter = rateLimit({
     legacyHeaders: false,
     message: { error: 'AI 분석 요청이 너무 많습니다. 잠시 후 다시 시도해주세요.' }
 });
+// 익명 피드백. 신원을 저장하지 않으므로 스팸을 막는 건 이 rate limit 뿐이다.
+const feedbackLimiter = rateLimit({
+    windowMs: 10 * 60 * 1000,
+    limit: 8,
+    standardHeaders: 'draft-8',
+    legacyHeaders: false,
+    message: { error: '피드백 전송이 너무 많습니다. 잠시 후 다시 시도해주세요.' }
+});
 
 app.use(['/api/notices', '/api/banner-slides'], express.json({ limit: '10mb' }));
 app.use('/api/push/subscriptions', express.json({ limit: '32kb' }));
@@ -162,6 +159,7 @@ app.use(['/api/admin/verify', '/api/super-admin/verify', '/api/banner/verify'], 
 app.use('/api/push/subscriptions', subscriptionLimiter);
 app.use('/api/internal/crawl', crawlTriggerLimiter);
 app.use('/api/summary', analysisLimiter);
+app.use('/api/feedback', feedbackLimiter);
 
 app.use((req, res, next) => {
     const allowedOrigin = process.env.FRONTEND_ORIGIN;
@@ -1291,6 +1289,68 @@ app.get('/api/settings', async (req, res) => {
     }
 });
 
+// ---------- 익명 피드백 ----------
+// 신원(IP·이름·연락처)을 저장하지 않는다. 순수하게 메시지와 시각만 남긴다.
+async function readFeedback() {
+    try {
+        const text = await fs.readFile(feedbackFilePath, 'utf-8');
+        const parsed = JSON.parse(text);
+        return Array.isArray(parsed) ? parsed : [];
+    } catch {
+        return [];
+    }
+}
+
+async function writeFeedback(items) {
+    await fs.mkdir(path.dirname(feedbackFilePath), { recursive: true });
+    await fs.writeFile(feedbackFilePath, JSON.stringify(items, null, 2), 'utf-8');
+}
+
+app.post('/api/feedback', async (req, res) => {
+    try {
+        const message = String(req.body?.message || '').trim();
+        if (message.length < 5) {
+            return res.status(400).json({ error: '피드백을 5자 이상 입력해주세요.' });
+        }
+        if (message.length > 2000) {
+            return res.status(400).json({ error: '피드백은 2000자 이내로 입력해주세요.' });
+        }
+
+        const items = await readFeedback();
+        // 익명성 유지: 작성자를 특정할 수 있는 정보는 어떤 것도 저장하지 않는다.
+        items.unshift({
+            id: crypto.randomUUID(),
+            message,
+            createdAt: new Date().toISOString()
+        });
+        await writeFeedback(items.slice(0, 1000));
+        res.status(201).json({ ok: true });
+    } catch (error) {
+        res.status(500).json({ error: error.message || '피드백 저장 실패' });
+    }
+});
+
+app.get('/api/admin/feedback', requireNoticeAdmin, async (req, res) => {
+    try {
+        const items = await readFeedback();
+        res.json({ feedback: items });
+    } catch (error) {
+        res.status(500).json({ error: error.message || '피드백 조회 실패' });
+    }
+});
+
+app.delete('/api/admin/feedback/:id', requireNoticeAdmin, async (req, res) => {
+    try {
+        const id = String(req.params.id || '');
+        const items = await readFeedback();
+        const next = items.filter(item => String(item.id) !== id);
+        await writeFeedback(next);
+        res.status(204).send();
+    } catch (error) {
+        res.status(500).json({ error: error.message || '피드백 삭제 실패' });
+    }
+});
+
 app.post('/api/admin/verify', requireNoticeAdmin, (req, res) => {
     res.json({ ok: true });
 });
@@ -1466,7 +1526,7 @@ app.post('/api/notices/:id/view', async (req, res) => {
 });
 
 app.post('/api/summary', requireNoticeAdmin, async (req, res) => {
-    const { prompt, model = 'gemini-2.5-flash' } = req.body || {};
+    const { prompt, model = 'gemini-flash-latest' } = req.body || {};
     const apiKey = process.env.GEMINI_API_KEY;
 
     if (!apiKey) {

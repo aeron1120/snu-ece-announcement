@@ -29,7 +29,26 @@ npm start
 npm run prepare:public
 ```
 
-`index.html`, `css`, `js`, PWA 파일과 Cloudflare 헤더가 `public/`에 복사됩니다. `public/`을 직접 수정하지 마세요.
+`index.html`, `admin.html`, `css`, `js`, PWA 파일과 Cloudflare 헤더가 `public/`에 복사됩니다. `public/`을 직접 수정하지 마세요.
+
+## 프런트엔드 구조
+
+공개 화면과 관리자 화면은 파일부터 분리되어 있습니다. 학생이 받는 번들에는 관리자 UI가 들어가지 않습니다.
+
+| 파일 | 역할 |
+| --- | --- |
+| `index.html` | 공개 화면. 공지 열람·검색·비교·알림 구독 |
+| `admin.html` | 관리자 화면. 검수, 공지 등록/수정/삭제, 배너, 카테고리, 설정 |
+| `css/core.css`, `js/core.js` | 뷰 모드와 무관한 공통 레이어 (토큰, 카드, 모달, API, 필터) |
+| `css/desktop.css`, `js/desktop.js` | 데스크탑 모드 전용. 좌우 고정 레일, 4열 그리드, 공지 비교 |
+| `css/mobile.css`, `js/mobile.js` | 모바일 모드 전용. 서랍 메뉴, 1열 그리드 |
+| `css/admin.css`, `js/admin.js` | 관리자 화면 전용 |
+
+뷰 모드는 `<html data-view="desktop|mobile">`로 갈립니다. 첫 페인트가 흔들리지 않도록 `index.html`의 인라인 스크립트가 CSS보다 먼저 값을 정하고(저장된 선택 → 없으면 화면 폭), 헤더의 전환 버튼이 `localStorage.eceLayoutMode`에 선택을 기억합니다. `desktop.js`와 `mobile.js`는 `registerViewModule()`로 자신을 등록하며, 활성화된 한쪽만 동작합니다.
+
+좌우 레일은 `position: fixed`라 본문을 스크롤해도 자리가 고정됩니다. 광고는 오른쪽 레일에만 노출되며(`placement: right_rail`), 상단 가로 배너는 제거되었습니다.
+
+공지 제목은 자유 입력이 아니라 `[주관 기관] 핵심 내용 유형` 양식으로 조립됩니다. 조합 규칙은 `js/admin.js`의 `composeNoticeTitle()` 한 곳에만 있고, 기존 제목을 양식으로 되돌려 읽는 일은 `applyTitleToBuilder()`가 맡습니다.
 
 ## 주요 흐름
 

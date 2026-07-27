@@ -114,7 +114,7 @@ ${String(content || '').slice(0, 30000)}`.trim();
 
 export function createNoticeAnalyzer({
     apiKey,
-    model = 'gemini-2.5-flash',
+    model = 'gemini-flash-latest',
     fetchImpl = fetch,
     categoryProvider = async () => []
 }) {

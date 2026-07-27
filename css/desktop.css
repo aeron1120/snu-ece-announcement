@@ -1,0 +1,58 @@
+/* ============================================================
+   SNU ECE 공지방 — desktop.css
+   data-view="desktop"일 때만 적용되는 레이아웃 레이어.
+   좌우 레일을 화면에 고정(position: fixed)하고, 본문은 그만큼
+   안쪽으로 들여 넣는다. 레일은 스크롤에 따라 움직이지 않는다.
+   ============================================================ */
+
+html[data-view="desktop"] .page-shell {
+    /* 레일이 흐름에서 빠져 있으므로 그 폭만큼 본문 자리를 비워둔다. */
+    padding-left: var(--rail-width);
+    padding-right: var(--rail-width);
+    min-width: 1100px;
+}
+
+html[data-view="desktop"] .page-main {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 40px;
+}
+
+/* 좌우 레일 — 스크롤과 무관하게 항상 같은 자리 */
+html[data-view="desktop"] .site-rail {
+    display: flex;
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    width: var(--rail-width);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    z-index: 800;
+}
+html[data-view="desktop"] .rail-left { left: 0; border-right: 1px solid var(--rail-bg-deep); }
+html[data-view="desktop"] .rail-right { right: 0; border-left: 1px solid var(--rail-bg-deep); }
+
+/* 모바일 전용 조각은 데스크탑에서 자리를 차지하지 않는다. */
+html[data-view="desktop"] .mobile-only { display: none !important; }
+
+/* ---------- 헤더 ---------- */
+html[data-view="desktop"] .header-actions { flex-wrap: nowrap; }
+
+/* ---------- 공지 그리드 ----------
+   화면이 좁아지면 열을 줄인다. 레일 폭을 뺀 본문 기준이다. */
+html[data-view="desktop"] .grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+@media (max-width: 1600px) {
+    html[data-view="desktop"] .grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@media (max-width: 1200px) {
+    html[data-view="desktop"] .grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@media (max-width: 900px) {
+    html[data-view="desktop"] .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+

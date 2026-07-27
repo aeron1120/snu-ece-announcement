@@ -16,11 +16,12 @@ export async function preparePublic({ rootDir }) {
     await mkdir(path.join(outputDir, 'css'), { recursive: true });
     await mkdir(path.join(outputDir, 'js'), { recursive: true });
 
+    // css와 js는 뷰별로 파일이 나뉘어 있으므로 디렉터리째 옮긴다.
     await cp(path.join(rootDir, 'index.html'), path.join(outputDir, 'index.html'));
-    await cp(path.join(rootDir, 'css/style.css'), path.join(outputDir, 'css/style.css'));
+    await cp(path.join(rootDir, 'css'), path.join(outputDir, 'css'), { recursive: true });
     await cp(path.join(rootDir, 'js'), path.join(outputDir, 'js'), { recursive: true });
 
-    for (const filename of ['manifest.webmanifest', 'service-worker.js', '_headers']) {
+    for (const filename of ['admin.html', 'manifest.webmanifest', 'service-worker.js', '_headers']) {
         await copyIfPresent(
             path.join(rootDir, filename),
             path.join(outputDir, filename)
