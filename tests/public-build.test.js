@@ -4,6 +4,7 @@ import { mkdtemp, readFile, writeFile, mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runInNewContext } from 'node:vm';
+import sharp from 'sharp';
 import { preparePublic } from '../scripts/prepare-public.mjs';
 
 function readNamedFunction(source, name) {
@@ -40,6 +41,17 @@ test('preparePublic copies canonical frontend files', async () => {
         await readFile(path.join(rootDir, 'public/js/app.js'), 'utf8'),
         'window.ok=true'
     );
+});
+
+test('default notice thumbnail is a square PNG copied byte-for-byte', async () => {
+    const canonical = await readFile('icons/default-notice-thumbnail.png');
+    const generated = await readFile('public/icons/default-notice-thumbnail.png');
+    const metadata = await sharp(canonical).metadata();
+
+    assert.equal(metadata.format, 'png');
+    assert.equal(metadata.width, 1024);
+    assert.equal(metadata.height, 1024);
+    assert.deepEqual(generated, canonical);
 });
 
 test('canonical HTML includes the administrator review manager contract', async () => {
