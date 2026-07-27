@@ -255,23 +255,30 @@ function refreshBannerDOM() {
     updateBannerPosition();
 }
 
+function renderRightRailInquiryFallback() {
+    const container = document.getElementById('right-rail-ad-content');
+    if (!container) return;
+
+    container.innerHTML = `
+        <span class="ad-label">AD</span>
+        <h2>배너 광고 문의</h2>
+        <p>학생들에게 소식을 알릴 세로 배너를 등록해보세요.</p>
+        <button class="rail-cta" type="button" onclick="openModal('contact-modal')">문의하기</button>
+    `;
+}
+
 function renderRightRailAd() {
     const container = document.getElementById('right-rail-ad-content');
     if (!container) return;
     const slide = getBannerSlidesByPlacement('right_rail')[0];
 
     if (!slide) {
-        container.innerHTML = `
-            <span class="ad-label">AD</span>
-            <h2>배너 광고 문의</h2>
-            <p>학생들에게 소식을 알릴 세로 배너를 등록해보세요.</p>
-            <button class="rail-cta" type="button" onclick="openModal('contact-modal')">문의하기</button>
-        `;
+        renderRightRailInquiryFallback();
         return;
     }
 
     const image = slide.src
-        ? `<img src="${escapeHtml(slide.src)}" alt="${escapeHtml(slide.altText || slide.name || '광고 이미지')}" onerror="this.hidden=true">`
+        ? `<img src="${escapeHtml(slide.src)}" alt="${escapeHtml(slide.altText || slide.name || '광고 이미지')}" onerror="renderRightRailInquiryFallback()">`
         : '';
     const content = `
         <span class="ad-label">AD</span>

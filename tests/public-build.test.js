@@ -63,6 +63,15 @@ test('desktop shell exposes brand and managed advertising rails', async () => {
     assert.match(app, /getBannerSlidesByPlacement\('right_rail'\)/);
 });
 
+test('right-rail image errors restore the inquiry fallback', async () => {
+    const app = await readFile('js/app.js', 'utf8');
+    const fallbackSource = app.match(/function renderRightRailInquiryFallback\(\) \{[\s\S]*?\n\}/)?.[0];
+
+    assert.ok(fallbackSource);
+    assert.match(fallbackSource, /openModal\('contact-modal'\)/);
+    assert.match(app, /onerror="renderRightRailInquiryFallback\(\)"/);
+});
+
 test('PWA manifest and service worker include install and push contracts', async () => {
     const manifest = JSON.parse(await readFile('manifest.webmanifest', 'utf8'));
     const worker = await readFile('service-worker.js', 'utf8');
