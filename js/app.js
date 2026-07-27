@@ -1357,8 +1357,8 @@ function filterCards() {
 
     if (fSort === '마감임박순') {
         filtered.sort((a, b) => {
-            const da = a.deadline ? new Date(a.deadline + 'T23:59:59') - today : Infinity;
-            const db = b.deadline ? new Date(b.deadline + 'T23:59:59') - today : Infinity;
+            const da = a.deadline ? new Date(a.deadline + 'T00:00:00').getTime() : Infinity;
+            const db = b.deadline ? new Date(b.deadline + 'T00:00:00').getTime() : Infinity;
             return da - db;
         });
     } else if (fSort === '조회수순') {

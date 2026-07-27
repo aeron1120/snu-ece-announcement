@@ -113,6 +113,61 @@ test('deadline-status filtering excludes expired notices from urgent results', a
     assert.equal(matchesDeadlineStatus('마감됨', expired, true), true);
 });
 
+test('deadline-soon sorting renders dated notices without an undefined current-date variable', async () => {
+    const app = await readFile('js/app.js', 'utf8');
+    const start = app.indexOf('function filterCards()');
+    const end = app.indexOf('\nfunction toggleViewMode()', start);
+    const filterCardsSource = app.slice(start, end);
+    const cards = [];
+    const elements = {
+        searchInput: { value: '' },
+        targetFilter: { value: '전체' },
+        'notice-grid': {
+            innerHTML: '',
+            appendChild(card) {
+                cards.push(card);
+            }
+        },
+        'filter-result-count': { innerHTML: '' }
+    };
+    const document = {
+        getElementById(id) {
+            return elements[id] || null;
+        },
+        createElement() {
+            return {};
+        }
+    };
+    const filterCards = new Function(
+        'document', 'notices', 'savedPosts', 'viewMode', 'filterState',
+        'selectedCategoryFilters', 'calcDDay', 'matchesDeadlineStatus',
+        'escapeHtml', 'toggleSave', 'openDetail',
+        `${filterCardsSource}; return filterCards;`
+    )(
+        document,
+        [
+            { id: 'later', title: 'Later deadline', deadline: '2026-07-30' },
+            { id: 'sooner', title: 'Sooner deadline', deadline: '2026-07-29' }
+        ],
+        [],
+        'all',
+        {
+            'deadline-status': '전체', host: '전체', 'has-image': '전체',
+            saved: '전체', views: '전체', sort: '마감임박순'
+        },
+        new Set(),
+        () => ({ text: 'D-2', isUrgent: true, isExpired: false }),
+        () => true,
+        value => String(value),
+        () => {},
+        () => {}
+    );
+
+    assert.doesNotThrow(() => filterCards());
+    assert.match(cards[0].innerHTML, /Sooner deadline/);
+    assert.match(cards[1].innerHTML, /Later deadline/);
+});
+
 test('Cloudflare scheduled worker triggers the protected crawl endpoint', async () => {
     const worker = (await import('../cloudflare/crawl-worker.js')).default;
     const calls = [];
