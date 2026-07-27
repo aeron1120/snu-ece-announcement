@@ -6,6 +6,21 @@ import path from 'node:path';
 import { runInNewContext } from 'node:vm';
 import { preparePublic } from '../scripts/prepare-public.mjs';
 
+function readNamedFunction(source, name) {
+    const start = source.indexOf(`function ${name}(`);
+    assert.notEqual(start, -1, `${name} must exist`);
+    const bodyStart = source.indexOf('{', start);
+    let depth = 0;
+    for (let index = bodyStart; index < source.length; index += 1) {
+        if (source[index] === '{') depth += 1;
+        if (source[index] === '}') {
+            depth -= 1;
+            if (depth === 0) return source.slice(start, index + 1);
+        }
+    }
+    assert.fail(`${name} must have a complete body`);
+}
+
 test('preparePublic copies canonical frontend files', async () => {
     const rootDir = await mkdtemp(path.join(tmpdir(), 'ece-public-'));
     await mkdir(path.join(rootDir, 'css'));
@@ -465,6 +480,83 @@ test('notice list uses masonry columns without splitting cards', async () => {
     assert.match(css, /@media \(max-width:\s*768px\)[\s\S]*column-count:\s*1/);
     assert.match(app, /class="notice-empty-state"/);
     assert.doesNotMatch(css, /\.grid\s*\{[^}]*display:\s*grid/s);
+});
+
+test('notice paging loads one page at a time without duplicate summaries', async () => {
+    const app = await readFile('js/app.js', 'utf8');
+    const source = readNamedFunction(app, 'createNoticeRepository');
+    const context = {};
+    runInNewContext(`${source}; this.createNoticeRepository = createNoticeRepository;`, context);
+    const requestedPaths = [];
+    const responses = {
+        '/api/notices?page=1&limit=20': {
+            notices: [{ id: 1, title: 'one' }, { id: 2, title: 'two' }],
+            pagination: { page: 1, limit: 20, total: 3, totalPages: 2 }
+        },
+        '/api/notices?page=2&limit=20': {
+            notices: [{ id: 2, title: 'two again' }, { id: 3, title: 'three' }],
+            pagination: { page: 2, limit: 20, total: 3, totalPages: 2 }
+        }
+    };
+    const repository = context.createNoticeRepository(async path => {
+        requestedPaths.push(path);
+        return responses[path];
+    });
+
+    await repository.loadPage(1, { replace: true });
+    await repository.loadPage(2);
+
+    assert.deepEqual(requestedPaths, [
+        '/api/notices?page=1&limit=20',
+        '/api/notices?page=2&limit=20'
+    ]);
+    assert.deepEqual(
+        Array.from(repository.notices, notice => notice.id),
+        [1, 2, 3]
+    );
+    assert.deepEqual(
+        { ...repository.pagination },
+        { page: 2, limit: 20, total: 3, totalPages: 2 }
+    );
+});
+
+test('lazy notice detail shares an in-flight request and upgrades its summary', async () => {
+    const app = await readFile('js/app.js', 'utf8');
+    const source = readNamedFunction(app, 'createNoticeRepository');
+    const context = {};
+    runInNewContext(`${source}; this.createNoticeRepository = createNoticeRepository;`, context);
+    const requestedPaths = [];
+    const repository = context.createNoticeRepository(async path => {
+        requestedPaths.push(path);
+        if (path === '/api/notices?page=1&limit=20') {
+            return {
+                notices: [{ id: 7, title: 'summary' }],
+                pagination: { page: 1, limit: 20, total: 1, totalPages: 1 }
+            };
+        }
+        return {
+            notice: {
+                id: 7,
+                title: 'summary',
+                content: 'full body',
+                images: ['data:image/png;base64,image']
+            }
+        };
+    });
+    await repository.loadPage(1, { replace: true });
+
+    const [first, second] = await Promise.all([
+        repository.getDetail(7),
+        repository.getDetail(7)
+    ]);
+
+    assert.equal(first.content, 'full body');
+    assert.equal(second, first);
+    assert.equal(repository.notices[0].content, 'full body');
+    assert.deepEqual(requestedPaths, [
+        '/api/notices?page=1&limit=20',
+        '/api/notices/7'
+    ]);
 });
 
 test('Cloudflare scheduled worker triggers the protected crawl endpoint', async () => {
