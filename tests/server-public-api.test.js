@@ -11,6 +11,7 @@ test('notice summaries expose card metadata without heavy detail fields', () => 
         title: 'Lean notice',
         content: 'full body',
         rawContent: 'crawler body',
+        ocrText: 'search-only private text',
         target: '전체',
         targets: ['전체'],
         host: '전기정보공학부',
@@ -59,6 +60,7 @@ test('notice summaries expose card metadata without heavy detail fields', () => 
         '/icons/default-notice-thumbnail.png'
     );
     assert.doesNotMatch(JSON.stringify(summary), /data:image/);
+    assert.doesNotMatch(JSON.stringify(summary), /search-only private text|ocrText/);
 });
 
 test('public notice API is paginated, has detail lookup, and hides Express signature', async t => {

@@ -1127,6 +1127,8 @@ function renderReviewEditor(notice) {
     const attachments = Array.isArray(notice.attachments) ? notice.attachments : [];
     const keywords = Array.isArray(notice.keywords) ? notice.keywords : [];
     const selectedCategoryIds = new Set((notice.categoryIds || []).map(Number));
+    const isOcrEligible = String(notice.rawContent || notice.content || '').trim().length < 15;
+    const indexedOcrCharacters = String(notice.ocrText || '').length;
     const categoryCheckboxHtml = activeCategories.length > 0
         ? activeCategories.map(category => `
             <label class="notification-check">
@@ -1196,12 +1198,57 @@ function renderReviewEditor(notice) {
         </div>
         <strong>첨부파일</strong>
         ${attachmentHtml}
+        ${isOcrEligible ? `
+            <div class="review-ocr-box">
+                <strong>이미지 검색 텍스트</strong>
+                <p>OCR 결과는 검색 인덱스에만 저장되며 공개 원문에는 표시되지 않습니다.
+                   ${indexedOcrCharacters ? `현재 ${indexedOcrCharacters}자가 검색에 반영되어 있습니다.` : ''}</p>
+                <input id="review-ocr-images" type="file" accept="image/png,image/jpeg,image/webp" multiple>
+                <button class="btn btn-outline btn-small review-action" type="button" onclick="runReviewOcr()">이미지 OCR 실행</button>
+            </div>
+        ` : ''}
         <div class="review-actions">
             <button class="btn btn-outline btn-small review-action" type="button" onclick="reanalyzeReviewNotice()">재분석</button>
             <button class="btn btn-danger btn-small review-action" type="button" onclick="rejectReviewNotice()">반려</button>
             <button class="btn btn-outline btn-small review-action" type="button" onclick="publishReviewNotice(false)">승인만</button>
             <button class="btn btn-small review-action" type="button" onclick="publishReviewNotice(true)">승인 및 알림</button>
         </div>`;
+}
+
+async function runReviewOcr() {
+    if (reviewMutationInFlight || !selectedReviewNoticeId) return;
+    const input = document.getElementById('review-ocr-images');
+    const files = Array.from(input?.files || []).slice(0, 5);
+    if (files.length === 0) {
+        setReviewStatus('OCR할 이미지를 선택해주세요.', true);
+        return;
+    }
+    if (files.some(file => !['image/png', 'image/jpeg', 'image/webp'].includes(file.type))) {
+        setReviewStatus('OCR 이미지는 JPG, PNG, WEBP 형식이어야 합니다.', true);
+        return;
+    }
+    setReviewMutationBusy(true);
+    setReviewStatus('이미지 글자를 추출해 검색 인덱스에 저장하고 있습니다.');
+    try {
+        const images = await Promise.all(files.map(getBase64));
+        const result = await apiRequest(
+            `/api/admin/review-notices/${encodeURIComponent(selectedReviewNoticeId)}/ocr`,
+            {
+                method: 'POST',
+                headers: getNoticeAdminHeaders(),
+                body: JSON.stringify({ images })
+            }
+        );
+        const index = reviewNotices.findIndex(item =>
+            String(item.id) === String(selectedReviewNoticeId));
+        if (index >= 0) reviewNotices[index] = result.notice;
+        renderReviewEditor(result.notice);
+        setReviewStatus(`OCR ${Number(result?.ocr?.indexedCharacters) || 0}자가 검색 인덱스에 저장되었습니다.`);
+    } catch (error) {
+        setReviewStatus(error.message || 'OCR 처리에 실패했습니다.', true);
+    } finally {
+        setReviewMutationBusy(false);
+    }
 }
 
 function setReviewMutationBusy(busy) {

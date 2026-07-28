@@ -632,6 +632,21 @@ test('Kakao backfill is previewed and human-edited before entering the review in
     assert.match(schema, /thread_key text/);
 });
 
+test('image-only notices can add private OCR search text from the review inbox', async () => {
+    const admin = await readFile('js/admin.js', 'utf8');
+    const server = await readFile('server/server.js', 'utf8');
+    const store = await readFile('server/storage/automation-store.js', 'utf8');
+    const schema = await readFile('server/sql/supabase-schema.sql', 'utf8');
+
+    assert.match(admin, /function runReviewOcr/);
+    assert.match(admin, /OCR 결과는 검색 인덱스에만 저장되며 공개 원문에는 표시되지 않습니다/);
+    assert.match(server, /\/api\/admin\/review-notices\/:id\/ocr/);
+    assert.match(server, /visibleText\.length >= 15/);
+    assert.match(server, /\$\{notice\.title\} \$\{notice\.content\} \$\{ocrText\}/);
+    assert.match(store, /ocrText: 'ocr_text'/);
+    assert.match(schema, /ocr_text text/);
+});
+
 test('rails share one bright navy and the emblem sits on it without a white circle', async () => {
     const css = await readFile('css/core.css', 'utf8');
     const html = await readFile('index.html', 'utf8');

@@ -89,6 +89,7 @@ function toSupabaseNotice(row) {
         host: row.host,
         sourceGroup: row.source_group,
         threadKey: row.thread_key,
+        ocrText: row.ocr_text || '',
         deadline: row.deadline,
         deadlineAt: row.deadline_at,
         expiresAt: row.expires_at,
@@ -126,6 +127,7 @@ function toSupabaseNoticeInsert(notice) {
         host: notice.host || '전기정보공학부',
         source_group: notice.sourceGroup || null,
         thread_key: notice.threadKey || null,
+        ocr_text: notice.ocrText || '',
         deadline: notice.deadline || null,
         ai_summary: notice.aiSummary || [],
         keywords: notice.keywords || [],
@@ -1072,7 +1074,8 @@ function createSupabaseStore(supabase, canonicalCategories = []) {
                 targets: 'targets',
                 keywords: 'keywords',
                 analysisStatus: 'analysis_status',
-                analysisConfidence: 'analysis_confidence'
+                analysisConfidence: 'analysis_confidence',
+                ocrText: 'ocr_text'
             };
             for (const [field, column] of Object.entries(fieldMap)) {
                 if (Object.hasOwn(analysis, field)) payload[column] = analysis[field];

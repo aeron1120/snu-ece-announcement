@@ -8,6 +8,7 @@ import crypto from 'crypto';
 import cron from 'node-cron';
 import { getGeminiRetryAfterSeconds } from './services/gemini-rate-limit.js';
 import { buildKakaoBackfillDrafts } from './services/kakao-backfill.js';
+import { createOcrService } from './services/ocr-service.js';
 import {
     calculateNoticeLifecycle,
     getNoticeLifecycleState,
@@ -67,6 +68,9 @@ const noticeAnalyzer = process.env.GEMINI_API_KEY
             return categories.filter(category => canonicalSlugs.has(category.slug));
         }
     })
+    : null;
+const ocrService = process.env.GEMINI_API_KEY
+    ? createOcrService({ apiKey: process.env.GEMINI_API_KEY })
     : null;
 const eceCrawler = createEceCrawler({
     store: automationStore,
@@ -227,7 +231,10 @@ const feedbackLimiter = rateLimit({
     message: { error: '피드백 전송이 너무 많습니다. 잠시 후 다시 시도해주세요.' }
 });
 
-app.use(['/api/notices', '/api/banner-slides'], express.json({ limit: '10mb' }));
+app.use(
+    ['/api/notices', '/api/banner-slides', '/api/admin/review-notices'],
+    express.json({ limit: '10mb' })
+);
 app.use('/api/push/subscriptions', express.json({ limit: '32kb' }));
 app.use(express.json({ limit: '256kb' }));
 app.use(['/api/admin/verify', '/api/super-admin/verify', '/api/banner/verify'], authenticationLimiter);
@@ -1041,7 +1048,8 @@ function applyNoticeListFilters(rows, filters, { now = new Date() } = {}) {
             && notice.target !== filters.target) return false;
 
         if (keywords.length > 0) {
-            const searchTarget = `${notice.title} ${notice.content}`.toLocaleLowerCase('ko-KR');
+            const ocrText = String(row.ocrText || row.ocr_text || '');
+            const searchTarget = `${notice.title} ${notice.content} ${ocrText}`.toLocaleLowerCase('ko-KR');
             if (!keywords.every(keyword => searchTarget.includes(keyword))) return false;
         }
 
@@ -1154,7 +1162,7 @@ async function listNoticeFilterRows() {
             .from(SUPABASE_NOTICES_TABLE)
             .select(`
                 id,title,content,target,targets,host,deadline,deadline_at,expires_at,is_always_open,is_pinned,
-                ai_summary,keywords,views,
+                ai_summary,keywords,ocr_text,views,
                 source_published_at,created_at,updated_at,has_images,notice_categories(category_id)
             `)
             .eq('is_deleted', false)
@@ -1966,6 +1974,42 @@ app.post('/api/admin/backfill/kakao/import', requireNoticeAdmin, async (req, res
         });
     } catch (error) {
         res.status(500).json({ error: error.message || '카카오톡 백필 적재 실패' });
+    }
+});
+
+app.post('/api/admin/review-notices/:id/ocr', requireNoticeAdmin, async (req, res) => {
+    try {
+        if (!ocrService) {
+            return res.status(503).json({ error: 'OCR 서비스가 설정되지 않았습니다.' });
+        }
+        const id = Number(req.params.id);
+        if (!Number.isSafeInteger(id) || id <= 0) {
+            return res.status(400).json({ error: '유효하지 않은 공지 ID입니다.' });
+        }
+        const notice = await automationStore.getReviewNotice(id);
+        if (!notice) {
+            return res.status(404).json({ error: '검수 대기 공지를 찾지 못했습니다.' });
+        }
+        const visibleText = String(notice.rawContent || notice.content || '').trim();
+        if (visibleText.length >= 15) {
+            return res.status(409).json({
+                error: 'OCR은 비용을 줄이기 위해 텍스트 본문이 없는 공지에만 실행합니다.'
+            });
+        }
+        const ocrText = await ocrService.extractText(req.body?.images);
+        const updated = await automationStore.updateReviewAnalysis(id, {
+            ocrText,
+            analysisStatus: notice.analysisStatus || 'backfill_draft'
+        });
+        res.json({
+            notice: updated,
+            ocr: { indexedCharacters: ocrText.length }
+        });
+    } catch (error) {
+        const status = error instanceof TypeError
+            ? 400
+            : (Number(error?.status) === 429 ? 429 : 500);
+        res.status(status).json({ error: error.message || 'OCR 처리 실패' });
     }
 });
 

@@ -75,6 +75,22 @@ test('notice list filters support contextual empty results and server-side sorti
     assert.deepEqual(byViews.map(notice => notice.id), [2, 1, 3]);
 });
 
+test('OCR text is searchable without becoming public card content', () => {
+    const ocrOnly = {
+        ...rows[0],
+        id: 9,
+        title: '이미지 공지',
+        content: '',
+        ocrText: '반도체 인턴십 지원 안내'
+    };
+    const result = applyNoticeListFilters(
+        [ocrOnly],
+        normalizeNoticeListFilters({ search: '반도체 인턴십' }),
+        { now: new Date('2026-07-28T12:00:00+09:00') }
+    );
+    assert.deepEqual(result.map(notice => notice.id), [9]);
+});
+
 test('pinned notices stay above the selected sort order', () => {
     const result = applyNoticeListFilters([
         { ...rows[0], id: 30, views: 10, isPinned: true },

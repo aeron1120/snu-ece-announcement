@@ -178,6 +178,7 @@ alter table public.notices
   add column if not exists source_external_id text,
   add column if not exists source_group text,
   add column if not exists thread_key text,
+  add column if not exists ocr_text text,
   add column if not exists source_url text,
   add column if not exists source_published_at timestamptz,
   add column if not exists last_crawled_at timestamptz,
