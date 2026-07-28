@@ -226,7 +226,27 @@ body {
     letter-spacing: 0.08em;
     text-align: center;
 }
-.brand-site-name { margin: 0; font-family: var(--serif); font-weight: 700; line-height: 1.6; text-align: center; }
+/* 서비스 워드마크. 레일 폭에 맞춰 줄고 위아래 여백만 갖는다. */
+.brand-wordmark {
+    display: block;
+    width: 100%;
+    max-width: 176px;
+    height: auto;
+    margin: -4px auto 2px;
+    -webkit-user-drag: none;
+}
+.brand-site-name[hidden] { display: none; }
+/* 한 줄로 둔다. 레일 폭이 좁아도 줄이 접히지 않게 글자 크기를 조인다. */
+.brand-site-name {
+    margin: 0;
+    font-family: var(--serif);
+    font-size: 17px;
+    font-weight: 700;
+    line-height: 1.6;
+    letter-spacing: -0.01em;
+    text-align: center;
+    white-space: nowrap;
+}
 .brand-links { display: flex; flex-direction: column; align-items: stretch; gap: 10px; }
 .brand-links a,
 .brand-links button {
@@ -378,7 +398,8 @@ body {
 .rail-ad-controls {
     position: absolute;
     inset: 0;
-    z-index: 3;
+    /* 배너 링크(.rail-ad-link)보다 위에 있어야 클릭이 버튼에 닿는다. */
+    z-index: 5;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -422,7 +443,7 @@ body {
     right: 0;
     bottom: 10px;
     left: 0;
-    z-index: 3;
+    z-index: 5;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1475,29 +1496,48 @@ body.notice-dragging .notice-hover-preview { display: none !important; }
     background: #e4eaf5;
     border-color: var(--primary);
 }
+/* 카드를 통째로 든 분신. 복제는 한 번뿐이고 움직임은 transform만 쓴다. */
 .notice-split-drag-overlay {
     position: fixed;
     top: -10000px;
     left: -10000px;
     z-index: 2400;
-    width: min(320px, 70vw);
-    padding: 13px 15px;
+    width: min(232px, 62vw);
+    max-height: 320px;
+    padding: 0;
     overflow: hidden;
     color: var(--primary-deep);
-    background: rgba(255,255,255,0.97);
+    background: rgba(255,255,255,0.98);
     border: 1px solid rgba(30, 64, 137, 0.22);
     border-radius: 5px;
-    box-shadow: 0 12px 30px rgba(15, 23, 42, 0.18);
+    box-shadow: 0 14px 34px rgba(15, 23, 42, 0.22);
     font-size: 14px;
     font-weight: 750;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-    opacity: 0.92;
+    will-change: transform;
+    /* 분신 안에서는 잘라내기만 하고 다시 배치하지 않는다. */
+    contain: layout paint;
+    opacity: 0.94;
     pointer-events: none;
 }
 .notice-split-drag-overlay.is-pointer-overlay {
     top: 0;
     left: 0;
+}
+/* 분신 안의 포스터와 본문은 카드보다 작게 눌러 담는다. */
+.notice-split-drag-overlay .card-poster { height: 132px; margin: 0; }
+.notice-split-drag-overlay .card-poster img { width: 100%; height: 100%; object-fit: cover; }
+.notice-split-drag-overlay .card-body {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    padding: 11px 13px 13px;
+}
+.notice-split-drag-overlay .card-excerpt,
+.notice-split-drag-overlay .card-meta,
+.notice-split-drag-overlay .card-block-controls { display: none; }
+.notice-split-drag-overlay .card-title {
+    font-size: 13.5px;
+    -webkit-line-clamp: 2;
 }
 
 .spatial-workspace.is-split {

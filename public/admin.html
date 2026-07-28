@@ -20,9 +20,36 @@
     <h1>SNU ECE 공지방</h1>
     <span class="admin-badge">ADMIN</span>
     <div class="admin-topbar-actions">
+        <button type="button" id="staff-report-open" onclick="openStaffReport()">마스터에게 문의</button>
         <button type="button" id="admin-mode-exit" onclick="exitAdminMode()">관리자 모드 나가기</button>
     </div>
 </header>
+
+<!-- 공지·배너 관리자가 마스터에게 남기는 내부 제보 창. -->
+<div class="overlay" id="staff-report-modal" onclick="if(event.target===this) closeStaffReport()">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="staff-report-title">
+        <button class="close-btn" type="button" onclick="closeStaffReport()">×</button>
+        <h2 id="staff-report-title" style="margin-top:0; font-weight:800;">마스터 관리자에게 문의</h2>
+        <p class="feedback-help">운영 중 생긴 오류나 필요한 기능을 남기면 마스터 관리자의 문의함으로 들어갑니다.</p>
+        <div class="form-group">
+            <label for="staff-report-kind">종류</label>
+            <select id="staff-report-kind">
+                <option value="bug">오류 제보</option>
+                <option value="question" selected>문의</option>
+                <option value="request">기능 요청</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="staff-report-message">내용</label>
+            <textarea id="staff-report-message" maxlength="2000" style="height:170px;"
+                      placeholder="어떤 화면에서 무엇이 어떻게 되었는지 적어주세요. (5자 이상)"></textarea>
+        </div>
+        <p class="review-status" id="staff-report-status" aria-live="polite"></p>
+        <div class="review-actions" style="border-top:none; padding-top:0;">
+            <button class="btn" type="button" id="staff-report-submit" onclick="submitStaffReport()">보내기</button>
+        </div>
+    </div>
+</div>
 
 <div class="admin-shell">
 
@@ -195,16 +222,17 @@
                     </div>
                 </div>
 
-                <output class="title-preview is-empty" id="title-preview" for="title-host title-subject title-kind">
-                    분석하거나 핵심 내용을 입력하면 제목이 만들어집니다.
-                </output>
+                <!-- 만들어진 제목이 보이는 상자가 곧 고치는 상자다.
+                     아래 체크를 켜면 이 상자에서 바로 손보게 된다. -->
+                <input type="text" class="title-preview is-empty" id="post-title-manual"
+                       maxlength="120" readonly aria-label="공지 제목"
+                       placeholder="분석하거나 핵심 내용을 입력하면 제목이 만들어집니다."
+                       oninput="refreshTitlePreview()">
 
                 <label class="title-manual-row">
                     <input type="checkbox" id="title-manual" onchange="onTitleManualToggle()">
                     생성된 제목 직접 수정하기
                 </label>
-                <input type="text" id="post-title-manual" maxlength="120"
-                       placeholder="제목 직접 입력" hidden oninput="refreshTitlePreview()">
                 <input type="hidden" id="post-title">
             </div>
 
@@ -229,31 +257,45 @@
         <section class="admin-panel" id="panel-banner" aria-labelledby="panel-banner-title">
             <h2 id="panel-banner-title">배너 관리</h2>
             <!-- 로그인할 때 배너 관리자인지 이미 확인했으므로 여기서 비밀번호를 다시 묻지 않는다. -->
-            <div id="banner-list-area">
-                <section class="banner-placement-section" aria-labelledby="right-rail-manager-title">
-                    <div class="banner-manager-heading">
-                        <div>
-                            <h3 id="right-rail-manager-title">오른쪽 학내 홍보</h3>
-                            <p>이미지와 연결 링크를 등록하면 공개 화면에서 순서대로 자동 순환합니다.</p>
+            <!-- 왼쪽에 배너 자리와 문의를 나열하고, 고른 항목만 오른쪽에 편다.
+                 다섯 개를 한 화면에 세로로 쌓으면 어느 배너를 고치는 중인지 놓친다. -->
+            <div id="banner-list-area" class="banner-workspace">
+                <nav class="banner-subnav" id="banner-subnav" aria-label="배너 항목"></nav>
+
+                <div class="banner-workspace-body">
+                    <section class="banner-placement-section" id="banner-slots-section"
+                             aria-labelledby="right-rail-manager-title">
+                        <div class="banner-manager-heading">
+                            <div>
+                                <h3 id="right-rail-manager-title">오른쪽 학내 홍보</h3>
+                                <p>이미지와 연결 링크를 등록하면 공개 화면에서 순서대로 자동 순환합니다.</p>
+                            </div>
+                            <strong id="banner-limit-status">0 / 5</strong>
                         </div>
-                        <strong id="banner-limit-status">0 / 5</strong>
-                    </div>
-                    <div class="banner-slides-list" id="right-rail-slides-list"></div>
-                </section>
-                <section class="banner-placement-section" aria-labelledby="banner-inquiry-manager-title">
-                    <div class="banner-manager-heading">
-                        <div>
-                            <h3 id="banner-inquiry-manager-title">배너 문의 접수</h3>
-                            <p>신청자 정보와 제출 이미지를 확인한 뒤 위 배너 항목에서 승인 또는 반려하세요.</p>
+                        <div class="banner-slides-list" id="right-rail-slides-list"></div>
+                        <p class="banner-empty-slot-note" id="banner-empty-slot-note" hidden>
+                            이 자리는 아직 비어 있습니다. 배너 문의에서 접수된 신청을 승인하면 이 자리에 들어갑니다.
+                        </p>
+                    </section>
+
+                    <section class="banner-placement-section" id="banner-inquiry-section" hidden
+                             aria-labelledby="banner-inquiry-manager-title">
+                        <div class="banner-manager-heading">
+                            <div>
+                                <h3 id="banner-inquiry-manager-title">배너 문의 접수</h3>
+                                <p>신청자 정보와 제출 이미지를 확인한 뒤 배너 항목에서 승인 또는 반려하세요.</p>
+                            </div>
                         </div>
-                    </div>
-                    <div class="admin-feedback-list" id="banner-inquiry-admin-list"></div>
-                </section>
-                <!-- 상단 배너 시절에 등록된 항목. 노출되는 자리가 없으므로 삭제만 남긴다. -->
-                <section class="banner-placement-section" id="legacy-banner-section" aria-labelledby="legacy-banner-title" hidden>
-                    <h3 id="legacy-banner-title">노출되지 않는 옛 상단 배너</h3>
-                    <div class="banner-slides-list" id="legacy-banner-slides-list"></div>
-                </section>
+                        <div class="admin-feedback-list" id="banner-inquiry-admin-list"></div>
+                    </section>
+
+                    <!-- 상단 배너 시절에 등록된 항목. 노출되는 자리가 없으므로 삭제만 남긴다. -->
+                    <section class="banner-placement-section" id="legacy-banner-section"
+                             aria-labelledby="legacy-banner-title" hidden>
+                        <h3 id="legacy-banner-title">노출되지 않는 옛 상단 배너</h3>
+                        <div class="banner-slides-list" id="legacy-banner-slides-list"></div>
+                    </section>
+                </div>
             </div>
         </section>
 
@@ -269,9 +311,18 @@
                 <button class="filter-btn" type="button" data-feedback-filter="summary_mismatch"
                         onclick="setAdminFeedbackFilter('summary_mismatch')">요약 오류</button>
             </div>
-            <div class="review-actions" style="justify-content: flex-start; border-top: none; padding-top: 0;">
+            <div class="review-actions feedback-toolbar" style="justify-content: flex-start; border-top: none; padding-top: 0;">
                 <button class="btn btn-outline btn-small" type="button" onclick="loadAdminFeedback()">새로고침</button>
+                <label class="feedback-select-all">
+                    <input type="checkbox" id="feedback-select-all" onchange="toggleAllFeedbackSelection(this.checked)">
+                    전체 선택
+                </label>
+                <span class="feedback-selection-count" id="feedback-selection-count">0개 선택</span>
+                <button class="btn btn-outline btn-small" type="button" id="feedback-export-selected"
+                        onclick="exportAdminFeedback('selected')" disabled>선택한 문의 내보내기</button>
+                <button class="btn btn-small" type="button" onclick="exportAdminFeedback('all')">노션 MD로 전부 내보내기</button>
             </div>
+            <p class="review-status" id="feedback-export-status" aria-live="polite"></p>
             <div class="admin-feedback-list" id="admin-feedback-list"></div>
         </section>
 

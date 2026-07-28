@@ -62,7 +62,12 @@
             <span class="brand-mark" id="brand-logo-fallback" aria-hidden="true" style="display:none;">SNU</span>
         </button>
         <p class="brand-university-name">서울대학교</p>
-        <p class="brand-site-name">SNU ECE<br>공지방</p>
+        <!-- 서비스 워드마크. 남색 레일 위에 얹히므로 흰·금색 반전판을 쓴다.
+             이미지가 없으면 아래 글자 워드마크가 대신 나온다. -->
+        <img class="brand-wordmark" id="brand-wordmark" src="./icons/brand-wordmark-light.png"
+             alt="SNU ECE 공지방" draggable="false"
+             onerror="this.remove(); document.getElementById('brand-site-name').hidden = false;">
+        <p class="brand-site-name" id="brand-site-name" hidden>SNU ECE 공지방</p>
         <p class="rail-section-label">관련 페이지</p>
         <nav class="brand-links" aria-label="서울대학교 관련 링크">
             <a href="https://www.snu.ac.kr/" target="_blank" rel="noopener noreferrer">서울대학교 홈페이지</a>

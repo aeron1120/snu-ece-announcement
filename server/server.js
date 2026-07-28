@@ -986,6 +986,12 @@ function visibleFeedbackForRole(items, role) {
     return [];
 }
 
+function feedbackKindLabelForStaff(item) {
+    const roles = { notice: '공지 관리자', banner: '배너 관리자', master: '마스터' };
+    const kinds = { bug: '오류 제보', question: '문의', request: '요청' };
+    return `${roles[item.staffRole] || '관리자'} ${kinds[item.staffKind] || '문의'}`;
+}
+
 async function ensureDefaultData() {
     if (!useSupabase) {
         await ensureNoticesFile();
@@ -2586,6 +2592,7 @@ function escapeMarkdownCell(value) {
 function feedbackKindLabel(category) {
     if (category === 'banner') return '홍보 신청';
     if (category === 'summary_mismatch') return '요약 오류';
+    if (category === 'staff') return '운영진 제보';
     return '일반 문의';
 }
 
@@ -2603,7 +2610,8 @@ function buildFeedbackMarkdown(items) {
     items.forEach((item, index) => {
         const when = item.createdAt ? String(item.createdAt).slice(0, 16).replace('T', ' ') : '-';
         const digest = escapeMarkdownCell(String(item.message || '').slice(0, 60));
-        lines.push(`| ${index + 1} | ${feedbackKindLabel(item.category)} | ${when} | ${digest} |`);
+        const kind = item.category === 'staff' ? feedbackKindLabelForStaff(item) : feedbackKindLabel(item.category);
+        lines.push(`| ${index + 1} | ${kind} | ${when} | ${digest} |`);
     });
 
     lines.push('', '---', '');
@@ -2650,6 +2658,34 @@ app.post('/api/admin/feedback/export', requireAnyAdmin, async (req, res) => {
         });
     } catch (error) {
         res.status(500).json({ error: error.message || '문의 내보내기 실패' });
+    }
+});
+
+/* 공지·배너 관리자가 마스터에게 남기는 내부 제보.
+   문의함에 'staff' 종류로 쌓이고 마스터만 읽는다. */
+app.post('/api/admin/staff-report', requireAnyAdmin, async (req, res) => {
+    try {
+        const message = String(req.body?.message || '').trim();
+        const kind = ['bug', 'question', 'request'].includes(req.body?.kind)
+            ? req.body.kind
+            : 'question';
+        if (message.length < 5) {
+            return res.status(400).json({ error: '내용을 5자 이상 적어주세요.' });
+        }
+
+        const items = await readFeedback();
+        items.unshift({
+            id: `staff-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`,
+            category: 'staff',
+            staffRole: req.adminRole,
+            staffKind: kind,
+            message: message.slice(0, 2000),
+            createdAt: new Date().toISOString()
+        });
+        await writeFeedback(items.slice(0, 1000));
+        res.status(201).json({ ok: true });
+    } catch (error) {
+        res.status(500).json({ error: error.message || '제보 저장 실패' });
     }
 });
 

@@ -183,16 +183,25 @@
 }
 .title-builder-field input:focus,
 .title-builder-field select:focus { outline: none; border-color: var(--primary); }
+/* 만들어진 제목이 보이는 상자가 곧 고치는 상자다. 잠금이 풀리면
+   테두리와 커서만 바뀌고 자리는 그대로라 시선이 튀지 않는다. */
 .title-preview {
-    display: block; margin-top: 16px; padding: 14px 16px;
+    display: block; width: 100%; margin-top: 16px; padding: 14px 16px;
     border: 1px solid var(--primary); border-left-width: 3px; background: var(--primary-light);
     font-family: var(--serif); font-size: 17px; font-weight: 700; color: var(--primary-deep);
     word-break: keep-all; min-height: 52px;
 }
+.title-preview:read-only { cursor: default; }
 .title-preview.is-empty { border-color: var(--border); background: white; color: var(--text-sub); font-family: inherit; font-size: 14px; font-weight: 500; }
+.title-preview.is-editable {
+    background: white;
+    border-color: var(--primary);
+    border-left-width: 3px;
+    box-shadow: 0 0 0 3px rgba(31, 63, 143, 0.12);
+}
+.title-preview:focus { outline: none; }
 .title-manual-row { display: flex; align-items: center; gap: 8px; margin-top: 14px; font-size: 13.5px; font-weight: 650; }
 .title-manual-row input { width: 17px; height: 17px; accent-color: var(--primary); }
-#post-title-manual { margin-top: 12px; }
 
 /* ---------- AI 분석 바 & 필드 ---------- */
 .analyze-bar {
@@ -290,6 +299,8 @@
     font-weight: 800;
 }
 .feedback-kind.banner { color: var(--primary-deep); background: var(--primary-light); }
+/* 운영진이 마스터에게 남긴 내부 제보 */
+.feedback-kind.staff { color: #5c3b7a; background: #f0e9f7; }
 .admin-feedback-msg { margin: 0 0 10px; white-space: pre-wrap; word-break: break-word; line-height: 1.6; color: var(--text-main); }
 .admin-feedback-foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; color: var(--text-sub); font-size: 12px; font-variant-numeric: tabular-nums; }
 .banner-inquiry-details { display: grid; gap: 7px; margin: 12px 0; padding: 12px 14px; background: #f7f9fc; border: 1px solid var(--border); }
@@ -332,6 +343,117 @@
 .admin-notice-row-actions { display: flex; gap: 6px; flex-shrink: 0; }
 
 /* ---------- 배너 관리 ---------- */
+/* 문의함 — 선택해서 내보내기 */
+.feedback-toolbar { flex-wrap: wrap; align-items: center; gap: 10px; }
+.feedback-select-all {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--text-sub);
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+}
+.feedback-select-all input { width: 15px; height: 15px; accent-color: var(--primary); }
+.feedback-selection-count {
+    color: var(--text-sub);
+    font-size: 12.5px;
+    font-variant-numeric: tabular-nums;
+}
+.admin-feedback-item { position: relative; }
+.feedback-pick {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    display: inline-flex;
+    padding: 4px;
+    cursor: pointer;
+}
+.feedback-pick input { width: 16px; height: 16px; margin: 0; accent-color: var(--primary); }
+
+/* 배너 관리 — 왼쪽 목록에서 고른 자리 하나만 오른쪽에 편다. */
+.banner-workspace {
+    display: grid;
+    grid-template-columns: 172px minmax(0, 1fr);
+    gap: 24px;
+    align-items: start;
+}
+.banner-subnav {
+    display: flex;
+    position: sticky;
+    top: 12px;
+    flex-direction: column;
+    gap: 2px;
+}
+.banner-subnav-heading {
+    margin: 12px 0 4px;
+    padding: 0 10px;
+    color: #9aa1ad;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+}
+.banner-subnav-heading:first-child { margin-top: 0; }
+/* 평소에는 회색 글자로 조용히 서 있다가 고르면 남색으로 살아난다. */
+.banner-subnav-item {
+    display: grid;
+    gap: 1px;
+    padding: 9px 10px;
+    color: #6f7885;
+    background: transparent;
+    border: 0;
+    border-left: 2px solid transparent;
+    border-radius: 0 6px 6px 0;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: color .14s ease, background-color .14s ease, border-color .14s ease;
+}
+.banner-subnav-item:hover { color: var(--primary); background: #f4f7fd; }
+.banner-subnav-item.is-active {
+    color: var(--primary-deep);
+    background: #eef3fc;
+    border-left-color: var(--primary);
+}
+.banner-subnav-label { font-size: 13px; font-weight: 800; }
+.banner-subnav-sub {
+    overflow: hidden;
+    color: #9aa1ad;
+    font-size: 11px;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+.banner-subnav-item.is-active .banner-subnav-sub { color: #64748f; }
+.banner-subnav-item.is-empty .banner-subnav-label { font-weight: 700; opacity: .72; }
+.banner-empty-slot-note {
+    margin: 0;
+    padding: 22px 18px;
+    color: var(--text-sub);
+    background: #f7f8fb;
+    border: 1px dashed var(--border);
+    font-size: 13px;
+    line-height: 1.7;
+    text-align: center;
+}
+@media (max-width: 900px) {
+    .banner-workspace { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+    .banner-subnav {
+        position: static;
+        flex-direction: row;
+        gap: 6px;
+        overflow-x: auto;
+        padding-bottom: 4px;
+    }
+    .banner-subnav-heading { display: none; }
+    .banner-subnav-item {
+        flex: 0 0 auto;
+        border-left: 0;
+        border-bottom: 2px solid transparent;
+        border-radius: 8px;
+    }
+    .banner-subnav-item.is-active { border-bottom-color: var(--primary); }
+}
+
 .banner-placement-section + .banner-placement-section { border-top: 1px solid var(--border); padding-top: 16px; margin-top: 16px; }
 .banner-placement-section h3 { margin: 0 0 10px; color: var(--text-main); font-size: 15px; }
 .banner-manager-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
@@ -436,4 +558,15 @@
     .banner-visual-column { max-width: 260px; }
     .banner-item-form { grid-template-columns: 1fr; }
     .banner-field-wide { grid-column: auto; }
+}
+
+/* 공지 목록의 상대 시간. 절대 시각 옆에 조용히 붙는다. */
+.admin-notice-ago {
+    margin-left: 5px;
+    padding: 1px 6px;
+    color: #6f7885;
+    background: #f1f3f7;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
 }

@@ -914,9 +914,13 @@ test('the notice title is assembled from a fixed template instead of free text',
 
     // 저장되는 제목은 hidden 필드이고, 사람이 채우는 건 양식 세 칸이다.
     assert.match(html, /<input type="hidden" id="post-title">/);
-    for (const id of ['title-host', 'title-subject', 'title-kind', 'title-preview', 'title-manual']) {
+    for (const id of ['title-host', 'title-subject', 'title-kind', 'post-title-manual', 'title-manual']) {
         assert.match(html, new RegExp(`id="${id}"`));
     }
+    // 만들어진 제목이 보이는 상자가 곧 고치는 상자다. 별도 입력칸을 두지 않는다.
+    assert.match(html, /class="title-preview is-empty" id="post-title-manual"[\s\S]*readonly/);
+    assert.doesNotMatch(html, /id="title-preview"/);
+    assert.match(readNamedFunction(admin, 'onTitleManualToggle'), /box\.readOnly = !manual/);
 
     const composeSource = readNamedFunction(admin, 'composeNoticeTitle');
     const values = {
@@ -1110,7 +1114,9 @@ test('one fixed block keeps the complete base notice flow in the right half', as
     const css = await readFile('css/core.css', 'utf8');
     const queueSource = readNamedFunction(app, 'queueNoticeHoverPreview');
     const dragSource = readNamedFunction(app, 'onNoticeSplitDragStart');
-    const showDropSource = readNamedFunction(app, 'showSplitDropOverlay');
+    // readNamedFunction은 구조 분해 매개변수의 중괄호에서 멈추므로 직접 잘라 쓴다.
+    const showDropStart = app.indexOf('function showSplitDropOverlay(');
+    const showDropSource = app.slice(showDropStart, app.indexOf('\nfunction ', showDropStart + 1));
     const filterSource = readNamedFunction(app, 'renderNoticeCards');
 
     assert.doesNotMatch(html, /id="split-notice-more"|showMoreSplitNotices/);
@@ -1123,6 +1129,10 @@ test('one fixed block keeps the complete base notice flow in the right half', as
     assert.match(css, /body\.notice-dragging \.notice-hover-preview\s*\{[^}]*display:\s*none !important;/s);
     assert.doesNotMatch(css, /\.split-notice-more/);
     assert.match(showDropSource, /compareBlocks\.length >= maxCompareBlocks\(\)/);
+    // 이미 놓인 블록을 다시 잡아 옮길 때는 개수 제한을 보지 않는다.
+    assert.match(showDropSource, /!ignoreLimit &&/);
+    assert.match(app, /showSplitDropOverlay\(\{ ignoreLimit: true \}\)/);
+    assert.match(readNamedFunction(app, 'redockCompareBlock'), /compareDockSide = side/);
     assert.match(showDropSource, /overlay\.hidden = false/);
     assert.match(css, /\.split-drop-overlay\s*\{[^}]*position:\s*fixed;[^}]*top:\s*16px/s);
 });
