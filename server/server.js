@@ -6,7 +6,9 @@ import { promises as fs } from 'fs';
 import { createClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
 import cron from 'node-cron';
+import { getGeminiRetryAfterSeconds } from './services/gemini-rate-limit.js';
 import { getAutomationConfig } from './config/runtime-config.js';
+import { CANONICAL_NOTICE_CATEGORIES } from './config/notice-categories.js';
 import { createAutomationStore } from './storage/automation-store.js';
 import { createEceCrawler } from './services/ece-crawler.js';
 import * as eceParser from './services/ece-parser.js';
@@ -28,6 +30,7 @@ const settingsFilePath = path.join(__dirname, 'data', 'settings.json');
 const bannerFilePath = path.join(__dirname, 'data', 'banner-slides.json');
 const automationFilePath = path.join(__dirname, 'data', 'automation.json');
 const feedbackFilePath = path.join(__dirname, 'data', 'feedback.json');
+const bannerInquiryImageDir = path.join(__dirname, 'data', 'banner-inquiry-images');
 const thumbnailCacheDir = path.join(__dirname, 'data', 'thumbnail-cache');
 const SUPER_ADMIN_TOKEN = process.env.SUPER_ADMIN_TOKEN || process.env.ADMIN_TOKEN || '';
 const NOTICE_ADMIN_TOKEN = process.env.NOTICE_ADMIN_TOKEN || '';
@@ -41,7 +44,8 @@ const automationConfig = getAutomationConfig();
 const automationStore = createAutomationStore({
     supabase,
     useSupabase,
-    filePath: automationFilePath
+    filePath: automationFilePath,
+    canonicalCategories: CANONICAL_NOTICE_CATEGORIES
 });
 const noticeThumbnailService = createNoticeThumbnailService({
     cacheDir: thumbnailCacheDir
@@ -49,7 +53,13 @@ const noticeThumbnailService = createNoticeThumbnailService({
 const noticeAnalyzer = process.env.GEMINI_API_KEY
     ? createNoticeAnalyzer({
         apiKey: process.env.GEMINI_API_KEY,
-        categoryProvider: () => automationStore.listCategories()
+        categoryProvider: async () => {
+            const categories = await automationStore.listCategories();
+            const canonicalSlugs = new Set(
+                CANONICAL_NOTICE_CATEGORIES.map(category => category.slug)
+            );
+            return categories.filter(category => canonicalSlugs.has(category.slug));
+        }
     })
     : null;
 const eceCrawler = createEceCrawler({
@@ -89,10 +99,50 @@ const initialNoticeAdminToken = NOTICE_ADMIN_TOKEN;
 // 실사용 서비스이므로 가짜 공지를 시드하지 않는다. 첫 공지는 관리자가 직접 등록한다.
 const defaultNotices = [];
 
-// 상단 가로 배너는 없어졌고 광고는 오른쪽 세로 레일에만 노출된다.
-// 등록된 광고가 하나도 없으면 프런트가 자체 문의 안내를 그리므로 시드는 두지 않는다.
-// (실제 광고가 아닌 항목을 광고 자리에 심어두지 않기 위해서이기도 하다.)
-const defaultBannerSlides = [];
+const MAX_RIGHT_RAIL_BANNERS = 5;
+// 실제 광고가 등록되기 전 순환·관리 흐름을 확인할 수 있는 임시 배너다.
+// 관리 화면에서 언제든 수정하거나 삭제할 수 있으며, 오른쪽 레일에만 노출된다.
+const defaultBannerSlides = [
+    {
+        name: '캠퍼스 소식 임시 배너',
+        text: '캠퍼스 소식을 빠르게 확인하세요',
+        bgStyle: 'background: #1f3f8f;',
+        textColor: '#ffffff',
+        src: '/icons/banner-campus.svg',
+        order: 0,
+        placement: 'right_rail',
+        linkUrl: '',
+        altText: 'SNU ECE 캠퍼스 소식 임시 배너',
+        description: '현재 배너 운영 화면을 확인하기 위한 임시 항목입니다.',
+        expiresAt: '2999-12-31T23:59:59.000Z'
+    },
+    {
+        name: '학생 모집 임시 배너',
+        text: '학생 모집 안내',
+        bgStyle: 'background: #ffffff;',
+        textColor: '#17337a',
+        src: '/icons/banner-recruit.svg',
+        order: 1,
+        placement: 'right_rail',
+        linkUrl: '',
+        altText: '학생 모집 안내 임시 배너',
+        description: '동아리·행사·프로그램 모집 광고 예시입니다.',
+        expiresAt: '2999-12-31T23:59:59.000Z'
+    },
+    {
+        name: '배너 제휴 임시 배너',
+        text: '오른쪽 배너 광고를 신청하세요',
+        bgStyle: 'background: #132959;',
+        textColor: '#ffffff',
+        src: '/icons/banner-partnership.svg',
+        order: 2,
+        placement: 'right_rail',
+        linkUrl: '',
+        altText: '배너 제휴 문의 임시 배너',
+        description: '배너 문의하기에서 게재 상담을 남길 수 있습니다.',
+        expiresAt: '2999-12-31T23:59:59.000Z'
+    }
+];
 
 const defaultAdminInfo = {
     name: 'ECE 학생회장 (이름 : 박지호)',
@@ -160,6 +210,7 @@ app.use('/api/push/subscriptions', subscriptionLimiter);
 app.use('/api/internal/crawl', crawlTriggerLimiter);
 app.use('/api/summary', analysisLimiter);
 app.use('/api/feedback', feedbackLimiter);
+app.use('/api/banner-inquiries', feedbackLimiter);
 
 app.use((req, res, next) => {
     const allowedOrigin = process.env.FRONTEND_ORIGIN;
@@ -266,7 +317,7 @@ function createDefaultBannerFileRows() {
         altText: slide.altText || '',
         description: slide.description || '',
         createdAt: new Date(now + index).toISOString(),
-        expiresAt: new Date(now + sevenDaysMs).toISOString(),
+        expiresAt: slide.expiresAt || new Date(now + sevenDaysMs).toISOString(),
         isDeleted: false
     }));
 }
@@ -377,6 +428,11 @@ function normalizeNoticeInput(body = {}) {
     const images = Array.isArray(body.images)
         ? body.images.map(item => String(item || '')).filter(Boolean).slice(0, 20)
         : [];
+    const categoryIds = Array.from(new Set(
+        (Array.isArray(body.categoryIds) ? body.categoryIds : [])
+            .map(Number)
+            .filter(id => Number.isSafeInteger(id) && id > 0)
+    )).slice(0, 5);
 
     return {
         title,
@@ -385,6 +441,7 @@ function normalizeNoticeInput(body = {}) {
         host,
         deadline,
         aiSummary,
+        categoryIds,
         images
     };
 }
@@ -649,6 +706,7 @@ async function ensureDefaultData() {
         .from('banner_slides')
         .select('id', { count: 'exact', head: true })
         .eq('is_deleted', false)
+        .eq('placement', 'right_rail')
         .gt('expires_at', new Date().toISOString());
 
     if (bannerCountError) {
@@ -674,7 +732,7 @@ async function ensureDefaultData() {
             link_url: slide.linkUrl || '',
             alt_text: slide.altText || '',
             description: slide.description || '',
-            expires_at: sevenDaysLater.toISOString(),
+            expires_at: slide.expiresAt || sevenDaysLater.toISOString(),
             is_deleted: false
         }));
 
@@ -898,6 +956,23 @@ async function updateNotice(id, payload) {
         throw error;
     }
 
+    if (data) {
+        const { error: deleteCategoryError } = await supabase
+            .from('notice_categories')
+            .delete()
+            .eq('notice_id', id);
+        if (deleteCategoryError) throw deleteCategoryError;
+        if (payload.categoryIds.length > 0) {
+            const { error: insertCategoryError } = await supabase
+                .from('notice_categories')
+                .insert(payload.categoryIds.map(categoryId => ({
+                    notice_id: id,
+                    category_id: categoryId
+                })));
+            if (insertCategoryError) throw insertCategoryError;
+        }
+    }
+
     return data ? toClientNotice(data) : null;
 }
 
@@ -1005,6 +1080,15 @@ async function listBannerSlides(now = Date.now()) {
 }
 
 async function createBannerSlide(payload) {
+    if (payload.placement === 'right_rail') {
+        const activeRightRailCount = (await listBannerSlides())
+            .filter(slide => slide.placement === 'right_rail')
+            .length;
+        if (activeRightRailCount >= MAX_RIGHT_RAIL_BANNERS) {
+            throw new RangeError(`오른쪽 배너는 최대 ${MAX_RIGHT_RAIL_BANNERS}개까지 등록할 수 있습니다.`);
+        }
+    }
+
     if (!useSupabase || bannerStorageMode === 'file') {
         const rows = await readBannerFile();
         const nextId = rows.reduce((max, row) => Math.max(max, Number(row?.id) || 0), 0) + 1;
@@ -1309,6 +1393,7 @@ async function writeFeedback(items) {
 app.post('/api/feedback', async (req, res) => {
     try {
         const message = String(req.body?.message || '').trim();
+        const category = 'general';
         if (message.length < 5) {
             return res.status(400).json({ error: '피드백을 5자 이상 입력해주세요.' });
         }
@@ -1320,6 +1405,7 @@ app.post('/api/feedback', async (req, res) => {
         // 익명성 유지: 작성자를 특정할 수 있는 정보는 어떤 것도 저장하지 않는다.
         items.unshift({
             id: crypto.randomUUID(),
+            category,
             message,
             createdAt: new Date().toISOString()
         });
@@ -1330,12 +1416,122 @@ app.post('/api/feedback', async (req, res) => {
     }
 });
 
+const bannerInquiryJson = express.json({
+    limit: '2mb',
+    type: 'application/vnd.ece-banner+json'
+});
+
+function cleanBannerInquiryText(value, maxLength) {
+    return String(value || '').trim().slice(0, maxLength);
+}
+
+app.post('/api/banner-inquiries', bannerInquiryJson, async (req, res) => {
+    try {
+        const inquiry = {
+            name: cleanBannerInquiryText(req.body?.name, 40),
+            organization: cleanBannerInquiryText(req.body?.organization, 80),
+            phone: cleanBannerInquiryText(req.body?.phone, 30),
+            email: cleanBannerInquiryText(req.body?.email, 120),
+            title: cleanBannerInquiryText(req.body?.title, 80),
+            description: cleanBannerInquiryText(req.body?.description, 600),
+            linkUrl: cleanBannerInquiryText(req.body?.linkUrl, 500),
+            startDate: cleanBannerInquiryText(req.body?.startDate, 10),
+            endDate: cleanBannerInquiryText(req.body?.endDate, 10)
+        };
+        const imageDataUrl = String(req.body?.imageDataUrl || '');
+
+        if (inquiry.name.length < 2 || inquiry.organization.length < 2) {
+            return res.status(400).json({ error: '실명과 소속/단체명을 확인해주세요.' });
+        }
+        if (!inquiry.phone && !inquiry.email) {
+            return res.status(400).json({ error: '전화번호 또는 이메일 중 하나를 입력해주세요.' });
+        }
+        if (inquiry.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(inquiry.email)) {
+            return res.status(400).json({ error: '이메일 주소를 확인해주세요.' });
+        }
+        if (inquiry.title.length < 2 || inquiry.description.length < 10) {
+            return res.status(400).json({ error: '배너 제목과 설명을 확인해주세요.' });
+        }
+        if (inquiry.linkUrl) {
+            let parsedLink;
+            try { parsedLink = new URL(inquiry.linkUrl); } catch { /* 아래에서 거절 */ }
+            if (!parsedLink || !['http:', 'https:'].includes(parsedLink.protocol)) {
+                return res.status(400).json({ error: '연결 링크는 올바른 웹 주소여야 합니다.' });
+            }
+        }
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(inquiry.startDate)
+            || !/^\d{4}-\d{2}-\d{2}$/.test(inquiry.endDate)
+            || inquiry.endDate < inquiry.startDate) {
+            return res.status(400).json({ error: '희망 게재 기간을 확인해주세요.' });
+        }
+        if (req.body?.consent !== true) {
+            return res.status(400).json({ error: '개인정보 수집 및 이용 동의가 필요합니다.' });
+        }
+        if (!/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(imageDataUrl)
+            || imageDataUrl.length > 1_900_000) {
+            return res.status(400).json({ error: '배너 이미지를 다시 선택해주세요.' });
+        }
+
+        const id = crypto.randomUUID();
+        const imageBuffer = Buffer.from(imageDataUrl.slice(imageDataUrl.indexOf(',') + 1), 'base64');
+        if (imageBuffer.length === 0 || imageBuffer.length > 1_400_000
+            || imageBuffer[0] !== 0xff || imageBuffer[1] !== 0xd8 || imageBuffer[2] !== 0xff) {
+            return res.status(400).json({ error: '배너 이미지 형식을 확인해주세요.' });
+        }
+        await fs.mkdir(bannerInquiryImageDir, { recursive: true });
+        const imageFileName = `${id}.jpg`;
+        await fs.writeFile(path.join(bannerInquiryImageDir, imageFileName), imageBuffer);
+
+        const items = await readFeedback();
+        items.unshift({
+            id,
+            category: 'banner',
+            message: `${inquiry.title}\n${inquiry.description}`,
+            inquiry,
+            imageFileName,
+            createdAt: new Date().toISOString()
+        });
+        await writeFeedback(items.slice(0, 1000));
+        res.status(201).json({ ok: true });
+    } catch (error) {
+        res.status(500).json({ error: error.message || '배너 문의 저장 실패' });
+    }
+});
+
 app.get('/api/admin/feedback', requireNoticeAdmin, async (req, res) => {
     try {
         const items = await readFeedback();
-        res.json({ feedback: items });
+        res.json({
+            feedback: items.map(({ imageDataUrl, ...item }) => ({
+                ...item,
+                hasImage: Boolean(item.imageFileName || imageDataUrl)
+            }))
+        });
     } catch (error) {
         res.status(500).json({ error: error.message || '피드백 조회 실패' });
+    }
+});
+
+app.get('/api/admin/feedback/:id/image', requireNoticeAdmin, async (req, res) => {
+    try {
+        const items = await readFeedback();
+        const item = items.find(candidate => String(candidate.id) === String(req.params.id));
+        if (item?.imageDataUrl) {
+            const legacyBuffer = Buffer.from(item.imageDataUrl.slice(item.imageDataUrl.indexOf(',') + 1), 'base64');
+            return res.type('jpeg').send(legacyBuffer);
+        }
+        if (!item?.imageFileName || path.basename(item.imageFileName) !== item.imageFileName) {
+            return res.status(404).json({ error: '배너 이미지를 찾을 수 없습니다.' });
+        }
+        const imagePath = path.join(bannerInquiryImageDir, item.imageFileName);
+        try {
+            await fs.access(imagePath);
+        } catch {
+            return res.status(404).json({ error: '배너 이미지를 찾을 수 없습니다.' });
+        }
+        res.type('jpeg').sendFile(path.resolve(imagePath));
+    } catch (error) {
+        res.status(500).json({ error: error.message || '배너 이미지 조회 실패' });
     }
 });
 
@@ -1343,8 +1539,12 @@ app.delete('/api/admin/feedback/:id', requireNoticeAdmin, async (req, res) => {
     try {
         const id = String(req.params.id || '');
         const items = await readFeedback();
+        const removed = items.find(item => String(item.id) === id);
         const next = items.filter(item => String(item.id) !== id);
         await writeFeedback(next);
+        if (removed?.imageFileName && path.basename(removed.imageFileName) === removed.imageFileName) {
+            await fs.rm(path.join(bannerInquiryImageDir, removed.imageFileName), { force: true }).catch(() => {});
+        }
         res.status(204).send();
     } catch (error) {
         res.status(500).json({ error: error.message || '피드백 삭제 실패' });
@@ -1552,6 +1752,18 @@ app.post('/api/summary', requireNoticeAdmin, async (req, res) => {
         const data = await response.json();
 
         if (!response.ok) {
+            if (response.status === 429) {
+                const retryAfterSeconds = getGeminiRetryAfterSeconds(
+                    response.headers.get('retry-after'),
+                    data
+                );
+                res.set('Retry-After', String(retryAfterSeconds));
+                return res.status(429).json({
+                    error: '분당 호출 초과',
+                    code: 'GEMINI_RATE_LIMIT',
+                    retryAfterSeconds
+                });
+            }
             return res.status(response.status).json({
                 error: data?.error?.message || 'Gemini API 호출 실패'
             });
@@ -1583,6 +1795,9 @@ app.post('/api/banner-slides', requireBannerAdmin, async (req, res) => {
     } catch (error) {
         if (error instanceof TypeError) {
             return res.status(400).json({ error: error.message });
+        }
+        if (error instanceof RangeError) {
+            return res.status(409).json({ error: error.message });
         }
         res.status(500).json({ error: error.message || '배너 등록 실패' });
     }
@@ -1647,6 +1862,7 @@ export {
     app,
     buildBannerSlideUpdate,
     cleanupExpiredBanners,
+    createBannerSlide,
     isBannerExpiryActive,
     listBannerSlides,
     normalizeBannerPayload,

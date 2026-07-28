@@ -123,6 +123,26 @@ test('banner payload enforces text limits and requires text or image', () => {
     );
 });
 
+test('right rail accepts at most five active banners', async t => {
+    await replaceBannerRows(t, Array.from({ length: 5 }, (_, index) => ({
+        id: index + 1,
+        name: `banner-${index + 1}`,
+        text: `banner-${index + 1}`,
+        placement: 'right_rail',
+        order: index,
+        expiresAt: '2999-12-31T23:59:59.000Z',
+        isDeleted: false
+    })));
+
+    await assert.rejects(
+        () => server.createBannerSlide(normalizeBannerPayload({
+            text: 'sixth banner',
+            placement: 'right_rail'
+        })),
+        /최대 5개/
+    );
+});
+
 test('file banner storage evaluates expiration chronologically and preserves numeric order', async t => {
     await replaceBannerRows(t, [
         {

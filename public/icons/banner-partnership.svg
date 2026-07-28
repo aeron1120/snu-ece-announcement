@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 900" role="img" aria-labelledby="title desc">
+  <title id="title">배너 제휴 문의 임시 배너</title>
+  <desc id="desc">남색 배경 위에 배너 제휴 문의 안내가 적힌 임시 세로 배너</desc>
+  <rect width="720" height="900" fill="#132959"/>
+  <rect x="54" y="54" width="612" height="792" fill="none" stroke="#fff" stroke-width="3"/>
+  <text x="90" y="145" fill="#b8c9ec" font-family="Arial, sans-serif" font-size="21" font-weight="700">PARTNERSHIP</text>
+  <text x="90" y="272" fill="#fff" font-family="Arial, sans-serif" font-size="66" font-weight="800">YOUR NEWS,</text>
+  <text x="90" y="350" fill="#fff" font-family="Arial, sans-serif" font-size="66" font-weight="800">OUR SPACE.</text>
+  <text x="90" y="426" fill="#d7e1f5" font-family="Arial, sans-serif" font-size="28">오른쪽 배너 광고를 신청하세요.</text>
+  <rect x="90" y="500" width="250" height="66" fill="#fff"/>
+  <text x="215" y="543" fill="#17337a" font-family="Arial, sans-serif" font-size="25" font-weight="700" text-anchor="middle">문의하기 →</text>
+  <g transform="translate(410 540)" fill="none" stroke="#9eb5e6" stroke-width="12">
+    <rect width="170" height="190"/>
+    <path d="M35 54h100M35 96h100M35 138h64"/>
+  </g>
+  <text x="90" y="800" fill="#9eb5e6" font-family="Arial, sans-serif" font-size="20">TEMPORARY BANNER 03</text>
+</svg>

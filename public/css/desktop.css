@@ -30,7 +30,11 @@ html[data-view="desktop"] .site-rail {
     z-index: 800;
 }
 html[data-view="desktop"] .rail-left { left: 0; border-right: 1px solid var(--rail-bg-deep); }
-html[data-view="desktop"] .rail-right { right: 0; border-left: 1px solid var(--rail-bg-deep); }
+html[data-view="desktop"] .rail-right {
+    right: 0;
+    overflow: hidden;
+    border-left: 1px solid var(--rail-bg-deep);
+}
 
 /* 모바일 전용 조각은 데스크탑에서 자리를 차지하지 않는다. */
 html[data-view="desktop"] .mobile-only { display: none !important; }
@@ -55,4 +59,3 @@ html[data-view="desktop"] .grid {
 @media (max-width: 900px) {
     html[data-view="desktop"] .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
-

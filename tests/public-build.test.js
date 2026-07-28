@@ -28,6 +28,7 @@ test('preparePublic copies canonical frontend files', async () => {
     await mkdir(path.join(rootDir, 'js'));
     await writeFile(path.join(rootDir, 'index.html'), '<main>ok</main>');
     await writeFile(path.join(rootDir, 'admin.html'), '<main>admin</main>');
+    await writeFile(path.join(rootDir, 'banner-inquiry.html'), '<main>banner inquiry</main>');
     await writeFile(path.join(rootDir, 'css/core.css'), 'body{}');
     await writeFile(path.join(rootDir, 'css/mobile.css'), '.grid{}');
     await writeFile(path.join(rootDir, 'js/core.js'), 'window.ok=true');
@@ -43,6 +44,10 @@ test('preparePublic copies canonical frontend files', async () => {
     assert.equal(
         await readFile(path.join(rootDir, 'public/admin.html'), 'utf8'),
         '<main>admin</main>'
+    );
+    assert.equal(
+        await readFile(path.join(rootDir, 'public/banner-inquiry.html'), 'utf8'),
+        '<main>banner inquiry</main>'
     );
     assert.equal(
         await readFile(path.join(rootDir, 'public/js/core.js'), 'utf8'),
@@ -113,7 +118,7 @@ test('public shell exposes brand and managed advertising rails', async () => {
         assert.match(html, new RegExp(`id="${id}"`));
     }
     // 엠블럼이 없을 때 대체 워드마크는 '서울대학교'.
-    assert.match(html, /class="brand-mark"[^>]*>서울대학교</);
+    assert.match(html, /class="brand-mark"[^>]*>SNU</);
     assert.match(html, />서울대학교 홈페이지</);
     assert.match(html, />전기정보공학부</);
     assert.match(html, />mySNU</);
@@ -159,12 +164,14 @@ test('the public page drops the top banner, the saved-posts feature, and the ref
     assert.doesNotMatch(css, /\.star-icon/);
     assert.doesNotMatch(app, /savedPosts|toggleSave|toggleViewMode/);
 
-    // 새로고침은 제목 클릭으로, 알림 받기는 종 토글로 대체됐다.
-    assert.match(html, /<button type="button" class="site-title" id="site-title"[^>]*onclick="reloadNoticeBoard\(\)"/);
+    // 제목은 기능 없는 표제이며, 알림 받기만 종 토글로 유지한다.
+    assert.match(html, /<h1 class="site-title" id="site-title">SNU ECE 공지방<\/h1>/);
+    assert.doesNotMatch(html, /제목을 누르면 새로고침|site-title-hint|reloadNoticeBoard/);
     assert.match(html, /id="bell-toggle"[\s\S]*?aria-pressed="false"/);
     assert.match(html, /onclick="openNotificationPreferences\(\)"/);
-    assert.match(app, /function reloadNoticeBoard/);
+    assert.doesNotMatch(app, /function reloadNoticeBoard/);
     assert.match(app, /function updateBellState/);
+    assert.doesNotMatch(css, /site-title:hover[\s\S]*text-decoration:\s*underline/);
     assert.match(css, /\.bell-toggle\s*\{[^}]*filter:\s*grayscale\(1\)/s);
     assert.match(css, /\.bell-toggle\[aria-pressed="true"\]\s*\{[^}]*filter:\s*none/s);
 });
@@ -211,25 +218,131 @@ test('mobile mode opens a blurred phone preview instead of reflowing the desktop
     assert.match(html, /params\.get\('view'\)/);
 });
 
-test('notice comparison uses a Notion-style six-dot handle and responsive inline blocks', async () => {
+test('notice blocks use six-dot handles and expose only left/right split targets', async () => {
+    const html = await readFile('index.html', 'utf8');
     const css = await readFile('css/core.css', 'utf8');
-    const mobileCss = await readFile('css/mobile.css', 'utf8');
     const app = await readFile('js/core.js', 'utf8');
+    const renderSource = readNamedFunction(app, 'renderCompareSpace');
 
-    // 기존 화면 안에 블록을 만들고 카드 전체가 아닌 6점 핸들만 드래그한다.
-    assert.match(app, /class="card-drag-handle"/);
-    assert.equal((app.match(/<circle /g) || []).length, 6);
-    assert.match(app, /draggable="true"/);
-    assert.match(app, /function onCardDragStart/);
+    assert.doesNotMatch(html, /id="spatial-ar-preview"/);
+    assert.match(html, /id="split-drop-overlay"/);
+    assert.match(html, /data-split-side="left"/);
+    assert.match(html, /data-split-side="right"/);
+    assert.doesNotMatch(html, /id="compare-add-zones"/);
+    assert.match(renderSource, /class="compare-empty-slot/);
+    assert.match(renderSource, /data-placement="\$\{emptyPlacement\}"/);
+    assert.doesNotMatch(html, /data-placement="bottom"/);
+    assert.match(html, /id="compare-space"[\s\S]*id="notice-base-block"[\s\S]*id="notice-grid"/);
+    assert.match(renderSource, /class="compare-col notion-block\$\{expanded/);
+    assert.match(renderSource, /class="compare-col-controls"/);
+    assert.doesNotMatch(renderSource, /class="compare-col-add"/);
+    assert.match(renderSource, /class="compare-col-drag-handle"[^>]*draggable="true"/s);
+    assert.doesNotMatch(renderSource, /<header|compare-col-head/);
+    assert.doesNotMatch(renderSource, /<article[^>]*draggable=/);
+    assert.match(app, /class="card-drag-handle"[^>]*draggable="true"/s);
+    assert.doesNotMatch(app, /class="card-block-add"/);
     assert.match(app, /function addNoticeToCompareBlock/);
-    assert.match(app, /function buildCompareInline/);
-    assert.match(app, /DESKTOP_MAX_COMPARE_BLOCKS\s*=\s*6/);
+    assert.match(app, /function onNoticeSplitDragStart/);
+    assert.match(app, /function onSplitDropZoneDrop/);
+    assert.match(app, /function applyPendingNoticeSplit/);
+    assert.match(app, /function onCompareExternalNoticeDrop/);
+    assert.doesNotMatch(app, /function splitCompareBlockWithNotice/);
+    assert.match(app, /compareLayoutMode = 'columns'/);
+    assert.match(app, /function onCompareBlockDrop/);
+    assert.match(app, /DESKTOP_MAX_COMPARE_BLOCKS\s*=\s*4/);
     assert.match(app, /MOBILE_MAX_COMPARE_BLOCKS\s*=\s*2/);
-    assert.match(css, /\.card:hover \.card-drag-handle/);
-    assert.match(css, /\.compare-inline\[data-blocks="6"\][\s\S]*repeat\(3,/);
-    assert.match(mobileCss, /\.compare-inline\[data-blocks\][\s\S]*grid-template-columns:\s*1fr/);
-    // 닫을 때 지원 브라우저에서는 View Transition으로 자연스럽게 재배치한다.
-    assert.match(app, /document\.startViewTransition/);
+    assert.doesNotMatch(html, /id="notice-block-menu"/);
+    assert.doesNotMatch(app, /function openNoticeBlockMenu/);
+    assert.match(app, /function moveCompareBlock/);
+    assert.doesNotMatch(css, /split-drop-dash|\.split-drop-border/);
+    assert.doesNotMatch(css, /\.compare-add-zone\.is-bottom\s*\{/);
+    assert.doesNotMatch(css, /\.compare-col\.is-notice-split-left::after/);
+    assert.match(css, /\.split-drop-overlay\s*\{[^}]*position:\s*relative;[^}]*grid-template-columns:\s*repeat\(2,/s);
+    assert.match(css, /\.spatial-workspace\.is-split\s*\{[^}]*display:\s*block;/s);
+    assert.match(css, /\.spatial-workspace\.is-split \.compare-space-stage\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*repeat\(2,/s);
+    assert.match(css, /\.spatial-workspace\.is-split\[data-blocks="1"\]\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*repeat\(2,/s);
+    assert.match(css, /\.spatial-workspace\.is-split\[data-blocks="1"\]\[data-dock="right"\]\s*\{[^}]*grid-template-areas:\s*"base blocks"/s);
+    assert.match(css, /\.spatial-workspace\.is-split\[data-blocks="1"\] \.notice-base-block > \.grid\s*\{[^}]*grid-template-columns:\s*1fr/s);
+    assert.match(css, /\.compare-space\.is-notice-drop-active \.compare-empty-slot\s*\{[^}]*display:\s*flex;/s);
+    assert.match(css, /\.compare-col-controls\s*\{[^}]*position:\s*absolute;[^}]*left:\s*-54px;[^}]*opacity:\s*0;/s);
+    assert.match(css, /\.compare-col:hover > \.compare-col-controls[\s\S]*opacity:\s*1;/);
+    assert.match(css, /\.compare-col\s*\{[^}]*background:\s*transparent;[^}]*border:\s*0;[^}]*box-shadow:\s*none;/s);
+    assert.match(css, /\.compare-col-content\s*\{[^}]*max-height:\s*none;[^}]*background:\s*transparent;[^}]*border:\s*0;/s);
+    assert.match(css, /\.compare-col-body\s*\{[^}]*max-height:\s*440px;[^}]*overflow:\s*hidden/s);
+    assert.match(css, /\.compare-col\.is-expanded \.compare-col-body\s*\{[^}]*max-height:\s*none/s);
+    assert.match(renderSource, /class="compare-col-more"/);
+    assert.match(renderSource, /toggleCompareBlockExpansion/);
+    assert.match(renderSource, /emptyOnLeft \? `\$\{emptySlot\}\$\{blocks\}` : `\$\{blocks\}\$\{emptySlot\}`/);
+    assert.doesNotMatch(app, /document\.startViewTransition/);
+});
+
+test('an established comparison closes automatically when removal would leave one block', async () => {
+    const app = await readFile('js/core.js', 'utf8');
+    const removeSource = readNamedFunction(app, 'removeFromCompareBlock');
+    const result = new Function(`
+        let compareBlocks = ['one', 'two'];
+        let compareWorkspaceOpen = true;
+        let expandedCompareBlocks = new Set();
+        let renderCount = 0;
+        function renderCompareChange() { renderCount += 1; }
+        ${removeSource}
+        removeFromCompareBlock('two');
+        return { compareBlocks, compareWorkspaceOpen, renderCount };
+    `)();
+
+    assert.deepEqual(result.compareBlocks, []);
+    assert.equal(result.compareWorkspaceOpen, false);
+    assert.equal(result.renderCount, 1);
+});
+
+test('compare blocks reorder before, after, and at the document end', async () => {
+    const app = await readFile('js/core.js', 'utf8');
+    const moveCompareBlockSource = readNamedFunction(app, 'moveCompareBlock');
+    const result = new Function(`
+        let compareBlocks = ['one', 'two', 'three'];
+        let renderCount = 0;
+        function renderCompareChange() { renderCount += 1; }
+        ${moveCompareBlockSource}
+        moveCompareBlock('one', 'two', 'after');
+        const after = [...compareBlocks];
+        moveCompareBlock('three', 'two', 'before');
+        const before = [...compareBlocks];
+        moveCompareBlock('three', '', 'end');
+        return {
+            after,
+            before,
+            end: [...compareBlocks],
+            renderCount
+        };
+    `)();
+
+    assert.deepEqual(result.after, ['two', 'one', 'three']);
+    assert.deepEqual(result.before, ['three', 'two', 'one']);
+    assert.deepEqual(result.end, ['two', 'one', 'three']);
+    assert.equal(result.renderCount, 3);
+});
+
+test('drag listeners and overlays are attached only through six-dot handles', async () => {
+    const app = await readFile('js/core.js', 'utf8');
+    const renderSource = readNamedFunction(app, 'renderCompareSpace');
+    const dragStartSource = readNamedFunction(app, 'onCompareBlockDragStart');
+
+    assert.match(renderSource, /handle\.addEventListener\('dragstart'/);
+    assert.doesNotMatch(renderSource, /block\.setAttribute\(['"]draggable/);
+    assert.match(app, /splitHandle\.addEventListener\('dragstart'/);
+    assert.match(app, /splitHandle\.addEventListener\('pointerdown'[\s\S]*suspendNoticeHoverPreview/);
+    assert.match(app, /body\.classList\.add\('notice-dragging'\)/);
+    assert.match(app, /body\.classList\.remove\('notice-dragging'\)/);
+    assert.match(app, /noticeSplitOverlayTimer = window\.setTimeout/);
+    assert.match(app, /\}, 110\);/);
+    assert.match(app, /event\.dataTransfer\.setData\('text\/plain'/);
+    assert.match(app, /suppressNoticeClickUntil = Date\.now\(\) \+ 300/);
+    assert.doesNotMatch(app, /card\.setAttribute\(['"]draggable/);
+    assert.match(dragStartSource, /event\.currentTarget\.closest\('\.compare-col'\)/);
+    assert.match(dragStartSource, /createCompareDragOverlay\(block\)/);
+    assert.match(dragStartSource, /setDragImage/);
+    assert.match(app, /function onCompareHandlePointerDown/);
+    assert.match(app, /function onCompareHandlePointerMove/);
 });
 
 test('the notice board opens a full-page detail instead of a modal', async () => {
@@ -248,6 +361,23 @@ test('the notice board opens a full-page detail instead of a modal', async () =>
     assert.doesNotMatch(app, /openModal\('detail-modal'\)/);
 });
 
+test('detail and board use a lightweight transition and restore scroll', async () => {
+    const app = await readFile('js/core.js', 'utf8');
+    const css = await readFile('css/core.css', 'utf8');
+    const closeDetailSource = readNamedFunction(app, 'closeDetail');
+    const showBoardSource = readNamedFunction(app, 'showBoardView');
+
+    assert.match(app, /function runNoticeSurfaceTransition/);
+    assert.doesNotMatch(app, /document\.startViewTransition/);
+    assert.match(closeDetailSource, /detailHistoryPushed[\s\S]*history\.back\(\);[\s\S]*return;/);
+    assert.doesNotMatch(closeDetailSource, /\.hidden\s*=/);
+    assert.match(showBoardSource, /window\.scrollTo\(\{ top: boardScrollPosition/);
+    assert.doesNotMatch(css, /::view-transition-|view-transition-name/);
+    assert.match(css, /\.surface-entering\s*\{[^}]*animation:\s*notice-surface-in 0\.16s ease-out/s);
+    assert.match(css, /\.btn:active\s*\{[^}]*scale\(0\.985\)/s);
+    assert.match(css, /\.filter-btn:active,[\s\S]*\.gallery-thumb:active\s*\{[\s\S]*scale\(0\.97\)/);
+});
+
 test('a category tab bar sits above the filters like the SNU newsroom', async () => {
     const html = await readFile('index.html', 'utf8');
     const app = await readFile('js/core.js', 'utf8');
@@ -258,8 +388,10 @@ test('a category tab bar sits above the filters like the SNU newsroom', async ()
     assert.match(html, /class="category-tab active"[^>]*onclick="selectCategoryTab\('all'\)"/);
     assert.match(app, /function buildCategoryTabs/);
     assert.match(app, /function selectCategoryTab/);
-    // 옛 필터 패널의 카테고리 그룹은 탭으로 대체돼 사라졌다.
+    // 상단의 1차 카테고리 탐색을 상세 필터 안에 중복 노출하지 않는다.
     assert.doesNotMatch(html, /id="fg-category"/);
+    assert.doesNotMatch(app, /function buildCategoryFilterButtons/);
+    assert.doesNotMatch(app, /function toggleCategoryFilter/);
 });
 
 test('the top inquiry button is gone and the banner CTA reads 배너 문의하기', async () => {
@@ -271,12 +403,21 @@ test('the top inquiry button is gone and the banner CTA reads 배너 문의하�
     assert.doesNotMatch(headerActions, /openModal\('contact-modal'\)/);
     assert.match(html, />배너 문의하기</);
     assert.match(app, />배너 문의하기</);
+    assert.match(html, /class="rail-section-label">문의</);
+    assert.match(html, /onclick="openContactFromRail\(\)">일반 문의하기/);
+    assert.match(html, /onclick="openBannerInquiryFromRail\(\)">배너 문의하기/);
+    assert.doesNotMatch(html, /class="rail-section-label">일반 문의</);
+    assert.doesNotMatch(html, /class="rail-section-label">배너 문의</);
+    assert.match(app, /function openBannerInquiryFromRail/);
+    assert.match(app, /window\.location\.href = '\.\/banner-inquiry\.html'/);
 });
 
 test('the contact modal is an anonymous feedback box, not admin contact info', async () => {
     const html = await readFile('index.html', 'utf8');
     const app = await readFile('js/core.js', 'utf8');
     const server = await readFile('server/server.js', 'utf8');
+    const adminHtml = await readFile('admin.html', 'utf8');
+    const admin = await readFile('js/admin.js', 'utf8');
 
     // 관리자 전화·카톡을 나열하던 연락처 블록은 사라졌다.
     assert.doesNotMatch(html, /admin-phone-display/);
@@ -284,15 +425,48 @@ test('the contact modal is an anonymous feedback box, not admin contact info', a
     assert.doesNotMatch(html, /01040953346/);
     // 대신 익명 피드백 입력 상자가 있다.
     assert.match(html, /id="feedback-message"/);
+    assert.doesNotMatch(html, /data-feedback-category="banner"/);
     assert.match(html, /onclick="submitFeedback\(\)"/);
     assert.match(app, /function submitFeedback/);
+    assert.match(app, /JSON\.stringify\(\{ message, category: activeFeedbackCategory \}\)/);
     assert.match(app, /\/api\/feedback/);
     // 서버는 신원을 저장하지 않고 메시지만 받는다.
     assert.match(server, /app\.post\('\/api\/feedback'/);
     assert.match(server, /app\.get\('\/api\/admin\/feedback'/);
+    assert.match(server, /id:\s*crypto\.randomUUID\(\),\s*category,/s);
+    assert.match(adminHtml, /data-feedback-filter="general"/);
+    assert.match(adminHtml, /data-feedback-filter="banner"/);
+    assert.match(admin, /function setAdminFeedbackFilter/);
+    assert.match(admin, /item\.category === 'banner'/);
     // 익명성: 피드백 저장 객체에 IP·이름 등 식별자가 없어야 한다.
     const feedbackRoute = server.slice(server.indexOf("app.post('/api/feedback'"), server.indexOf("app.get('/api/admin/feedback'"));
     assert.doesNotMatch(feedbackRoute, /req\.ip|x-forwarded-for|headers\['user-agent'\]/i);
+});
+
+test('banner inquiries use a dedicated identified submission page and protected admin image access', async () => {
+    const html = await readFile('banner-inquiry.html', 'utf8');
+    const app = await readFile('js/banner-inquiry.js', 'utf8');
+    const css = await readFile('css/banner-inquiry.css', 'utf8');
+    const server = await readFile('server/server.js', 'utf8');
+    const admin = await readFile('js/admin.js', 'utf8');
+
+    assert.match(html, /id="banner-inquiry-form"/);
+    assert.match(html, /id="inquiry-name"[^>]*required/);
+    assert.match(html, /id="inquiry-organization"[^>]*required/);
+    assert.match(html, /id="inquiry-image"[^>]*type="file"/);
+    assert.match(html, /세로형 9 : 16/);
+    assert.match(html, /개인정보 수집 및 이용/);
+    assert.match(app, /application\/vnd\.ece-banner\+json/);
+    assert.match(app, /\/api\/banner-inquiries/);
+    assert.match(app, /function validateBannerInquiry/);
+    assert.match(server, /app\.post\('\/api\/banner-inquiries', bannerInquiryJson/);
+    assert.match(server, /category: 'banner'/);
+    assert.match(server, /bannerInquiryImageDir/);
+    assert.match(server, /imageFileName/);
+    assert.match(server, /app\.get\('\/api\/admin\/feedback\/:id\/image', requireNoticeAdmin/);
+    assert.match(admin, /function openBannerInquiryImage/);
+    assert.match(admin, /class="banner-inquiry-details"/);
+    assert.match(css, /\.inquiry-layout\s*\{[^}]*grid-template-columns:/s);
 });
 
 test('the compose form leads with content/photo/target, then AI fills date/subject/type', async () => {
@@ -317,6 +491,87 @@ test('the compose form leads with content/photo/target, then AI fills date/subje
     assert.doesNotMatch(html, /class="panel-help"/);
 });
 
+test('public category tabs keep the canonical application-to-governance order', async () => {
+    const app = await readFile('js/core.js', 'utf8');
+    const server = await readFile('server/server.js', 'utf8');
+    const categoryConfig = await readFile('server/config/notice-categories.js', 'utf8');
+    const orderSource = app.match(/const NOTICE_CATEGORY_ORDER = Object\.freeze\(\[[\s\S]*?\]\);/)?.[0] || '';
+
+    assert.match(orderSource, /'application'[\s\S]*'academics'[\s\S]*'benefits-partnerships'[\s\S]*'campus'[\s\S]*'governance'/);
+    assert.match(categoryConfig, /신청[\s\S]*학사[\s\S]*혜택\/제휴[\s\S]*캠퍼스[\s\S]*자치/);
+    assert.match(server, /canonicalSlugs[\s\S]*categories\.filter/);
+    assert.match(app, /function orderedNoticeCategories/);
+});
+
+test('manual Gemini analysis saves canonical category ids with the notice', async () => {
+    const admin = await readFile('js/admin.js', 'utf8');
+    const server = await readFile('server/server.js', 'utf8');
+    const schema = await readFile('server/sql/supabase-schema.sql', 'utf8');
+
+    assert.match(admin, /"categorySlugs":\["application\|academics\|benefits-partnerships\|campus\|governance/);
+    assert.match(admin, /가능한 한 핵심 범주 하나만 선택/);
+    assert.match(admin, /categoryIds:\s*categorySlugs/);
+    assert.match(admin, /const newNoticeData = \{[\s\S]*categoryIds,/);
+    assert.match(server, /const categoryIds = Array\.from\(new Set/);
+    assert.match(schema, /notice_payload \? 'categoryIds'[\s\S]*insert into public\.notice_categories/);
+});
+
+test('admin AI work shows progress and the gate never restores a saved password', async () => {
+    const html = await readFile('admin.html', 'utf8');
+    const admin = await readFile('js/admin.js', 'utf8');
+
+    assert.match(html, /id="ai-progress-bar"/);
+    assert.match(html, /id="ai-progress-percent"/);
+    for (const step of ['prepare', 'analyze', 'process', 'save']) {
+        assert.match(html, new RegExp(`data-ai-step="${step}"`));
+    }
+    assert.match(admin, /beginAiProgress\('공지 원문을 준비하고 있습니다\.'/);
+    assert.match(admin, /updateAiProgress\(18, 'Gemini가 원문을 분석하고 있습니다\.'/);
+    assert.match(admin, /finishAiProgress\('Gemini 분석이 완료되었습니다\.'/);
+
+    const gateInput = html.match(/<input type="password" id="admin-gate-password"[^>]*>/)?.[0] || '';
+    assert.match(gateInput, /value=""/);
+    assert.match(gateInput, /autocomplete="off"/);
+    assert.doesNotMatch(admin, /sessionStorage\.getItem\('eceNoticeAdminToken'\)/);
+    const gateSource = admin.slice(
+        admin.indexOf('async function submitAdminGate'),
+        admin.indexOf('async function enterAdminWorkspace')
+    );
+    assert.doesNotMatch(gateSource, /sessionStorage\.setItem/);
+});
+
+test('Gemini quota errors show only a retry countdown and admin mode has one exit control', async () => {
+    const html = await readFile('admin.html', 'utf8');
+    const admin = await readFile('js/admin.js', 'utf8');
+    const server = await readFile('server/server.js', 'utf8');
+
+    assert.match(server, /code:\s*'GEMINI_RATE_LIMIT'/);
+    assert.match(server, /retryAfterSeconds/);
+    assert.match(admin, /function showGeminiRetryCountdown/);
+    assert.match(admin, /분당 호출 초과로 \$\{remaining\}초 뒤에 다시 실행 부탁드립니다\./);
+    assert.match(admin, /isGeminiRateLimitError\(error\)/);
+    assert.match(html, /id="admin-mode-exit"[^>]*onclick="exitAdminMode\(\)"/);
+    assert.match(html, />공개 모드로 돌아가기<\/button>/);
+    assert.doesNotMatch(html, /id="admin-logout"|>로그아웃<|공개 화면으로/);
+    assert.match(admin, /getElementById\('admin-mode-exit'\)\.textContent = '관리자 모드 나가기'/);
+    assert.match(admin, /function exitAdminMode\(\)[\s\S]*location\.href = '\.\/index\.html'/);
+});
+
+test('automatic ECE crawling feeds a live review inbox and original text is black', async () => {
+    const html = await readFile('admin.html', 'utf8');
+    const admin = await readFile('js/admin.js', 'utf8');
+    const crawler = await readFile('server/services/ece-crawler.js', 'utf8');
+    const css = await readFile('css/core.css', 'utf8');
+
+    assert.match(crawler, /store\.createPendingNotice\(/);
+    assert.match(html, /자동 수집되어 이 검수함에 들어오며/);
+    assert.match(admin, /function startReviewInboxPolling\(\)/);
+    assert.match(admin, /loadReviewNotices\(\{ quiet: true \}\)/);
+    assert.match(admin, /60_000/);
+    assert.match(css, /\.original-text-content\s*\{[^}]*color:\s*#111111/s);
+    assert.match(css, /\.compare-col-content\s*\{[^}]*color:\s*#111111/s);
+});
+
 test('rails share one bright navy and the emblem sits on it without a white circle', async () => {
     const css = await readFile('css/core.css', 'utf8');
     const html = await readFile('index.html', 'utf8');
@@ -333,12 +588,39 @@ test('rails share one bright navy and the emblem sits on it without a white circ
 test('the rail shows the SNU emblem with a click-to-refresh and a graceful fallback', async () => {
     const html = await readFile('index.html', 'utf8');
     const css = await readFile('css/core.css', 'utf8');
+    const app = await readFile('js/core.js', 'utf8');
 
-    assert.match(html, /id="brand-logo-btn"[^>]*onclick="reloadNoticeBoard\(\)"/);
+    assert.match(html, /id="brand-logo-btn"[^>]*onclick="goHomeAndReload\(\)"/);
     assert.match(html, /id="brand-logo-img"[^>]*src="\.\/icons\/snu-emblem\.png"/);
+    assert.match(html, /class="brand-university-name">서울대학교<\/p>/);
+    assert.match(app, /function goHomeAndReload\(\)[\s\S]*location\.assign\(window\.location\.pathname\)/);
     // 엠블럼 파일이 없으면 둥근 SNU 마크로 떨어진다.
     assert.match(html, /id="brand-logo-fallback"/);
     assert.match(css, /\.brand-logo-img\s*\{/);
+    assert.match(css, /\.brand-university-name\s*\{/);
+});
+
+test('the left rail labels related pages and shows a full live clock', async () => {
+    const html = await readFile('index.html', 'utf8');
+    const css = await readFile('css/core.css', 'utf8');
+    const app = await readFile('js/core.js', 'utf8');
+
+    assert.match(html, /class="rail-section-label">관련 페이지</);
+    assert.match(
+        html,
+        /id="left-brand-rail"[^>]*draggable="false"[^>]*ondragstart="return false"/s
+    );
+    assert.match(
+        css,
+        /\.brand-rail,\s*\.brand-rail \*\s*\{[^}]*-webkit-user-drag:\s*none;[^}]*user-select:\s*none;/s
+    );
+    assert.match(html, /id="rail-clock-time"/);
+    assert.match(html, /id="rail-clock-date"/);
+    assert.match(css, /\.rail-clock\s*\{[^}]*margin-top:\s*auto/s);
+    assert.match(app, /function updateRailClock/);
+    assert.match(app, /second:\s*'2-digit'/);
+    assert.match(app, /weekday:\s*'long'/);
+    assert.match(app, /setInterval\(updateRailClock,\s*1000\)/);
 });
 
 test('view modules register themselves and only one is active at a time', async () => {
@@ -371,6 +653,8 @@ test('view modules register themselves and only one is active at a time', async 
     // 비교 UI는 데스크탑에서만 쓴다.
     assert.match(desktop, /supportsCompare:\s*true/);
     assert.match(mobile, /supportsCompare:\s*true/);
+    assert.match(desktop, /handleNoticeCardArrowKey\(event\)/);
+    assert.match(mobile, /handleNoticeCardArrowKey\(event\)/);
 });
 
 test('the notice title is assembled from a fixed template instead of free text', async () => {
@@ -430,39 +714,36 @@ test('right-rail image errors restore the inquiry fallback', async () => {
     const fallbackSource = app.match(/function renderRightRailInquiryFallback\(\) \{[\s\S]*?\n\}/)?.[0];
 
     assert.ok(fallbackSource);
-    assert.match(fallbackSource, /openModal\('contact-modal'\)/);
+    assert.match(fallbackSource, /openBannerInquiryFromRail\(\)/);
     assert.match(app, /onerror="renderRightRailInquiryFallback\(\)"/);
 });
 
-test('right-rail images retain their layout contract with and without a link', async () => {
+test('right-rail banners start randomly, auto-rotate, and keep manual arrows directly below the image', async () => {
     const app = await readFile('js/core.js', 'utf8');
     const css = await readFile('css/core.css', 'utf8');
-    const source = app.match(/function renderRightRailAd\(\) \{[\s\S]*?\n\}/)?.[0];
-    assert.ok(source);
-
-    const render = slide => {
-        const container = { innerHTML: '' };
-        const renderRightRailAd = new Function(
-            'document', 'getBannerSlidesByPlacement', 'escapeHtml', 'renderRightRailInquiryFallback',
-            `${source}; return renderRightRailAd;`
-        )(
-            { getElementById: () => container },
-            () => [slide],
-            value => String(value),
-            () => { container.innerHTML = 'fallback'; }
-        );
-        renderRightRailAd();
-        return container.innerHTML;
-    };
-
-    const linked = render({ src: 'https://example.test/linked.png', linkUrl: 'https://example.test', text: 'Linked' });
-    const linkless = render({ src: 'https://example.test/linkless.png', linkUrl: '', text: 'Linkless' });
-
-    assert.match(linked, /class="rail-ad-link"/);
-    assert.match(linked, /class="rail-ad-image"/);
-    assert.doesNotMatch(linkless, /class="rail-ad-link"/);
-    assert.match(linkless, /class="rail-ad-image"/);
-    assert.match(css, /\.rail-ad-image\s*\{[^}]*width:\s*100%[^}]*aspect-ratio:\s*9\s*\/\s*16[^}]*object-fit:\s*cover/s);
+    const desktopCss = await readFile('css/desktop.css', 'utf8');
+    assert.match(app, /function renderRightRailAd\(\{ restartRotation = true, transitionDirection = 0 \} = \{\}\)/);
+    assert.match(app, /slide\.linkUrl[\s\S]*class="rail-ad-link\b/);
+    assert.match(app, /class="rail-ad-image"/);
+    assert.match(app, /getBannerSlidesByPlacement\('right_rail'\)\.slice\(0, 5\)/);
+    assert.match(app, /Math\.floor\(Math\.random\(\) \* slides\.length\)/);
+    assert.match(app, /function stepRightRailBanner/);
+    assert.match(app, /이전 배너[\s\S]*&lt;[\s\S]*다음 배너[\s\S]*&gt;/);
+    assert.match(app, /function startBannerRotation/);
+    assert.match(app, /setInterval\([\s\S]*6500\)/);
+    assert.match(app, /class="rail-ad-image-stage\$\{transitionClass\}"[\s\S]*\$\{imageContent\}[\s\S]*\$\{controls\}/);
+    assert.doesNotMatch(app, /class="rail-ad-dot/);
+    assert.match(css, /\.rail-ad-image\s*\{[^}]*width:\s*100%[^}]*height:\s*min\(58vh,\s*560px\)[^}]*object-fit:\s*contain/s);
+    assert.match(css, /\.rail-ad-controls\s*\{[^}]*grid-template-columns:\s*34px 1fr 34px/s);
+    assert.match(css, /\.rail-ad-image-stage\.is-leaving-left\s*\{[^}]*translateX\(-42px\)/s);
+    assert.match(css, /\.rail-ad-image-stage\.is-entering-right\s*\{[^}]*rail-banner-enter-right/s);
+    assert.match(css, /@keyframes rail-banner-enter-left/);
+    assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
+    assert.match(app, /function transitionRightRailBanner/);
+    const renderSource = readNamedFunction(app, 'renderRightRailAd');
+    assert.doesNotMatch(renderSource, /slide\.description|자세히 보기|<h2>/);
+    assert.match(app, /container\.innerHTML = `<div class="rail-ad-viewport">\$\{content\}<\/div>`/);
+    assert.match(desktopCss, /\.rail-right\s*\{[^}]*overflow:\s*hidden/s);
 });
 
 test('right rail chooses the smallest numeric order', async () => {
@@ -496,6 +777,62 @@ test('banner manager only publishes right rail ads now that the top banner is go
     assert.match(app, /new-right_rail-name/);
     assert.match(app, /async function addNewBannerSlide\(placement\)/);
     assert.match(app, /async function moveBanner\(placement, idx, dir\)/);
+    assert.match(html, /id="banner-limit-status"/);
+    assert.match(app, /previewBannerUpload/);
+    assert.match(app, /최대 5개/);
+    assert.match(app, /banner-image-preview/);
+});
+
+test('category tabs keep text-sized targets with evenly balanced outer and inner spacing', async () => {
+    const css = await readFile('css/core.css', 'utf8');
+    const app = await readFile('js/core.js', 'utf8');
+    assert.match(css, /\.category-tabs-inner\s*\{[^}]*display:\s*grid;[^}]*justify-content:\s*space-evenly;[^}]*width:\s*100%/s);
+    assert.match(css, /\.category-tab\s*\{[^}]*justify-content:\s*flex-start;[^}]*flex:\s*0 0 auto/s);
+    assert.match(css, /\.card\.is-filter-entering\s*\{[^}]*opacity:\s*0;[^}]*translateY\(8px\)/s);
+    assert.match(app, /function selectCategoryTab[\s\S]*classList\.toggle\('active', selected\)[\s\S]*filterCards\(true\)/);
+    assert.doesNotMatch(readNamedFunction(app, 'selectCategoryTab'), /buildCategoryTabs\(\)/);
+    assert.match(css, /\.rail-clock strong\s*\{[^}]*font-size:\s*19px/s);
+    assert.match(css, /\.rail-clock span\s*\{[^}]*font-size:\s*13px/s);
+});
+
+test('desktop notice cards expose a delayed hover preview without enabling it on mobile', async () => {
+    const html = await readFile('index.html', 'utf8');
+    const app = await readFile('js/core.js', 'utf8');
+    const css = await readFile('css/core.css', 'utf8');
+    const mobileCss = await readFile('css/mobile.css', 'utf8');
+
+    assert.match(html, /id="notice-hover-preview"/);
+    assert.match(app, /function queueNoticeHoverPreview/);
+    assert.match(app, /\(hover: hover\) and \(pointer: fine\)/);
+    assert.match(app, /\}, 620\);/);
+    assert.match(app, /card\.addEventListener\('mouseenter'/);
+    assert.match(app, /const previewLines = summary\.length \? summary : \[content/);
+    assert.match(app, /AI 3줄 미리보기/);
+    assert.match(app, /notice-hover-preview-summary-list/);
+    assert.match(app, /right-ad-rail/);
+    assert.match(css, /\.notice-hover-preview\s*\{[^}]*position:\s*fixed/s);
+    assert.match(css, /\.notice-hover-preview-summary-list li\s*\{[^}]*text-overflow:\s*ellipsis;[^}]*white-space:\s*nowrap;/s);
+    assert.match(mobileCss, /\.notice-hover-preview\s*\{\s*display:\s*none !important;/);
+});
+
+test('one fixed block keeps two base notice rows in the opposite half without a base load-more', async () => {
+    const html = await readFile('index.html', 'utf8');
+    const app = await readFile('js/core.js', 'utf8');
+    const css = await readFile('css/core.css', 'utf8');
+    const queueSource = readNamedFunction(app, 'queueNoticeHoverPreview');
+    const dragSource = readNamedFunction(app, 'onNoticeSplitDragStart');
+    const showDropSource = readNamedFunction(app, 'showSplitDropOverlay');
+    const filterSource = readNamedFunction(app, 'filterCards');
+
+    assert.doesNotMatch(html, /id="split-notice-more"|showMoreSplitNotices/);
+    assert.match(queueSource, /noticeDragInProgress \|\| activeNoticeSplitDragId/);
+    assert.match(dragSource, /suspendNoticeHoverPreview\(\)/);
+    assert.match(dragSource, /classList\.add\('notice-dragging'\)/);
+    assert.match(filterSource, /singleBlockMode[\s\S]*baseNotices\.slice\(0, 2\)/);
+    assert.doesNotMatch(app, /SPLIT_NOTICE_PAGE_SIZE|showMoreSplitNotices|updateSplitNoticeMore/);
+    assert.match(css, /body\.notice-dragging \.notice-hover-preview\s*\{[^}]*display:\s*none !important;/s);
+    assert.doesNotMatch(css, /\.split-notice-more/);
+    assert.match(showDropSource, /spatial-workspace[\s\S]*is-notice-drop-active/);
 });
 
 test('banner manager omits an untouched expiry so storage preserves it', async () => {
@@ -704,17 +1041,17 @@ test('expired notices use a neutral card and badge state in list and detail view
     const css = await readFile('css/core.css', 'utf8');
     const listStart = app.indexOf('function filterCards()');
     const detailStart = app.indexOf('async function openDetail');
-    const compareStart = app.indexOf('function buildCompareInline');
+    const compareStart = app.indexOf('function renderCompareSpace');
     const expiredTagBinding = /dDay\.isExpired\s*\?\s*'expired'/;
 
     assert.match(app, /isExpired:\s*true/);
     assert.match(app, /card-expired/);
     assert.ok(listStart > 0 && detailStart > listStart && compareStart > detailStart);
-    // 목록·상세·비교 블록 세 곳 모두 같은 기준으로 마감 상태를 표시해야 한다.
+    // 목록·상세는 배지 상태를, 문서 블록은 장식 없는 텍스트 상태를 사용한다.
     assert.match(app.slice(listStart, detailStart), expiredTagBinding);
     assert.match(app.slice(detailStart, compareStart), expiredTagBinding);
-    assert.match(app.slice(compareStart), expiredTagBinding);
-    assert.equal((app.match(/dDay\.isExpired\s*\?\s*'expired'/g) || []).length, 3);
+    assert.match(app.slice(compareStart), /compare-col-kicker[\s\S]*dDay\.text/);
+    assert.equal((app.match(/dDay\.isExpired\s*\?\s*'expired'/g) || []).length, 2);
     assert.match(app, /dDay\.isUrgent\s*\?\s*'d-day'/);
     assert.match(css, /\.card\.card-expired\s*\{/);
     assert.match(css, /\.tags \.tag\.expired\s*\{/);
@@ -797,9 +1134,9 @@ test('deadline-soon sorting renders dated notices without an undefined current-d
         'document', 'notices', 'filterState',
         'selectedCategoryFilters', 'calcDDay', 'matchesDeadlineStatus',
         'escapeHtml', 'openDetail', 'formatDateWithWeekday', 'compareBlocks',
-        'buildCompareInline', 'noticeViewportLoader',
-        'onCardDragOver', 'onCardDragLeave', 'onCardDrop',
-        'onHandleClick', 'onCardDragStart', 'onCardDragEnd',
+        'renderCompareSpace', 'noticeViewportLoader',
+        'renderPosterTitle', 'queueNoticeHoverPreview', 'cancelNoticeHoverPreview',
+        'onNoticeSplitDragStart', 'onNoticeSplitDragEnd',
         `${filterCardsSource}; return filterCards;`
     )(
         document,
@@ -820,8 +1157,7 @@ test('deadline-soon sorting renders dated notices without an undefined current-d
         [],
         () => ({}),
         { observeThumbnail() {} },
-        () => {},
-        () => {},
+        value => String(value),
         () => {},
         () => {},
         () => {},
@@ -846,9 +1182,56 @@ test('image notices lazy-load a poster; imageless notices show a big title poste
     // 사진 없는 카드: 포스터 자리에 제목을 크게.
     assert.match(filterCardsSource, /card-poster is-text/);
     assert.match(filterCardsSource, /card-poster-title/);
+    assert.match(filterCardsSource, /renderPosterTitle\(rawTitle\)/);
+    const posterLinesSource = readNamedFunction(app, 'posterTitleLines');
+    const posterTitleLines = new Function(`${posterLinesSource}; return posterTitleLines;`)();
+    assert.deepEqual(
+        posterTitleLines('[화생회] WE–Meet Project 참가자 모집'),
+        ['[화생회]', 'WE–Meet Project', '참가자 모집']
+    );
     // 날짜는 요일까지, 본문 발췌는 요약을 쓴다.
     assert.match(filterCardsSource, /formatDateWithWeekday/);
     assert.match(filterCardsSource, /card-excerpt/);
+});
+
+test('notice detail supports inline image navigation, image copying, and a shadowed body', async () => {
+    const html = await readFile('index.html', 'utf8');
+    const app = await readFile('js/core.js', 'utf8');
+    const css = await readFile('css/core.css', 'utf8');
+
+    assert.match(html, /id="detail-image-prev"[^>]*onclick="navDetailImage\(-1, event\)"/);
+    assert.match(html, /id="detail-image-next"[^>]*onclick="navDetailImage\(1, event\)"/);
+    assert.match(html, /id="detail-image-counter"/);
+    assert.match(html, /id="viewer-copy-btn"[^>]*onclick="copyCurrentViewerImage\(event\)"/);
+    assert.match(html, /id="viewer-img"[^>]*title="우클릭으로도 이미지를 복사할 수 있습니다"/s);
+    assert.match(html, /class="overlay image-viewer"[^>]*role="dialog"/);
+    assert.match(html, /class="image-viewer-stage"[\s\S]*ontouchstart="startImageSwipe\(event\)"[\s\S]*ontouchend="endImageSwipe\(event, 'viewer'\)"/);
+    assert.match(html, /id="detail-hero"[\s\S]*ontouchend="endImageSwipe\(event, 'detail'\)"/);
+    assert.match(app, /function updateDetailImage/);
+    assert.match(app, /function copyCurrentViewerImage/);
+    assert.match(app, /function startImageSwipe/);
+    assert.match(app, /function endImageSwipe/);
+    assert.match(app, /new ClipboardItem\(\{ 'image\/png': pngBlob \}\)/);
+    assert.match(css, /\.original-text-box\s*\{[^}]*box-shadow:\s*0 8px 24px/s);
+    assert.match(css, /\.image-viewer-toolbar\s*\{/);
+    assert.match(css, /\.image-viewer-stage\s*\{/);
+    assert.match(css, /\.image-viewer-action\s*,\s*\.image-viewer-close\s*\{/s);
+    assert.doesNotMatch(html, /id="image-viewer-modal"[^>]*style=/);
+
+    const source = readNamedFunction(app, 'navDetailImage');
+    const result = new Function(`
+        let detailImageArray = ['one', 'two', 'three'];
+        let detailImageIndex = 0;
+        let updates = 0;
+        function updateDetailImage() { updates += 1; }
+        ${source}
+        navDetailImage(-1);
+        const wrappedBack = detailImageIndex;
+        navDetailImage(1);
+        navDetailImage(1);
+        return { wrappedBack, current: detailImageIndex, updates };
+    `)();
+    assert.deepEqual(result, { wrappedBack: 2, current: 1, updates: 3 });
 });
 
 test('notice cards are equal-height SNU-newsroom cards in the shared core layer', async () => {
@@ -862,7 +1245,8 @@ test('notice cards are equal-height SNU-newsroom cards in the shared core layer'
     assert.match(css, /\.card-poster\s*\{[^}]*height:\s*216px/s);
     assert.match(css, /\.card-img-preview\s*\{[^}]*object-fit:\s*cover/s);
     // 사진 없는 카드는 큰 제목을 보여준다.
-    assert.match(css, /\.card-poster-title\s*\{[^}]*font-size:\s*24px/s);
+    assert.match(css, /\.card-poster-title\s*\{[^}]*font-family:\s*'Pretendard'[^}]*font-size:\s*25px/s);
+    assert.match(css, /\.card-poster-title-line\.is-host\s*\{/);
     assert.match(css, /\.card-excerpt\s*\{[^}]*-webkit-line-clamp:\s*2/s);
     assert.match(app, /class="notice-empty-state"/);
     assert.doesNotMatch(css, /\.grid\s*\{[^}]*column-count/s);
@@ -877,7 +1261,10 @@ test('column counts live in the per-view layers, not in core', async () => {
     assert.match(desktop, /html\[data-view="desktop"\] \.grid\s*\{[^}]*grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\)/s);
     assert.match(desktop, /@media \(max-width:\s*1200px\)[\s\S]*grid-template-columns:\s*repeat\(3/);
     assert.match(desktop, /@media \(max-width:\s*900px\)[\s\S]*grid-template-columns:\s*repeat\(2/);
-    assert.match(mobile, /html\[data-view="mobile"\] \.grid\s*\{[^}]*grid-template-columns:\s*1fr/s);
+    assert.match(mobile, /html\[data-view="mobile"\] \.grid\s*\{[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/s);
+    assert.doesNotMatch(mobile, /\.notice-base-block \.grid,\s*\nhtml\[data-view="mobile"\] \.compare-space-stage/);
+    assert.match(mobile, /\.image-viewer-action\s*\{[^}]*min-height:\s*38px/s);
+    assert.match(mobile, /\.image-viewer \.nav-btn\.left\s*\{[^}]*left:\s*8px/s);
     // 모바일에서는 고정 레일이 화면을 덮으면 안 된다.
     assert.match(mobile, /html\[data-view="mobile"\] \.rail-right\s*\{[^}]*position:\s*static/s);
 });
@@ -889,13 +1276,13 @@ test('notice paging loads one page at a time without duplicate summaries', async
     runInNewContext(`${source}; this.createNoticeRepository = createNoticeRepository;`, context);
     const requestedPaths = [];
     const responses = {
-        '/api/notices?page=1&limit=20': {
+        '/api/notices?page=1&limit=16': {
             notices: [{ id: 1, title: 'one' }, { id: 2, title: 'two' }],
-            pagination: { page: 1, limit: 20, total: 3, totalPages: 2 }
+            pagination: { page: 1, limit: 16, total: 3, totalPages: 2 }
         },
-        '/api/notices?page=2&limit=20': {
+        '/api/notices?page=2&limit=16': {
             notices: [{ id: 2, title: 'two again' }, { id: 3, title: 'three' }],
-            pagination: { page: 2, limit: 20, total: 3, totalPages: 2 }
+            pagination: { page: 2, limit: 16, total: 3, totalPages: 2 }
         }
     };
     const repository = context.createNoticeRepository(async path => {
@@ -907,8 +1294,8 @@ test('notice paging loads one page at a time without duplicate summaries', async
     await repository.loadPage(2);
 
     assert.deepEqual(requestedPaths, [
-        '/api/notices?page=1&limit=20',
-        '/api/notices?page=2&limit=20'
+        '/api/notices?page=1&limit=16',
+        '/api/notices?page=2&limit=16'
     ]);
     assert.deepEqual(
         Array.from(repository.notices, notice => notice.id),
@@ -916,7 +1303,7 @@ test('notice paging loads one page at a time without duplicate summaries', async
     );
     assert.deepEqual(
         { ...repository.pagination },
-        { page: 2, limit: 20, total: 3, totalPages: 2 }
+        { page: 2, limit: 16, total: 3, totalPages: 2 }
     );
 });
 
@@ -928,10 +1315,10 @@ test('lazy notice detail shares an in-flight request and upgrades its summary', 
     const requestedPaths = [];
     const repository = context.createNoticeRepository(async path => {
         requestedPaths.push(path);
-        if (path === '/api/notices?page=1&limit=20') {
+        if (path === '/api/notices?page=1&limit=16') {
             return {
                 notices: [{ id: 7, title: 'summary' }],
-                pagination: { page: 1, limit: 20, total: 1, totalPages: 1 }
+                pagination: { page: 1, limit: 16, total: 1, totalPages: 1 }
             };
         }
         return {
@@ -954,25 +1341,36 @@ test('lazy notice detail shares an in-flight request and upgrades its summary', 
     assert.equal(second, first);
     assert.equal(repository.notices[0].content, 'full body');
     assert.deepEqual(requestedPaths, [
-        '/api/notices?page=1&limit=20',
+        '/api/notices?page=1&limit=16',
         '/api/notices/7'
     ]);
 });
 
-test('notice load-more control reflects paging and loading state', async () => {
+test('notice pagination renders previous, numbered, and next page controls', async () => {
     const html = await readFile('index.html', 'utf8');
     const app = await readFile('js/core.js', 'utf8');
-    assert.match(html, /id="notice-load-more"/);
-    assert.match(html, /onclick="loadMoreNotices\(\)"/);
+    assert.match(html, /id="notice-page-prev"/);
+    assert.match(html, /id="notice-page-numbers"/);
+    assert.match(html, /id="notice-page-next"/);
+    assert.match(html, /id="notice-page-prev"[\s\S]*?&lt;<\/button>/);
+    assert.match(html, /id="notice-page-next"[\s\S]*?&gt;<\/button>/);
+    assert.doesNotMatch(html, /onclick="goToPreviousNoticePage\(\)">이전<\/button>/);
+    assert.doesNotMatch(html, /onclick="goToNextNoticePage\(\)">다음<\/button>/);
+    assert.match(app, /async function goToNoticePage/);
+    assert.doesNotMatch(html, /notice-load-more|더 보기|notice-scroll-sentinel/);
 
     const source = readNamedFunction(app, 'updateNoticePaginationUI');
-    const button = { hidden: false, disabled: false };
+    const previous = { disabled: false };
+    const next = { disabled: false };
+    const numbers = { innerHTML: '' };
     const status = { textContent: '' };
     const context = {
         document: {
             getElementById(id) {
-                if (id === 'notice-load-more') return button;
-                if (id === 'notice-load-more-status') return status;
+                if (id === 'notice-page-prev') return previous;
+                if (id === 'notice-page-next') return next;
+                if (id === 'notice-page-numbers') return numbers;
+                if (id === 'notice-page-status') return status;
                 return null;
             }
         }
@@ -980,28 +1378,24 @@ test('notice load-more control reflects paging and loading state', async () => {
     runInNewContext(`${source}; this.updateNoticePaginationUI = updateNoticePaginationUI;`, context);
 
     context.updateNoticePaginationUI(
-        { page: 1, totalPages: 2, total: 3 },
-        2,
+        { page: 3, totalPages: 8, total: 153 },
         false
     );
-    assert.equal(button.hidden, false);
-    assert.equal(button.disabled, false);
-    assert.equal(status.textContent, '2 / 3');
+    assert.equal(previous.disabled, false);
+    assert.equal(next.disabled, false);
+    assert.equal(numbers.hidden, false);
+    assert.match(numbers.innerHTML, /aria-current="page"[\s\S]*>3<\/button>/);
+    assert.equal(status.textContent, '3 / 8 페이지 · 전체 153건');
 
-    context.updateNoticePaginationUI(
-        { page: 2, totalPages: 2, total: 3 },
-        3,
-        false
-    );
-    assert.equal(button.hidden, true);
+    context.updateNoticePaginationUI({ page: 1, totalPages: 8, total: 153 }, true);
+    assert.equal(previous.disabled, true);
+    assert.equal(next.disabled, true);
+    assert.match(numbers.innerHTML, /disabled/);
 
-    context.updateNoticePaginationUI(
-        { page: 1, totalPages: 2, total: 3 },
-        2,
-        true
-    );
-    assert.equal(button.hidden, false);
-    assert.equal(button.disabled, true);
+    context.updateNoticePaginationUI({ page: 1, totalPages: 1, total: 3 }, false);
+    assert.equal(previous.hidden, true);
+    assert.equal(numbers.hidden, true);
+    assert.equal(next.hidden, true);
 });
 
 test('notice viewport loader defers thumbnails until they intersect', async () => {
@@ -1057,62 +1451,6 @@ test('notice viewport loader defers thumbnails until they intersect', async () =
 
     listeners.error();
     assert.equal(image.src, '/icons/default-notice-thumbnail.png');
-});
-
-test('notice viewport loader guards infinite-scroll requests and has a fallback', async () => {
-    const app = await readFile('js/core.js', 'utf8');
-    const source = readNamedFunction(app, 'createNoticeViewportLoader');
-    const observers = [];
-    class FakeIntersectionObserver {
-        constructor(callback) {
-            this.callback = callback;
-            observers.push(this);
-        }
-        observe() {}
-        unobserve() {}
-        disconnect() {}
-        emit(target) {
-            return this.callback([{ target, isIntersecting: true }]);
-        }
-    }
-    const context = {};
-    runInNewContext(`${source}; this.createNoticeViewportLoader = createNoticeViewportLoader;`, context);
-    const loader = context.createNoticeViewportLoader({
-        IntersectionObserverCtor: FakeIntersectionObserver,
-        resolveUrl: value => value,
-        defaultUrl: '/icons/default-notice-thumbnail.png'
-    });
-    let resolveLoad;
-    let calls = 0;
-    const loadNextPage = () => {
-        calls += 1;
-        return new Promise(resolve => {
-            resolveLoad = resolve;
-        });
-    };
-    const sentinel = {};
-    loader.observePaginationSentinel(sentinel, loadNextPage);
-
-    observers[1].emit(sentinel);
-    observers[1].emit(sentinel);
-    assert.equal(calls, 1);
-    resolveLoad();
-    await new Promise(resolve => setImmediate(resolve));
-    observers[1].emit(sentinel);
-    assert.equal(calls, 2);
-
-    const fallbackLoader = context.createNoticeViewportLoader({
-        IntersectionObserverCtor: undefined,
-        resolveUrl: value => value,
-        defaultUrl: '/icons/default-notice-thumbnail.png'
-    });
-    const fallbackImage = {
-        dataset: { thumbnailSrc: '/icons/default-notice-thumbnail.png' },
-        src: '',
-        addEventListener() {}
-    };
-    fallbackLoader.observeThumbnail(fallbackImage);
-    assert.equal(fallbackImage.src, '/icons/default-notice-thumbnail.png');
 });
 
 test('Cloudflare scheduled worker triggers the protected crawl endpoint', async () => {

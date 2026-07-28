@@ -84,7 +84,9 @@ function parseModelJson(text) {
 
 function buildPrompt({ title, content, categories, correction }) {
     const categoryList = categories.length > 0
-        ? categories.map(category => `${category.id}: ${category.name}`).join('\n')
+        ? categories.map(category =>
+            `${category.id}: ${category.name} — ${category.definition || '이름의 의미를 엄격하게 적용'}`
+        ).join('\n')
         : '없음';
     const correctionText = correction
         ? '\n이전 응답이 스키마를 만족하지 못했습니다. 설명 없이 올바른 JSON만 다시 출력하세요.\n'
@@ -101,6 +103,15 @@ function buildPrompt({ title, content, categories, correction }) {
   "existingCategoryIds": [기존 카테고리 ID],
   "confidence": 0과 1 사이 숫자
 }
+
+카테고리 분류 원칙:
+- 신청: 사용자가 링크·폼·메일 등으로 직접 제출해야 하고 마감이 있을 때만 선택합니다.
+- 학사: 학점·졸업·수강에 직접 영향을 주며 다른 일반 채널로 대체하기 어려운 필수 공지입니다.
+- 혜택/제휴: 돈·물품·할인·지원 등 경제적 이익이 있지만 놓쳐도 학사상 불이익은 없습니다.
+- 캠퍼스: 특정 날짜에 출입·시설·교통·정전 등 캠퍼스 상태가 평소와 달라집니다.
+- 자치: 일반 학부생이 아니라 대의원·학생회 집행부 등 자치기구 구성원이 주 수신 대상입니다.
+- 여러 범주가 명백히 동시에 성립하면 중복 선택할 수 있지만, 약한 연관성으로 늘리지 말고 가능한 한 가장 핵심적인 한 범주만 선택합니다.
+- 제목의 단어만 보지 말고 본문의 행동 요구, 마감, 실제 영향과 수신 대상을 근거로 판단합니다.
 
 활성 카테고리:
 ${categoryList}
@@ -147,7 +158,8 @@ export function createNoticeAnalyzer({
                 .filter(category => category?.isActive !== false)
                 .map(category => ({
                     id: Number(category.id),
-                    name: String(category.name || '')
+                    name: String(category.name || ''),
+                    definition: String(category.definition || '')
                 }))
                 .filter(category => Number.isFinite(category.id) && category.name);
             const activeCategoryIds = new Set(categories.map(category => category.id));

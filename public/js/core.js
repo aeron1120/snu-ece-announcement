@@ -23,10 +23,36 @@ const API_BASE_URL = (
 let currentViewId = null;
 let currentImageArray = [];
 let currentImageIndex = 0;
+let detailImageArray = [];
+let detailImageIndex = 0;
+let imageSwipeStartX = null;
+let boardScrollPosition = 0;
+let detailHistoryPushed = false;
 
 let notices = [];
 let bannerSlides = [];
-let compareBlocks = [];   // 인라인 비교 블록에 담긴 공지 id들 (데스크탑 6, 모바일 2)
+let activeBannerSlideIndex = 0;
+let initialBannerRandomized = false;
+let bannerRotationInterval = null;
+let bannerTransitionTimer = null;
+let compareBlocks = [];   // 독립 비교 공간에 담긴 공지 id들 (데스크탑 4, 모바일 2)
+let compareWorkspaceOpen = false;
+let compareDockSide = 'right';
+let compareLayoutMode = 'stack';
+let expandedCompareBlocks = new Set();
+let activeNoticeSplitDragId = '';
+let noticeSplitDragOverlay = null;
+let noticeSplitOverlayTimer = null;
+let noticeDragInProgress = false;
+let suppressNoticeClickUntil = 0;
+let pointerDraggedCompareId = '';
+let pointerDragHandle = null;
+let compareDragOverlay = null;
+let activeCompareDropTargetId = '';
+let activeCompareDropPosition = 'after';
+let activeFeedbackCategory = 'general';
+let noticeHoverPreviewTimer = null;
+let activeHoverPreviewNoticeId = '';
 
 let adminInfo = { name: "ECE 학생회장 (이름 : 박지호)", phone: "010-1234-5678", kakao: "snu_ece_pres" };
 let bannerAdminInfo = { name: "학생회 대외협력국 (국장 : 이배너)", phone: "010-8888-9999", kakao: "snu_ece_ads" };
@@ -35,6 +61,21 @@ let superAdminAuthToken = '';
 let bannerManageAuthToken = '';
 let activeCategories = [];
 let selectedCategoryFilters = new Set();
+
+const NOTICE_CATEGORY_ORDER = Object.freeze([
+    'application',
+    'academics',
+    'benefits-partnerships',
+    'campus',
+    'governance'
+]);
+
+function orderedNoticeCategories(categories = activeCategories) {
+    const order = new Map(NOTICE_CATEGORY_ORDER.map((slug, index) => [slug, index]));
+    return categories
+        .filter(category => order.has(category.slug))
+        .sort((a, b) => order.get(a.slug) - order.get(b.slug));
+}
 
 const filterState = {
     'deadline-status': '전체', 'host': '전체', 'has-image': '전체', 'views': '전체', 'sort': '최신순'
@@ -71,6 +112,26 @@ function applyViewModule(mode) {
 function registerViewModule(name, viewModule) {
     viewModules.set(name, viewModule);
     if (getLayoutMode() === name) applyViewModule(name);
+}
+
+function handleNoticeCardArrowKey(event) {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+    if (document.getElementById('board-view')?.hidden) return;
+    const tag = document.activeElement?.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+    if (document.querySelector('.overlay[style*="flex"]')) return;
+
+    const cards = Array.from(document.querySelectorAll('#notice-grid .card'));
+    if (cards.length === 0) return;
+    const current = cards.indexOf(document.activeElement);
+    const step = event.key === 'ArrowRight' ? 1 : -1;
+    const nextIndex = current === -1
+        ? (step === 1 ? 0 : cards.length - 1)
+        : (current + step + cards.length) % cards.length;
+    const next = cards[nextIndex];
+    next.setAttribute('tabindex', '-1');
+    next.focus();
+    event.preventDefault();
 }
 
 function setLayoutMode(mode, { persist = true } = {}) {
@@ -152,8 +213,6 @@ function createNoticeViewportLoader(options) {
         defaultUrl
     } = options;
     let thumbnailObserver = null;
-    let paginationObserver = null;
-    let paginationLoading = false;
 
     function loadThumbnail(image) {
         const pendingUrl = image?.dataset?.thumbnailSrc;
@@ -185,22 +244,8 @@ function createNoticeViewportLoader(options) {
         }
     }
 
-    function observePaginationSentinel(sentinel, loadNextPage) {
-        if (!sentinel || typeof loadNextPage !== 'function' || !IntersectionObserverCtor) return;
-        paginationObserver?.disconnect();
-        paginationObserver = new IntersectionObserverCtor(entries => {
-            if (paginationLoading || !entries.some(entry => entry.isIntersecting)) return;
-            paginationLoading = true;
-            Promise.resolve(loadNextPage()).finally(() => {
-                paginationLoading = false;
-            });
-        }, { rootMargin: '0px 0px 240px 0px', threshold: 0 });
-        paginationObserver.observe(sentinel);
-    }
-
     return {
-        observeThumbnail,
-        observePaginationSentinel
+        observeThumbnail
     };
 }
 
@@ -240,13 +285,19 @@ async function apiRequest(path, options = {}) {
 
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
-        throw new Error(data?.error || `요청 실패 (${response.status})`);
+        const requestError = new Error(data?.error || `요청 실패 (${response.status})`);
+        requestError.status = response.status;
+        requestError.code = data?.code || '';
+        requestError.retryAfterSeconds = Number(
+            data?.retryAfterSeconds || response.headers.get('retry-after') || 0
+        );
+        throw requestError;
     }
     return data;
 }
 
 function createNoticeRepository(request) {
-    const pageSize = 20;
+    const pageSize = 16;
     let items = [];
     let pageState = { page: 0, limit: pageSize, total: 0, totalPages: 0 };
     const detailRequests = new Map();
@@ -307,46 +358,85 @@ let noticePageLoading = false;
 
 function updateNoticePaginationUI(
     pagination = noticeRepository.pagination,
-    loadedCount = notices.length,
     isLoading = noticePageLoading
 ) {
-    const button = document.getElementById('notice-load-more');
-    const status = document.getElementById('notice-load-more-status');
-    if (!button || !status) return;
+    const previous = document.getElementById('notice-page-prev');
+    const next = document.getElementById('notice-page-next');
+    const numbers = document.getElementById('notice-page-numbers');
+    const status = document.getElementById('notice-page-status');
+    if (!previous || !next || !numbers || !status) return;
 
-    const page = Number(pagination?.page) || 0;
+    const page = Math.max(1, Number(pagination?.page) || 1);
     const totalPages = Number(pagination?.totalPages) || 0;
     const total = Number(pagination?.total) || 0;
-    status.textContent = `${Math.min(Number(loadedCount) || 0, total)} / ${total}`;
-    button.hidden = totalPages === 0 || page >= totalPages;
-    button.disabled = Boolean(isLoading);
-    button.textContent = isLoading ? '불러오는 중...' : '더 보기';
+    const hasMultiplePages = totalPages > 1;
+    const visibleTotalPages = Math.max(1, totalPages);
+    const windowSize = 5;
+    let start = Math.max(1, page - Math.floor(windowSize / 2));
+    const end = Math.min(visibleTotalPages, start + windowSize - 1);
+    start = Math.max(1, end - windowSize + 1);
+
+    numbers.innerHTML = Array.from(
+        { length: end - start + 1 },
+        (_, index) => start + index
+    ).map(pageNumber => `
+        <button type="button" class="${pageNumber === page ? 'active' : ''}"
+                aria-label="${pageNumber}페이지" aria-current="${pageNumber === page ? 'page' : 'false'}"
+                onclick="goToNoticePage(${pageNumber})"
+                ${isLoading ? 'disabled' : ''}>${pageNumber}</button>
+    `).join('');
+    previous.hidden = !hasMultiplePages;
+    numbers.hidden = !hasMultiplePages;
+    next.hidden = !hasMultiplePages;
+    previous.disabled = Boolean(isLoading) || page <= 1 || totalPages === 0;
+    next.disabled = Boolean(isLoading) || totalPages === 0 || page >= totalPages;
+    status.textContent = totalPages > 0
+        ? `${page} / ${totalPages} 페이지 · 전체 ${total}건`
+        : '표시할 공지가 없습니다.';
 }
 
 async function loadNoticePage(page, { replace = false } = {}) {
     const result = await noticeRepository.loadPage(page, { replace });
     notices = result.notices;
-    updateNoticePaginationUI(result.pagination, notices.length, noticePageLoading);
+    updateNoticePaginationUI(result.pagination, noticePageLoading);
     return result;
 }
 
-async function loadMoreNotices() {
-    const { page, totalPages } = noticeRepository.pagination;
-    if (noticePageLoading || page >= totalPages) return;
+async function goToNoticePage(page) {
+    const targetPage = Number(page);
+    const totalPages = Number(noticeRepository.pagination.totalPages) || 0;
+    if (noticePageLoading || !Number.isInteger(targetPage)
+        || targetPage < 1 || targetPage > totalPages
+        || targetPage === noticeRepository.pagination.page) return;
 
     noticePageLoading = true;
-    updateNoticePaginationUI(noticeRepository.pagination, notices.length, true);
+    updateNoticePaginationUI(noticeRepository.pagination, true);
     try {
-        await loadNoticePage(page + 1);
+        if (compareBlocks.length > 0) {
+            compareBlocks = [];
+            compareWorkspaceOpen = false;
+            compareLayoutMode = 'stack';
+        }
+        await loadNoticePage(targetPage, { replace: true });
         buildHostButtons();
         filterCards();
+        document.getElementById('spatial-workspace')
+            ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     } catch (error) {
-        console.error('공지 목록 추가 로드 실패:', error);
-        alert('공지 목록을 더 불러오지 못했습니다. 잠시 후 다시 시도해주세요.');
+        console.error('공지 페이지 이동 실패:', error);
+        alert('공지 페이지를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.');
     } finally {
         noticePageLoading = false;
-        updateNoticePaginationUI(noticeRepository.pagination, notices.length, false);
+        updateNoticePaginationUI(noticeRepository.pagination, false);
     }
+}
+
+function goToPreviousNoticePage() {
+    return goToNoticePage((Number(noticeRepository.pagination.page) || 1) - 1);
+}
+
+function goToNextNoticePage() {
+    return goToNoticePage((Number(noticeRepository.pagination.page) || 1) + 1);
 }
 
 async function getNoticeDetail(id) {
@@ -398,23 +488,9 @@ async function loadData() {
     startBannerPolling();
 }
 
-// 제목을 눌렀을 때의 새로고침. 페이지를 통째로 다시 받지 않고 데이터만 갱신한다.
-async function reloadNoticeBoard() {
-    const title = document.getElementById('site-title');
-    if (title) title.disabled = true;
-    try {
-        await loadNoticePage(1, { replace: true });
-        await loadCategories();
-        buildCategoryTabs();
-        await loadBannerSlides();
-        buildHostButtons();
-        filterCards();
-    } catch (error) {
-        console.error('공지 새로고침 실패:', error);
-        alert('공지를 다시 불러오지 못했습니다. 잠시 후 시도해주세요.');
-    } finally {
-        if (title) title.disabled = false;
-    }
+// 엠블럼은 어디서 눌러도 쿼리·해시·상세 상태가 없는 홈을 새 문서로 다시 연다.
+function goHomeAndReload() {
+    window.location.assign(window.location.pathname);
 }
 
 async function loadBannerSlides() {
@@ -422,6 +498,7 @@ async function loadBannerSlides() {
         const result = await apiRequest('/api/banner-slides', { method: 'GET' });
         if (Array.isArray(result?.slides)) {
             bannerSlides = result.slides;
+            randomizeInitialBanner();
             renderRightRailAd();
         }
     } catch (error) {
@@ -441,6 +518,7 @@ function startBannerPolling() {
                 const newSlides = result.slides;
                 if (JSON.stringify(bannerSlides) !== JSON.stringify(newSlides)) {
                     bannerSlides = newSlides;
+                    randomizeInitialBanner();
                     renderRightRailAd();
                 }
             }
@@ -463,22 +541,84 @@ function getBannerSlidesByPlacement(placement) {
         .sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0));
 }
 
+function randomizeInitialBanner() {
+    if (initialBannerRandomized) return;
+    const slides = getBannerSlidesByPlacement('right_rail').slice(0, 5);
+    if (!slides.length) return;
+    activeBannerSlideIndex = Math.floor(Math.random() * slides.length);
+    initialBannerRandomized = true;
+}
+
+function stopBannerRotation() {
+    if (!bannerRotationInterval) return;
+    clearInterval(bannerRotationInterval);
+    bannerRotationInterval = null;
+}
+
+function startBannerRotation() {
+    stopBannerRotation();
+    const slides = getBannerSlidesByPlacement('right_rail').slice(0, 5);
+    if (slides.length < 2) return;
+    bannerRotationInterval = window.setInterval(() => {
+        transitionRightRailBanner(
+            (activeBannerSlideIndex + 1) % slides.length,
+            { restartRotation: false, direction: 1 }
+        );
+    }, 6500);
+}
+
+function transitionRightRailBanner(index, { restartRotation = true, direction = 1 } = {}) {
+    const slides = getBannerSlidesByPlacement('right_rail').slice(0, 5);
+    if (!slides.length) return;
+    const nextIndex = (Number(index || 0) + slides.length) % slides.length;
+    const imageStage = document.querySelector('#right-rail-ad-content .rail-ad-image-stage');
+    const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    clearTimeout(bannerTransitionTimer);
+    if (!imageStage || reduceMotion) {
+        activeBannerSlideIndex = nextIndex;
+        renderRightRailAd({ restartRotation, transitionDirection: 0 });
+        return;
+    }
+    imageStage.classList.add(direction < 0 ? 'is-leaving-right' : 'is-leaving-left');
+    bannerTransitionTimer = window.setTimeout(() => {
+        activeBannerSlideIndex = nextIndex;
+        renderRightRailAd({ restartRotation, transitionDirection: direction });
+        bannerTransitionTimer = null;
+    }, 220);
+}
+
+function selectRightRailBanner(index, direction = 1) {
+    const slides = getBannerSlidesByPlacement('right_rail').slice(0, 5);
+    if (!slides.length) return;
+    transitionRightRailBanner(index, { direction });
+}
+
+function stepRightRailBanner(direction, event) {
+    event?.preventDefault();
+    event?.stopPropagation();
+    const step = Number(direction || 0);
+    selectRightRailBanner(activeBannerSlideIndex + step, step);
+}
+
 function renderRightRailInquiryFallback() {
     const container = document.getElementById('right-rail-ad-content');
     if (!container) return;
+    stopBannerRotation();
 
     container.innerHTML = `
         <span class="ad-label">AD</span>
         <h2>배너 광고 문의</h2>
         <p>학생들에게 소식을 알릴 세로 배너를 등록해보세요.</p>
-        <button class="rail-cta" type="button" onclick="openModal('contact-modal')">배너 문의하기</button>
+        <button class="rail-cta" type="button" onclick="openBannerInquiryFromRail()">배너 문의하기</button>
     `;
 }
 
-function renderRightRailAd() {
+function renderRightRailAd({ restartRotation = true, transitionDirection = 0 } = {}) {
     const container = document.getElementById('right-rail-ad-content');
     if (!container) return;
-    const slide = getBannerSlidesByPlacement('right_rail')[0];
+    const slides = getBannerSlidesByPlacement('right_rail').slice(0, 5);
+    if (activeBannerSlideIndex >= slides.length) activeBannerSlideIndex = 0;
+    const slide = slides[activeBannerSlideIndex];
 
     if (!slide) {
         renderRightRailInquiryFallback();
@@ -488,18 +628,30 @@ function renderRightRailAd() {
     const image = slide.src
         ? `<img class="rail-ad-image" src="${escapeHtml(slide.src)}" alt="${escapeHtml(slide.altText || slide.name || '광고 이미지')}" onerror="renderRightRailInquiryFallback()">`
         : '';
+    const controls = slides.length > 1 ? `
+        <div class="rail-ad-controls" role="group" aria-label="배너 넘기기">
+            <button type="button" aria-label="이전 배너" title="이전 배너"
+                    onclick="stepRightRailBanner(-1, event)">&lt;</button>
+            <span class="rail-ad-count">${activeBannerSlideIndex + 1} / ${slides.length}</span>
+            <button type="button" aria-label="다음 배너" title="다음 배너"
+                    onclick="stepRightRailBanner(1, event)">&gt;</button>
+        </div>
+    ` : '';
+    const imageContent = slide.linkUrl
+        ? `<a class="rail-ad-link rail-ad-image-link" href="${escapeHtml(slide.linkUrl)}" target="_blank" rel="noopener noreferrer">${image}</a>`
+        : image;
+    const transitionClass = transitionDirection < 0
+        ? ' is-entering-left'
+        : (transitionDirection > 0 ? ' is-entering-right' : '');
     const content = `
         <span class="ad-label">AD</span>
-        ${image}
-        <h2>${escapeHtml(slide.text || slide.name || '광고')}</h2>
-        ${slide.description ? `<p>${escapeHtml(slide.description)}</p>` : ''}
-        ${slide.linkUrl ? '<span class="rail-cta">자세히 보기</span>' : ''}
+        <div class="rail-ad-image-stage${transitionClass}">${imageContent}</div>
+        ${controls}
     `;
-    if (slide.linkUrl) {
-        container.innerHTML = `<a class="rail-ad-link" href="${escapeHtml(slide.linkUrl)}" target="_blank" rel="noopener noreferrer">${content}</a>`;
-    } else {
-        container.innerHTML = content;
-    }
+    container.innerHTML = `<div class="rail-ad-viewport">${content}</div>`;
+    container.onmouseenter = stopBannerRotation;
+    container.onmouseleave = startBannerRotation;
+    if (restartRotation) startBannerRotation();
 }
 
 // ========================================
@@ -538,6 +690,32 @@ function matchesDeadlineStatus(deadlineStatus, dDay, hasDeadline) {
 
 // 서울대 소식처럼 요일까지 붙인 날짜. "2026.07.27.(월)" 형태.
 const WEEKDAY_KO = ['일', '월', '화', '수', '목', '금', '토'];
+let railClockTimer = null;
+
+function updateRailClock(now = new Date()) {
+    const time = document.getElementById('rail-clock-time');
+    const date = document.getElementById('rail-clock-date');
+    if (!time || !date) return;
+    time.textContent = new Intl.DateTimeFormat('ko-KR', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+    }).format(now);
+    date.textContent = new Intl.DateTimeFormat('ko-KR', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        weekday: 'long'
+    }).format(now);
+}
+
+function startRailClock() {
+    updateRailClock();
+    if (railClockTimer) clearInterval(railClockTimer);
+    railClockTimer = setInterval(updateRailClock, 1000);
+}
+
 function formatDateWithWeekday(value) {
     if (!value) return '';
     // 'YYYY-MM-DD'는 로컬 자정으로 파싱해 시간대에 따라 하루가 밀리지 않게 한다.
@@ -560,6 +738,141 @@ function escapeHtml(value) {
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#39;');
+}
+
+function posterTitleLines(value, maxLines = 4) {
+    const normalized = String(value || '제목 없음').replace(/\s+/g, ' ').trim();
+    const lines = [];
+    const hostMatch = normalized.match(/^(\[[^\]]+\])\s*(.*)$/);
+    let remainder = normalized;
+    if (hostMatch) {
+        lines.push(hostMatch[1]);
+        remainder = hostMatch[2];
+    }
+
+    let words = remainder.split(' ').filter(Boolean)
+        .filter((word, index, all) => index === 0 || word !== all[index - 1]);
+    const titleEndings = new Set(['모집', '안내', '신청', '접수', '공지', '행사', '발표', '연장']);
+    let endingLine = '';
+    if (words.length >= 3 && titleEndings.has(words.at(-1))) {
+        endingLine = words.slice(-2).join(' ');
+        words = words.slice(0, -2);
+    }
+    const availableLines = Math.max(1, maxLines - lines.length - (endingLine ? 1 : 0));
+    const targetLength = Math.max(15, Math.min(18, Math.ceil(
+        words.reduce((sum, word) => sum + word.length + 1, 0) / availableLines
+    )));
+    let current = '';
+
+    words.forEach((word, index) => {
+        const candidate = current ? `${current} ${word}` : word;
+        const remainingSlots = maxLines - lines.length;
+        if (current && candidate.length > targetLength && remainingSlots > 1) {
+            lines.push(current);
+            current = word;
+        } else {
+            current = candidate;
+        }
+        if (index === words.length - 1 && current) lines.push(current);
+    });
+    if (endingLine) lines.push(endingLine);
+
+    return lines.slice(0, maxLines);
+}
+
+function renderPosterTitle(value) {
+    return posterTitleLines(value)
+        .map(line => `<span class="card-poster-title-line${/^\[[^\]]+\]$/.test(line) ? ' is-host' : ''}">${escapeHtml(line)}</span>`)
+        .join('');
+}
+
+function positionNoticeHoverPreview(card) {
+    const preview = document.getElementById('notice-hover-preview');
+    if (!preview || !card) return;
+    const cardRect = card.getBoundingClientRect();
+    const leftRail = document.getElementById('left-brand-rail')?.getBoundingClientRect();
+    const rightRail = document.getElementById('right-ad-rail')?.getBoundingClientRect();
+    const contentLeft = leftRail?.right ? leftRail.right + 12 : 16;
+    const contentRight = rightRail?.left ? rightRail.left - 12 : window.innerWidth - 16;
+    const previewWidth = Math.min(360, contentRight - contentLeft);
+    const previewHeight = Math.min(preview.offsetHeight || 150, window.innerHeight - 32);
+    let left = cardRect.right + 14;
+    if (left + previewWidth > contentRight) left = cardRect.left - previewWidth - 14;
+    left = Math.max(contentLeft, Math.min(left, contentRight - previewWidth));
+    const top = Math.max(16, Math.min(cardRect.top, window.innerHeight - previewHeight - 16));
+    preview.style.left = `${left}px`;
+    preview.style.top = `${top}px`;
+    preview.style.width = `${previewWidth}px`;
+}
+
+function renderNoticeHoverPreview(notice, card) {
+    const preview = document.getElementById('notice-hover-preview');
+    if (!preview || !notice || !card) return;
+    if (noticeDragInProgress || activeNoticeSplitDragId) {
+        suspendNoticeHoverPreview();
+        return;
+    }
+    const summary = Array.isArray(notice.aiSummary) ? notice.aiSummary.filter(Boolean).slice(0, 3) : [];
+    const content = String(notice.content || '').replace(/\s+/g, ' ').trim();
+    const previewLines = summary.length ? summary : [content || '요약이 아직 없습니다.'];
+    preview.innerHTML = `
+        <div class="notice-hover-preview-body">
+            <span class="notice-hover-preview-label">AI 3줄 미리보기</span>
+            <h3>${escapeHtml(notice.title || '제목 없음')}</h3>
+            <ul class="notice-hover-preview-summary-list">
+                ${previewLines.map(line => `<li>${escapeHtml(line)}</li>`).join('')}
+            </ul>
+        </div>
+    `;
+    preview.hidden = false;
+    requestAnimationFrame(() => {
+        positionNoticeHoverPreview(card);
+        preview.classList.add('visible');
+    });
+}
+
+function queueNoticeHoverPreview(noticeId, card) {
+    if (noticeDragInProgress || activeNoticeSplitDragId) return;
+    if (getLayoutMode() !== 'desktop' || !window.matchMedia('(hover: hover) and (pointer: fine)').matches) return;
+    clearTimeout(noticeHoverPreviewTimer);
+    activeHoverPreviewNoticeId = String(noticeId);
+    noticeHoverPreviewTimer = setTimeout(async () => {
+        if (noticeDragInProgress || activeNoticeSplitDragId) return;
+        if (activeHoverPreviewNoticeId !== String(noticeId) || !card?.isConnected) return;
+        const summary = notices.find(item => String(item.id) === String(noticeId));
+        if (summary) renderNoticeHoverPreview(summary, card);
+        try {
+            const detail = await getNoticeDetail(noticeId);
+            if (activeHoverPreviewNoticeId === String(noticeId) && card.matches(':hover')) {
+                renderNoticeHoverPreview(detail, card);
+            }
+        } catch {
+            // 요약 미리보기는 유지하고 상세 조회 실패만 조용히 무시한다.
+        }
+    }, 620);
+}
+
+function cancelNoticeHoverPreview(noticeId) {
+    if (noticeId && activeHoverPreviewNoticeId !== String(noticeId)) return;
+    clearTimeout(noticeHoverPreviewTimer);
+    noticeHoverPreviewTimer = null;
+    activeHoverPreviewNoticeId = '';
+    const preview = document.getElementById('notice-hover-preview');
+    if (!preview) return;
+    preview.classList.remove('visible');
+    window.setTimeout(() => {
+        if (!preview.classList.contains('visible')) preview.hidden = true;
+    }, 120);
+}
+
+function suspendNoticeHoverPreview() {
+    clearTimeout(noticeHoverPreviewTimer);
+    noticeHoverPreviewTimer = null;
+    activeHoverPreviewNoticeId = '';
+    const preview = document.getElementById('notice-hover-preview');
+    if (!preview) return;
+    preview.classList.remove('visible');
+    preview.hidden = true;
 }
 
 function linkify(text) {
@@ -595,10 +908,43 @@ function closeModal(id) {
 
 function openContactFromRail() {
     if (typeof closeMobileDrawer === 'function') closeMobileDrawer();
+    setFeedbackCategory('general');
     const status = document.getElementById('feedback-status');
     if (status) status.textContent = '';
+    const title = document.getElementById('feedback-title');
+    const help = document.getElementById('feedback-help');
+    const message = document.getElementById('feedback-message');
+    if (title) title.textContent = '익명 피드백';
+    if (help) help.textContent = '이름·연락처·IP를 저장하지 않습니다. 개선 의견이나 오류를 편하게 남겨주세요.';
+    if (message) message.placeholder = '개선 의견이나 오류 제보를 적어주세요. (5자 이상)';
     openModal('contact-modal');
-    document.getElementById('feedback-message')?.focus();
+    message?.focus();
+}
+
+function openBannerInquiryFromRail() {
+    if (typeof closeMobileDrawer === 'function') closeMobileDrawer();
+    window.location.href = './banner-inquiry.html';
+}
+
+function setFeedbackCategory(category) {
+    activeFeedbackCategory = category === 'banner' ? 'banner' : 'general';
+    document.querySelectorAll('[data-feedback-category]').forEach(button => {
+        const active = button.dataset.feedbackCategory === activeFeedbackCategory;
+        button.classList.toggle('active', active);
+        button.setAttribute('aria-pressed', String(active));
+    });
+    const title = document.getElementById('feedback-title');
+    const help = document.getElementById('feedback-help');
+    const message = document.getElementById('feedback-message');
+    if (activeFeedbackCategory === 'banner') {
+        if (title) title.textContent = '배너 문의';
+        if (help) help.textContent = '오른쪽 광고 배너 등록과 제휴에 관한 문의로 분류해 전달합니다.';
+        if (message) message.placeholder = '배너 게재 기간, 내용, 연락 방법을 적어주세요. (5자 이상)';
+    } else {
+        if (title) title.textContent = '익명 피드백';
+        if (help) help.textContent = '이름·연락처·IP를 저장하지 않습니다. 개선 의견이나 오류를 편하게 남겨주세요.';
+        if (message) message.placeholder = '개선 의견이나 오류 제보를 적어주세요. (5자 이상)';
+    }
 }
 
 // 익명 피드백 전송. 서버는 메시지와 시각만 저장하고 신원은 남기지 않는다.
@@ -625,7 +971,7 @@ async function submitFeedback() {
     try {
         await apiRequest('/api/feedback', {
             method: 'POST',
-            body: JSON.stringify({ message })
+            body: JSON.stringify({ message, category: activeFeedbackCategory })
         });
         input.value = '';
         setStatus('보내주셔서 감사합니다. 익명으로 전달되었습니다.');
@@ -659,10 +1005,11 @@ function getNoticeShareUrl(id) {
 
 // 상세를 열면 주소창을 그 공지의 공유 링크로 바꾼다. 히스토리에 쌓아 뒤로가기로 닫히게 한다.
 function syncUrlToNotice(id) {
-    if (!window.history?.pushState) return;
+    if (!window.history?.pushState) return false;
     const target = getNoticeShareUrl(id);
-    if (location.href === target) return;   // 링크로 직접 진입한 경우 중복 push 방지
+    if (location.href === target) return Boolean(history.state?.noticeId);
     history.pushState({ noticeId: String(id) }, '', target);
+    return true;
 }
 
 function clearNoticeUrl() {
@@ -712,11 +1059,8 @@ window.addEventListener('popstate', function () {
 
     // ?id= 가 사라졌으면(뒤로가기) 목록으로 돌아가고, 있으면 그 공지를 연다.
     if (!requestedId) {
-        const board = document.getElementById('board-view');
-        const detail = document.getElementById('notice-detail-view');
-        if (detail) detail.hidden = true;
-        if (board) board.hidden = false;
-        currentViewId = null;
+        detailHistoryPushed = false;
+        showBoardView();
         return;
     }
 
@@ -772,7 +1116,9 @@ function buildHostButtons() {
 async function loadCategories() {
     try {
         const result = await apiRequest('/api/categories', { method: 'GET' });
-        activeCategories = Array.isArray(result?.categories) ? result.categories : [];
+        activeCategories = orderedNoticeCategories(
+            Array.isArray(result?.categories) ? result.categories : []
+        );
     } catch (error) {
         console.error('카테고리 불러오기 실패:', error);
         activeCategories = [];
@@ -784,9 +1130,11 @@ async function loadCategories() {
 function buildCategoryTabs() {
     const inner = document.getElementById('category-tabs-inner');
     if (!inner) return;
-    const current = selectedCategoryFilters.size === 1 ? [...selectedCategoryFilters][0] : 'all';
+    const current = selectedCategoryFilters.size === 0
+        ? 'all'
+        : (selectedCategoryFilters.size === 1 ? [...selectedCategoryFilters][0] : 'multi');
     let html = `<button type="button" class="category-tab ${current === 'all' ? 'active' : ''}" data-category="all" onclick="selectCategoryTab('all')">전체</button>`;
-    html += activeCategories.map(category => {
+    html += orderedNoticeCategories().map(category => {
         const id = Number(category.id);
         return `<button type="button" class="category-tab ${current === id ? 'active' : ''}" data-category="${id}" onclick="selectCategoryTab('${id}')">${escapeHtml(category.name)}</button>`;
     }).join('');
@@ -796,9 +1144,14 @@ function buildCategoryTabs() {
 function selectCategoryTab(value) {
     selectedCategoryFilters.clear();
     if (value !== 'all') selectedCategoryFilters.add(Number(value));
-    buildCategoryTabs();
-    filterCards();
-    updateFilterChips();
+    document.querySelectorAll('#category-tabs-inner .category-tab').forEach(tab => {
+        const selected = value === 'all'
+            ? tab.dataset.category === 'all'
+            : Number(tab.dataset.category) === Number(value);
+        tab.classList.toggle('active', selected);
+        tab.setAttribute('aria-current', selected ? 'true' : 'false');
+    });
+    filterCards(true);
 }
 
 function toggleFilterBtn(btn) {
@@ -842,14 +1195,6 @@ function updateFilterChips() {
         chipsArea.appendChild(chip);
     }
 
-    if (selectedCategoryFilters.size > 0) {
-        hasActive = true;
-        const chip = document.createElement('div');
-        chip.className = 'filter-chip';
-        chip.innerHTML = `<span>카테고리: ${selectedCategoryFilters.size}개</span><button onclick="event.stopPropagation(); clearCategoryFilters()">×</button>`;
-        chipsArea.appendChild(chip);
-    }
-
     bar.classList.toggle('has-active', hasActive);
     const count = chipsArea.children.length;
     const svg = `<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 4h18M7 8h10M11 12h2M9 16h6"/></svg>`;
@@ -890,6 +1235,7 @@ function resetAllFilters() {
 }
 
 function filterCards() {
+    const animate = arguments[0] === true;
     const inputVal = document.getElementById('searchInput');
     if(!inputVal) return;
 
@@ -908,11 +1254,11 @@ function filterCards() {
     const grid = document.getElementById('notice-grid');
     grid.innerHTML = "";
 
-    // 비교 블록에 담긴 공지는 목록 맨 위 인라인 블록으로 묶어 보여주고,
-    // 아래 일반 목록에서는 뺀다.
+    // 비교 공간은 공지 그리드와 독립적으로 렌더한다. 공간에 담긴 공지는
+    // 아래 일반 목록에서는 빼서 같은 공지가 두 곳에 동시에 보이지 않게 한다.
     const blockIds = compareBlocks.filter(id => notices.some(n => String(n.id) === String(id)));
     const blockSet = new Set(blockIds);
-    if (blockIds.length >= 1) grid.appendChild(buildCompareInline(blockIds));
+    renderCompareSpace(blockIds);
 
     let filtered = [];
 
@@ -966,10 +1312,16 @@ function filterCards() {
         filtered.sort((a, b) => (a.views || 0) - (b.views || 0));
     }
 
-    filtered.forEach(notice => {
-        if (blockSet.has(String(notice.id))) return;   // 비교 블록에 든 공지는 목록에서 뺀다
+    const baseNotices = filtered.filter(notice => !blockSet.has(String(notice.id)));
+    const singleBlockMode = blockIds.length === 1;
+    const visibleBaseNotices = singleBlockMode
+        ? baseNotices.slice(0, 2)
+        : baseNotices;
+
+    visibleBaseNotices.forEach(notice => {
         const dDay = calcDDay(notice.deadline);
-        const safeTitle = escapeHtml(notice.title || "제목 없음");
+        const rawTitle = notice.title || "제목 없음";
+        const safeTitle = escapeHtml(rawTitle);
         const hasImg = Object.hasOwn(notice, 'hasImages')
             ? notice.hasImages
             : Boolean(notice.images && notice.images.length > 0);
@@ -979,7 +1331,7 @@ function filterCards() {
             ? `<div class="card-poster">
                    <img class="card-img-preview" alt="" data-thumbnail-src="${escapeHtml(notice.thumbnailUrl || '/icons/default-notice-thumbnail.png')}">
                </div>`
-            : `<div class="card-poster is-text"><p class="card-poster-title">${safeTitle}</p></div>`;
+            : `<div class="card-poster is-text"><p class="card-poster-title">${renderPosterTitle(rawTitle)}</p></div>`;
 
         const cardClass = dDay.isExpired ? "card card-expired" : "card";
         const deadlineTagClass = dDay.isExpired ? 'expired' : dDay.isUrgent ? 'd-day' : '';
@@ -995,17 +1347,26 @@ function filterCards() {
 
         const card = document.createElement('div');
         card.className = cardClass;
-        card.onclick = () => openDetail(notice.id);
+        if (animate) {
+            card.classList.add('is-filter-entering');
+            card.style.setProperty('--notice-enter-delay', `${Math.min(grid.childElementCount, 4) * 22}ms`);
+        }
+        card.dataset ||= {};
+        card.dataset.noticeId = String(notice.id);
+        card.onclick = () => {
+            if (noticeDragInProgress || Date.now() < suppressNoticeClickUntil) return;
+            openDetail(notice.id);
+        };
+        card.addEventListener('mouseenter', () => queueNoticeHoverPreview(notice.id, card));
+        card.addEventListener('mouseleave', () => cancelNoticeHoverPreview(notice.id));
         // 노션처럼: 6점 핸들만 드래그하고, 카드는 평소처럼 눌러 상세를 연다.
-        card.addEventListener('dragover', event => onCardDragOver(event, card));
-        card.addEventListener('dragleave', () => onCardDragLeave(card));
-        card.addEventListener('drop', event => onCardDrop(event, notice.id));
         card.innerHTML = `
-            <button class="card-drag-handle" type="button" draggable="true"
-                    aria-label="비교 블록에 추가" aria-pressed="false"
-                    title="끌거나 눌러서 비교 블록에 추가">
-                <svg width="10" height="16" viewBox="0 0 10 16" aria-hidden="true"><g fill="currentColor"><circle cx="2.5" cy="3" r="1.3"/><circle cx="7.5" cy="3" r="1.3"/><circle cx="2.5" cy="8" r="1.3"/><circle cx="7.5" cy="8" r="1.3"/><circle cx="2.5" cy="13" r="1.3"/><circle cx="7.5" cy="13" r="1.3"/></g></svg>
-            </button>
+            <div class="card-block-controls" onclick="event.stopPropagation()">
+                <button class="card-drag-handle" type="button" draggable="true"
+                        aria-label="공지 들어서 화면 분할" title="끌어서 왼쪽 또는 오른쪽에 놓기">
+                    <svg width="10" height="16" viewBox="0 0 10 16" aria-hidden="true"><g fill="currentColor"><circle cx="2.5" cy="3" r="1.3"/><circle cx="7.5" cy="3" r="1.3"/><circle cx="2.5" cy="8" r="1.3"/><circle cx="7.5" cy="8" r="1.3"/><circle cx="2.5" cy="13" r="1.3"/><circle cx="7.5" cy="13" r="1.3"/></g></svg>
+                </button>
+            </div>
             ${posterHtml}
             <div class="card-body">
                 <div class="tags">
@@ -1021,10 +1382,12 @@ function filterCards() {
                 </div>
             </div>
         `;
-        const dragHandle = card.querySelector('.card-drag-handle');
-        dragHandle.addEventListener('click', event => onHandleClick(event, notice.id));
-        dragHandle.addEventListener('dragstart', event => onCardDragStart(event, notice.id));
-        dragHandle.addEventListener('dragend', onCardDragEnd);
+        const splitHandle = card.querySelector('.card-drag-handle');
+        splitHandle.addEventListener('pointerdown', () => {
+            if (typeof suspendNoticeHoverPreview === 'function') suspendNoticeHoverPreview();
+        });
+        splitHandle.addEventListener('dragstart', event => onNoticeSplitDragStart(event, notice.id));
+        splitHandle.addEventListener('dragend', onNoticeSplitDragEnd);
         grid.appendChild(card);
     });
 
@@ -1034,6 +1397,16 @@ function filterCards() {
 
     grid.querySelectorAll?.('img[data-thumbnail-src]')
         ?.forEach(image => noticeViewportLoader.observeThumbnail(image));
+
+    if (animate && grid.childElementCount > 0) {
+        void grid.offsetWidth;
+        requestAnimationFrame(() => {
+            grid.querySelectorAll('.card.is-filter-entering').forEach(card => {
+                card.classList.remove('is-filter-entering');
+                window.setTimeout(() => card.style.removeProperty('--notice-enter-delay'), 260);
+            });
+        });
+    }
 
     const countEl = document.getElementById('filter-result-count');
     if (countEl) countEl.innerHTML = `결과 <strong>${filtered.length}</strong>건 / 전체 ${notices.length}건`;
@@ -1049,6 +1422,49 @@ function navImage(dir, event) {
     if (currentImageIndex < 0) currentImageIndex = currentImageArray.length - 1;
     if (currentImageIndex >= currentImageArray.length) currentImageIndex = 0;
     updateImageViewer();
+}
+
+function navDetailImage(dir, event) {
+    event?.stopPropagation();
+    if (detailImageArray.length <= 1) return;
+    detailImageIndex = (detailImageIndex + dir + detailImageArray.length) % detailImageArray.length;
+    updateDetailImage();
+}
+
+function startImageSwipe(event) {
+    imageSwipeStartX = event.touches?.[0]?.clientX ?? null;
+}
+
+function endImageSwipe(event, scope) {
+    if (imageSwipeStartX === null) return;
+    const endX = event.changedTouches?.[0]?.clientX ?? imageSwipeStartX;
+    const delta = endX - imageSwipeStartX;
+    imageSwipeStartX = null;
+    if (Math.abs(delta) < 44) return;
+    const direction = delta < 0 ? 1 : -1;
+    if (scope === 'viewer') navImage(direction);
+    else navDetailImage(direction);
+}
+
+function updateDetailImage() {
+    const heroImg = document.getElementById('detail-hero-img');
+    const previous = document.getElementById('detail-image-prev');
+    const next = document.getElementById('detail-image-next');
+    const counter = document.getElementById('detail-image-counter');
+    const src = detailImageArray[detailImageIndex];
+    if (!heroImg || !src) return;
+    heroImg.src = src;
+    heroImg.onclick = () => openImageViewer(detailImageIndex);
+    const hasMultiple = detailImageArray.length > 1;
+    if (previous) previous.hidden = !hasMultiple;
+    if (next) next.hidden = !hasMultiple;
+    if (counter) {
+        counter.hidden = !hasMultiple;
+        counter.textContent = `${detailImageIndex + 1} / ${detailImageArray.length}`;
+    }
+    document.querySelectorAll('#detail-gallery .gallery-img').forEach((image, index) => {
+        image.classList.toggle('active', index === detailImageIndex);
+    });
 }
 
 function openImageViewer(index) {
@@ -1076,7 +1492,58 @@ function updateImageViewer() {
     document.getElementById('img-counter').innerText = `${currentImageIndex + 1} / ${currentImageArray.length}`;
 }
 
+async function imageBlobAsPng(blob) {
+    if (blob.type === 'image/png') return blob;
+    const bitmap = await createImageBitmap(blob);
+    const canvas = document.createElement('canvas');
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    canvas.getContext('2d').drawImage(bitmap, 0, 0);
+    bitmap.close?.();
+    return new Promise((resolve, reject) => {
+        canvas.toBlob(
+            png => png ? resolve(png) : reject(new Error('이미지 변환에 실패했습니다.')),
+            'image/png'
+        );
+    });
+}
+
+async function copyCurrentViewerImage(event) {
+    event?.stopPropagation();
+    const src = currentImageArray[currentImageIndex];
+    const button = document.getElementById('viewer-copy-btn');
+    if (!src || !navigator.clipboard?.write || typeof ClipboardItem === 'undefined') {
+        alert('이 브라우저에서는 이미지 복사를 지원하지 않습니다. 이미지에서 우클릭해 복사해주세요.');
+        return;
+    }
+
+    const originalLabel = button?.textContent;
+    if (button) {
+        button.disabled = true;
+        button.textContent = '복사 중…';
+    }
+    try {
+        const response = await fetch(src);
+        if (!response.ok) throw new Error(`이미지 응답 오류: ${response.status}`);
+        const pngBlob = await imageBlobAsPng(await response.blob());
+        await navigator.clipboard.write([
+            new ClipboardItem({ 'image/png': pngBlob })
+        ]);
+        if (button) button.textContent = '복사됨';
+        window.setTimeout(() => {
+            if (button) button.textContent = originalLabel;
+        }, 1200);
+    } catch (error) {
+        console.error('이미지 복사 실패:', error);
+        alert('이미지를 복사하지 못했습니다. 이미지에서 우클릭해 복사하거나 다운로드를 이용해주세요.');
+        if (button) button.textContent = originalLabel;
+    } finally {
+        if (button) button.disabled = false;
+    }
+}
+
 async function openDetail(idStr) {
+    cancelNoticeHoverPreview();
     currentViewId = String(idStr);
     let notice;
     try {
@@ -1139,150 +1606,403 @@ async function openDetail(idStr) {
     ).join('');
     sourceArea.hidden = !notice.sourceUrl && attachments.length === 0;
 
-    // 대표 이미지는 상세 상단에 크게, 나머지는 갤러리로 보여준다.
+    // 상세 상단 자체가 사진 넘김이 가능한 갤러리이고, 아래 썸네일로도 바로 이동한다.
     const hero = document.getElementById('detail-hero');
     const heroImg = document.getElementById('detail-hero-img');
     const gallery = document.getElementById('detail-gallery');
     gallery.innerHTML = '';
     if (notice.images && notice.images.length > 0) {
-        heroImg.src = notice.images[0];
-        heroImg.onclick = () => openImageViewer(0);
+        detailImageArray = [...notice.images];
+        detailImageIndex = 0;
         heroImg.style.cursor = 'zoom-in';
         hero.hidden = false;
         if (notice.images.length > 1) {
             notice.images.forEach((src, idx) => {
-                gallery.innerHTML += `<img src="${escapeHtml(src)}" class="gallery-img" onclick="openImageViewer(${idx})">`;
+                gallery.innerHTML += `<button class="gallery-thumb" type="button" aria-label="${idx + 1}번 사진 보기"
+                    onclick="detailImageIndex=${idx}; updateDetailImage()"><img src="${escapeHtml(src)}" class="gallery-img" alt=""></button>`;
             });
             gallery.style.display = 'flex';
         } else {
             gallery.style.display = 'none';
         }
+        updateDetailImage();
     } else {
+        detailImageArray = [];
+        detailImageIndex = 0;
         hero.hidden = true;
         gallery.style.display = 'none';
     }
 
     showDetailView();
-    syncUrlToNotice(currentViewId);
+    detailHistoryPushed = syncUrlToNotice(currentViewId);
+}
+
+function runNoticeSurfaceTransition(update, target) {
+    update();
+    if (!target) return;
+    target.classList.remove('surface-entering');
+    requestAnimationFrame(() => target.classList.add('surface-entering'));
+    window.setTimeout(() => target.classList.remove('surface-entering'), 170);
 }
 
 // 목록을 숨기고 상세 페이지를 보인다. 모달이 아니라 화면 전체가 바뀐다.
 function showDetailView() {
     const board = document.getElementById('board-view');
     const detail = document.getElementById('notice-detail-view');
-    if (board) board.hidden = true;
-    if (detail) detail.hidden = false;
-    window.scrollTo({ top: 0, behavior: 'auto' });
+    if (board && !board.hidden) boardScrollPosition = window.scrollY;
+    runNoticeSurfaceTransition(() => {
+        if (board) board.hidden = true;
+        if (detail) detail.hidden = false;
+        window.scrollTo({ top: 0, behavior: 'auto' });
+    }, detail);
+}
+
+function showBoardView() {
+    const board = document.getElementById('board-view');
+    const detail = document.getElementById('notice-detail-view');
+    runNoticeSurfaceTransition(() => {
+        if (detail) detail.hidden = true;
+        if (board) board.hidden = false;
+        currentViewId = null;
+        window.scrollTo({ top: boardScrollPosition, behavior: 'auto' });
+    }, board);
 }
 
 // 상세에서 목록으로 돌아온다. 주소창의 ?id= 도 지운다.
 function closeDetail() {
-    const board = document.getElementById('board-view');
-    const detail = document.getElementById('notice-detail-view');
-    if (detail) detail.hidden = true;
-    if (board) board.hidden = false;
-    currentViewId = null;
-    // ?id= 를 남기지 않으려면 히스토리를 하나 되돌린다(직접 진입이면 그냥 지운다).
-    if (new URLSearchParams(location.search).has(NOTICE_URL_PARAM) && window.history.length > 1) {
+    if (new URLSearchParams(location.search).has(NOTICE_URL_PARAM) && detailHistoryPushed) {
         history.back();
-    } else {
-        clearNoticeUrl();
+        return;
     }
+    detailHistoryPushed = false;
+    clearNoticeUrl();
+    showBoardView();
 }
 
 // ========================================
-// 🧩 노션식 인라인 블록 비교
-// 카드에 마우스를 올리면 6점 핸들이 뜨고, 카드를 다른 카드 위로 끌어다 놓으면
-// 목록 맨 위에 두 공지가 나란히(모바일은 위아래로) 묶인 비교 블록이 생긴다.
-// 별도 창이 아니라 기존 화면 안에서 블록화된다.
+// 🧩 문서형 공지 블록
+// 블록 자체는 절대 draggable이 아니다. 왼쪽 여백의 6점 핸들만 drag source이며,
+// 문서 안에서는 위/아래 삽입선으로만 순서를 바꾼다.
 // ========================================
 
-const NOTICE_DRAG_TYPE = 'application/x-ece-notice';
-const DESKTOP_MAX_COMPARE_BLOCKS = 6;
+const NOTICE_SPLIT_DRAG_TYPE = 'application/x-ece-notice-split';
+const COMPARE_BLOCK_DRAG_TYPE = 'application/x-ece-compare-block';
+const DESKTOP_MAX_COMPARE_BLOCKS = 4;
 const MOBILE_MAX_COMPARE_BLOCKS = 2;
 
-// 넓은 화면에서는 최대 6개, 폰에서는 읽을 수 있는 최대치인 2개만 둔다.
+// 넓은 화면에서는 최대 4개 조합, 폰에서는 읽을 수 있는 최대치인 2개만 둔다.
 function maxCompareBlocks() {
     return getLayoutMode() === 'mobile'
         ? MOBILE_MAX_COMPARE_BLOCKS
         : DESKTOP_MAX_COMPARE_BLOCKS;
 }
 
-function onCardDragStart(event, id) {
+function showSplitDropOverlay() {
+    const overlay = document.getElementById('split-drop-overlay');
+    if (compareWorkspaceOpen && compareBlocks.length > 0) {
+        if (overlay) {
+            overlay.classList.remove('visible');
+            overlay.hidden = true;
+        }
+        document.getElementById('compare-space')?.classList.add('is-notice-drop-active');
+        document.getElementById('spatial-workspace')?.classList.add('is-notice-drop-active');
+        return;
+    }
+    if (!overlay) return;
+    overlay.hidden = false;
+    requestAnimationFrame(() => overlay.classList.add('visible'));
+}
+
+function hideSplitDropOverlay() {
+    const overlay = document.getElementById('split-drop-overlay');
+    overlay?.classList.remove('visible');
+    overlay?.querySelectorAll('.split-drop-zone.active').forEach(zone => zone.classList.remove('active'));
+    document.querySelectorAll('.compare-empty-slot.active')
+        .forEach(zone => zone.classList.remove('active'));
+    document.getElementById('compare-space')?.classList.remove('is-notice-drop-active');
+    document.getElementById('spatial-workspace')?.classList.remove('is-notice-drop-active');
+    window.setTimeout(() => {
+        if (overlay && !overlay.classList.contains('visible')) overlay.hidden = true;
+    }, 120);
+}
+
+function onNoticeSplitDragStart(event, id) {
+    suspendNoticeHoverPreview();
+    clearTimeout(noticeSplitOverlayTimer);
+    noticeDragInProgress = true;
+    document.body.classList.add('notice-dragging');
+    activeNoticeSplitDragId = String(id);
     event.stopPropagation();
-    event.dataTransfer.setData(NOTICE_DRAG_TYPE, String(id));
-    event.dataTransfer.setData('text/plain', String(id));
-    event.dataTransfer.effectAllowed = 'move';
-    document.body.classList.add('dragging-notice');
+    event.dataTransfer.setData(NOTICE_SPLIT_DRAG_TYPE, activeNoticeSplitDragId);
+    event.dataTransfer.setData('text/plain', activeNoticeSplitDragId);
+    event.dataTransfer.effectAllowed = 'copyMove';
+    const notice = notices.find(item => String(item.id) === activeNoticeSplitDragId);
+    noticeSplitDragOverlay?.remove();
+    noticeSplitDragOverlay = document.createElement('div');
+    noticeSplitDragOverlay.className = 'notice-split-drag-overlay';
+    noticeSplitDragOverlay.textContent = notice?.title || '공지';
+    document.body.appendChild(noticeSplitDragOverlay);
+    event.dataTransfer.setDragImage?.(noticeSplitDragOverlay, 24, 18);
+    // dragstart 중 원본 카드가 움직이면 Chromium이 드래그 자체를 취소할 수 있다.
+    // 네이티브 드래그가 확정된 다음 프레임에 삽입 위치를 펼친다.
+    noticeSplitOverlayTimer = window.setTimeout(() => {
+        if (noticeDragInProgress && activeNoticeSplitDragId) showSplitDropOverlay();
+    }, 110);
 }
 
-function onCardDragEnd() {
-    document.body.classList.remove('dragging-notice');
-    document.querySelectorAll('.is-drop-target').forEach(el => el.classList.remove('is-drop-target'));
+function onNoticeSplitDragEnd() {
+    clearTimeout(noticeSplitOverlayTimer);
+    noticeSplitOverlayTimer = null;
+    noticeDragInProgress = false;
+    document.body.classList.remove('notice-dragging');
+    suppressNoticeClickUntil = Date.now() + 300;
+    noticeSplitDragOverlay?.remove();
+    noticeSplitDragOverlay = null;
+    window.setTimeout(() => {
+        hideSplitDropOverlay();
+        activeNoticeSplitDragId = '';
+    }, 80);
 }
 
-// 모바일에는 마우스 드래그가 없으므로 같은 핸들을 탭해도 블록에 담긴다.
-// 데스크탑에서도 클릭과 키보드로 쓸 수 있어 드래그만 가능한 UI가 되지 않는다.
-async function onHandleClick(event, id) {
-    event.stopPropagation();
-    await addNoticeToCompareBlock(id);
-}
-
-function draggedNoticeId(event) {
-    return event.dataTransfer.getData(NOTICE_DRAG_TYPE) || event.dataTransfer.getData('text/plain') || '';
-}
-
-function onCardDragOver(event, targetEl) {
-    if (![...event.dataTransfer.types].includes(NOTICE_DRAG_TYPE)) return;
+function onSplitDropZoneDragOver(event) {
+    if (!hasDragType(event, NOTICE_SPLIT_DRAG_TYPE)) return;
     event.preventDefault();
+    event.stopPropagation();
     event.dataTransfer.dropEffect = 'move';
-    if (targetEl) targetEl.classList.add('is-drop-target');
+    event.currentTarget.classList.add('active');
 }
 
-function onCardDragLeave(targetEl) {
-    if (targetEl) targetEl.classList.remove('is-drop-target');
+function onSplitDropZoneDragLeave(event) {
+    if (!event.currentTarget.contains(event.relatedTarget)) {
+        event.currentTarget.classList.remove('active');
+    }
 }
 
-// 카드 위에 다른 카드를 놓으면 둘을 하나의 비교 블록으로 묶는다.
-async function onCardDrop(event, targetId) {
+function onSplitDropZoneDrop(event, side) {
+    if (!hasDragType(event, NOTICE_SPLIT_DRAG_TYPE)) return;
     event.preventDefault();
-    document.querySelectorAll('.is-drop-target').forEach(el => el.classList.remove('is-drop-target'));
-    const draggedId = draggedNoticeId(event);
-    if (!draggedId) return;
-    await groupIntoCompareBlock(targetId, draggedId);
+    event.stopPropagation();
+    activeNoticeSplitDragId = event.dataTransfer.getData(NOTICE_SPLIT_DRAG_TYPE)
+        || activeNoticeSplitDragId;
+    applyPendingNoticeSplit(side);
 }
 
-// 이미 만들어진 비교 블록 위에 카드를 놓으면 블록에 추가한다.
-async function onBlockDrop(event) {
+function onCompareExternalNoticeDragOver(event) {
+    if (!hasDragType(event, NOTICE_SPLIT_DRAG_TYPE)) return;
     event.preventDefault();
-    document.querySelectorAll('.is-drop-target').forEach(el => el.classList.remove('is-drop-target'));
-    const draggedId = draggedNoticeId(event);
-    if (!draggedId) return;
-    await groupIntoCompareBlock(null, draggedId);
+    event.stopPropagation();
+    event.dataTransfer.dropEffect = 'move';
+    event.currentTarget.classList.add('active');
 }
 
-async function groupIntoCompareBlock(targetId, draggedId) {
-    const dragged = String(draggedId);
-    const target = targetId == null ? null : String(targetId);
-    if (target !== null && target === dragged) return;
+function onCompareExternalNoticeDragLeave(event) {
+    if (!event.currentTarget.contains(event.relatedTarget)) {
+        event.currentTarget.classList.remove('active');
+    }
+}
 
-    const toAdd = [];
-    if (target !== null && !compareBlocks.includes(target)) toAdd.push(target);
-    if (!compareBlocks.includes(dragged)) toAdd.push(dragged);
-    if (toAdd.length === 0) return;
+function onCompareExternalNoticeDrop(event, placement) {
+    if (!hasDragType(event, NOTICE_SPLIT_DRAG_TYPE)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    activeNoticeSplitDragId = event.dataTransfer.getData(NOTICE_SPLIT_DRAG_TYPE)
+        || activeNoticeSplitDragId;
+    applyPendingNoticeSplit(placement);
+}
 
-    if (compareBlocks.length + toAdd.length > maxCompareBlocks()) {
+async function finishNoticeBlockAddition(id) {
+    renderCompareChange();
+    try {
+        await getNoticeDetail(id);
+        renderCompareChange();
+    } catch (error) {
+        console.error('분할 공지 상세 불러오기 실패:', error);
+    }
+}
+
+async function applyPendingNoticeSplit(placement) {
+    const id = String(activeNoticeSplitDragId || '');
+    if (!id || !['left', 'right'].includes(placement)) return;
+    const hadWorkspace = compareWorkspaceOpen && compareBlocks.length > 0;
+    hideSplitDropOverlay();
+    activeNoticeSplitDragId = '';
+    if (compareBlocks.includes(id)) return;
+    if (compareBlocks.length >= maxCompareBlocks()) {
         alert(`비교 블록은 최대 ${maxCompareBlocks()}개까지 묶을 수 있습니다.`);
         return;
     }
-
-    try {
-        // 원문·요약을 나란히 보여주려면 상세를 확보해야 한다.
-        await Promise.all(toAdd.map(id => getNoticeDetail(id)));
-    } catch (error) {
-        console.error('비교 블록 상세 불러오기 실패:', error);
+    if (!hadWorkspace) {
+        compareDockSide = placement === 'left' ? 'left' : 'right';
+        compareLayoutMode = 'stack';
+        compareBlocks.push(id);
+    } else if (placement === 'left') {
+        compareBlocks.unshift(id);
+        compareLayoutMode = 'columns';
+    } else if (placement === 'right') {
+        compareBlocks.push(id);
+        compareLayoutMode = 'columns';
     }
-    toAdd.forEach(id => compareBlocks.push(id));
+    compareWorkspaceOpen = true;
+    await finishNoticeBlockAddition(id);
+}
+
+function hasDragType(event, type) {
+    return Array.from(event.dataTransfer?.types || []).includes(type);
+}
+function clearCompareDropIndicator() {
+    document.querySelectorAll('.compare-col.is-drop-before, .compare-col.is-drop-after')
+        .forEach(block => block.classList.remove('is-drop-before', 'is-drop-after'));
+    activeCompareDropTargetId = '';
+    activeCompareDropPosition = 'after';
+}
+
+function setCompareDropIndicator(block, clientY) {
+    if (!block) return;
+    const rect = block.getBoundingClientRect();
+    const position = clientY < rect.top + rect.height / 2 ? 'before' : 'after';
+    clearCompareDropIndicator();
+    block.classList.add(position === 'before' ? 'is-drop-before' : 'is-drop-after');
+    activeCompareDropTargetId = String(block.dataset.compareId || '');
+    activeCompareDropPosition = position;
+}
+
+function createCompareDragOverlay(block) {
+    compareDragOverlay?.remove();
+    compareDragOverlay = document.createElement('div');
+    compareDragOverlay.className = 'compare-drag-overlay';
+    const content = block?.querySelector('.compare-col-body')?.cloneNode(true);
+    if (content) compareDragOverlay.appendChild(content);
+    document.body.appendChild(compareDragOverlay);
+    return compareDragOverlay;
+}
+
+function onCompareBlockDragStart(event, id) {
+    event.stopPropagation();
+    event.dataTransfer.setData(COMPARE_BLOCK_DRAG_TYPE, String(id));
+    event.dataTransfer.effectAllowed = 'move';
+    const block = event.currentTarget.closest('.compare-col');
+    const overlay = createCompareDragOverlay(block);
+    event.dataTransfer.setDragImage?.(overlay, 28, 22);
+    requestAnimationFrame(() => block?.classList.add('is-dragging'));
+    document.body.classList.add('reordering-compare-block');
+}
+
+function onCompareBlockDragEnd() {
+    document.body.classList.remove('reordering-compare-block');
+    document.querySelector('.compare-col.is-dragging')?.classList.remove('is-dragging');
+    clearCompareDropIndicator();
+    compareDragOverlay?.remove();
+    compareDragOverlay = null;
+}
+
+function onCompareBlockDragOver(event, targetEl) {
+    if (!hasDragType(event, COMPARE_BLOCK_DRAG_TYPE)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.dataTransfer.dropEffect = 'move';
+    setCompareDropIndicator(targetEl, event.clientY);
+}
+
+function onCompareBlockDrop(event, targetId) {
+    if (!hasDragType(event, COMPARE_BLOCK_DRAG_TYPE)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const sourceId = event.dataTransfer.getData(COMPARE_BLOCK_DRAG_TYPE);
+    const position = activeCompareDropPosition;
+    clearCompareDropIndicator();
+    if (!sourceId || sourceId === String(targetId)) return;
+    moveCompareBlock(sourceId, targetId, position);
+}
+
+function onCompareStageDragOver(event) {
+    if (!hasDragType(event, COMPARE_BLOCK_DRAG_TYPE)) return;
+    event.preventDefault();
+    if (event.target === event.currentTarget) {
+        clearCompareDropIndicator();
+        activeCompareDropPosition = 'end';
+    }
+}
+
+function onCompareStageDrop(event) {
+    if (!hasDragType(event, COMPARE_BLOCK_DRAG_TYPE) || event.target !== event.currentTarget) return;
+    event.preventDefault();
+    const sourceId = event.dataTransfer.getData(COMPARE_BLOCK_DRAG_TYPE);
+    clearCompareDropIndicator();
+    moveCompareBlock(sourceId, '', 'end');
+}
+
+function positionComparePointerOverlay(clientX, clientY) {
+    if (!compareDragOverlay) return;
+    compareDragOverlay.style.transform = `translate3d(${clientX + 18}px, ${clientY + 18}px, 0)`;
+}
+
+function onCompareHandlePointerDown(event, id) {
+    if (event.pointerType === 'mouse') return;
+    event.preventDefault();
+    event.stopPropagation();
+    pointerDraggedCompareId = String(id);
+    pointerDragHandle = event.currentTarget;
+    pointerDragHandle.setPointerCapture?.(event.pointerId);
+    const block = pointerDragHandle.closest('.compare-col');
+    createCompareDragOverlay(block).classList.add('is-pointer-overlay');
+    block?.classList.add('is-dragging');
+    positionComparePointerOverlay(event.clientX, event.clientY);
+    pointerDragHandle.addEventListener('pointermove', onCompareHandlePointerMove);
+    pointerDragHandle.addEventListener('pointerup', onCompareHandlePointerEnd, { once: true });
+    pointerDragHandle.addEventListener('pointercancel', cleanupComparePointerDrag, { once: true });
+}
+
+function onCompareHandlePointerMove(event) {
+    if (!pointerDraggedCompareId) return;
+    event.preventDefault();
+    positionComparePointerOverlay(event.clientX, event.clientY);
+    const target = document.elementFromPoint?.(event.clientX, event.clientY)?.closest?.('.compare-col');
+    if (target && String(target.dataset.compareId) !== pointerDraggedCompareId) {
+        setCompareDropIndicator(target, event.clientY);
+    } else {
+        clearCompareDropIndicator();
+    }
+}
+
+function onCompareHandlePointerEnd(event) {
+    event.preventDefault();
+    const sourceId = pointerDraggedCompareId;
+    const targetId = activeCompareDropTargetId;
+    const position = activeCompareDropPosition;
+    cleanupComparePointerDrag();
+    if (sourceId && targetId && sourceId !== targetId) {
+        moveCompareBlock(sourceId, targetId, position);
+    }
+}
+
+function cleanupComparePointerDrag() {
+    pointerDragHandle?.removeEventListener('pointermove', onCompareHandlePointerMove);
+    pointerDragHandle?.removeEventListener('pointerup', onCompareHandlePointerEnd);
+    pointerDragHandle?.removeEventListener('pointercancel', cleanupComparePointerDrag);
+    pointerDraggedCompareId = '';
+    pointerDragHandle = null;
+    document.querySelector('.compare-col.is-dragging')?.classList.remove('is-dragging');
+    clearCompareDropIndicator();
+    compareDragOverlay?.remove();
+    compareDragOverlay = null;
+}
+
+function moveCompareBlock(sourceId, targetId, position = 'after') {
+    const source = String(sourceId);
+    const target = String(targetId);
+    const withoutSource = compareBlocks.filter(id => id !== source);
+    if (!withoutSource.length || !compareBlocks.includes(source)) return;
+    if (position === 'end') {
+        withoutSource.push(source);
+        compareBlocks = withoutSource;
+        renderCompareChange();
+        return;
+    }
+    const targetIndex = withoutSource.indexOf(target);
+    if (targetIndex < 0) return;
+    const insertAfter = position === 'after';
+    withoutSource.splice(targetIndex + (insertAfter ? 1 : 0), 0, source);
+    compareBlocks = withoutSource;
     renderCompareChange();
 }
 
@@ -1294,88 +2014,150 @@ async function addNoticeToCompareBlock(id) {
         return;
     }
 
+    compareWorkspaceOpen = true;
+    compareBlocks.push(normalizedId);
+    renderCompareChange();
     try {
         await getNoticeDetail(normalizedId);
+        renderCompareChange();
     } catch (error) {
         console.error('비교 블록 상세 불러오기 실패:', error);
     }
-    compareBlocks.push(normalizedId);
-    renderCompareChange();
 }
 
-// 지원 브라우저에서는 블록을 닫거나 추가할 때 주변 카드가 새 자리로 부드럽게 이동한다.
+// 비교 블록 갱신은 즉시 반영한다. 브라우저 View Transition은 큰 영역을 캡처해
+// 드래그 직후 프레임을 떨어뜨릴 수 있으므로 사용하지 않는다.
 function renderCompareChange() {
-    if (typeof document.startViewTransition === 'function') {
-        document.startViewTransition(() => filterCards());
-        return;
-    }
     filterCards();
 }
 
 function removeFromCompareBlock(idStr) {
+    expandedCompareBlocks.delete(String(idStr));
+    const wasEstablished = compareBlocks.length >= 2;
     compareBlocks = compareBlocks.filter(x => x !== String(idStr));
+    // 한 번 비교가 성립한 뒤 하나만 남으면 남은 공지도 목록으로 돌려보내고 공간을 닫는다.
+    if (wasEstablished && compareBlocks.length === 1) {
+        compareBlocks = [];
+        expandedCompareBlocks.clear();
+        compareWorkspaceOpen = false;
+        compareLayoutMode = 'stack';
+    } else if (compareBlocks.length === 0) {
+        compareWorkspaceOpen = false;
+        compareLayoutMode = 'stack';
+    }
     renderCompareChange();
 }
 
 function clearCompareBlock() {
     compareBlocks = [];
+    expandedCompareBlocks.clear();
+    compareWorkspaceOpen = false;
+    compareLayoutMode = 'stack';
     renderCompareChange();
 }
 
-// 목록 맨 위에 들어갈 비교 블록 DOM. 한 개부터 보여 주므로 첫 선택이 사라지지 않는다.
-function buildCompareInline(blockIds) {
-    const wrap = document.createElement('div');
-    wrap.className = 'compare-inline';
-    wrap.dataset.blocks = String(blockIds.length);
-    wrap.addEventListener('dragover', event => onCardDragOver(event, wrap));
-    wrap.addEventListener('dragleave', () => onCardDragLeave(wrap));
-    wrap.addEventListener('drop', event => onBlockDrop(event));
+function toggleCompareBlockExpansion(idStr) {
+    const id = String(idStr);
+    if (expandedCompareBlocks.has(id)) {
+        expandedCompareBlocks.delete(id);
+    } else {
+        expandedCompareBlocks.add(id);
+    }
+    renderCompareSpace(compareBlocks);
+}
 
-    const columns = blockIds.map((id, index) => {
+function renderCompareSpace(blockIds = compareBlocks) {
+    const workspace = document.getElementById('spatial-workspace');
+    const space = document.getElementById('compare-space');
+    const stage = document.getElementById('compare-space-stage');
+    if (!space || !stage) return;
+    if (!compareWorkspaceOpen) {
+        workspace?.classList.remove('is-split');
+        workspace?.removeAttribute('data-dock');
+        workspace?.removeAttribute('data-blocks');
+        space.hidden = true;
+        stage.innerHTML = '';
+        return;
+    }
+
+    workspace?.classList.add('is-split');
+    if (workspace) {
+        workspace.dataset.dock = compareDockSide;
+        workspace.dataset.blocks = String(blockIds.length);
+    }
+    space.hidden = false;
+    space.dataset.blocks = String(blockIds.length);
+    stage.dataset.layout = compareLayoutMode;
+
+    const blocks = blockIds.map((id, index) => {
         const notice = notices.find(n => String(n.id) === String(id));
         if (!notice) return '';
         const dDay = calcDDay(notice.deadline);
-        const deadlineTagClass = dDay.isExpired ? 'expired' : dDay.isUrgent ? 'd-day' : '';
         const summary = (notice.aiSummary || []).map(item => `<li>${escapeHtml(item)}</li>`).join('')
-            || '<li style="color:var(--text-sub)">요약 없음</li>';
+            || '<li class="is-empty">요약 없음</li>';
         const thumb = (notice.images && notice.images.length > 0)
             ? `<img class="compare-col-thumb" src="${escapeHtml(notice.images[0])}" alt="">`
             : '';
         const dateText = notice.deadline ? `마감 ${formatDateWithWeekday(notice.deadline)}` : '상시 접수';
         const safeId = escapeHtml(String(id));
+        const expanded = expandedCompareBlocks.has(String(id));
+        const dockClass = blockIds.length === 1
+            ? (compareDockSide === 'left' ? ' is-docked-left' : ' is-docked-right')
+            : '';
         return `
-            <article class="compare-col">
-                <header class="compare-col-head">
-                    <span class="compare-col-idx">${index + 1}</span>
-                    <button class="compare-col-remove" type="button" aria-label="블록에서 빼기"
-                            onclick="removeFromCompareBlock('${safeId}')">×</button>
-                </header>
+            <article class="compare-col notion-block${expanded ? ' is-expanded' : ''}${dockClass}"
+                     data-compare-id="${safeId}" tabindex="0">
+                <div class="compare-col-controls" aria-label="${index + 1}번 블록 도구">
+                    <button class="compare-col-drag-handle" type="button" draggable="true"
+                            aria-label="${index + 1}번 블록 순서 변경" title="끌어서 블록 순서 변경">
+                        <svg width="10" height="16" viewBox="0 0 10 16" aria-hidden="true"><g fill="currentColor"><circle cx="2.5" cy="3" r="1.3"/><circle cx="7.5" cy="3" r="1.3"/><circle cx="2.5" cy="8" r="1.3"/><circle cx="7.5" cy="8" r="1.3"/><circle cx="2.5" cy="13" r="1.3"/><circle cx="7.5" cy="13" r="1.3"/></g></svg>
+                    </button>
+                </div>
+                <button class="compare-col-remove" type="button" aria-label="문서에서 블록 제거"
+                        title="블록 제거" onclick="removeFromCompareBlock('${safeId}')">×</button>
                 <div class="compare-col-body">
-                    ${thumb}
-                    <div class="tags">
-                        <span class="tag ${deadlineTagClass}">${dDay.text}</span>
-                        <span class="tag target">${escapeHtml(notice.target || '전체')}</span>
-                        ${notice.host ? `<span class="tag">${escapeHtml(notice.host)}</span>` : ''}
-                    </div>
+                    <p class="compare-col-kicker">${escapeHtml([dDay.text, notice.target || '전체', notice.host || '기타'].join(' · '))}</p>
                     <h3 class="compare-col-title">${escapeHtml(notice.title || '')}</h3>
                     <div class="compare-col-meta">${escapeHtml(dateText)} · 조회 ${Number(notice.views) || 0}</div>
+                    ${thumb}
                     <h4 class="compare-col-label">AI 3줄 요약</h4>
                     <ul class="compare-col-summary">${summary}</ul>
                     <h4 class="compare-col-label">공지 원문</h4>
                     <div class="compare-col-content">${linkify(notice.content || '')}</div>
-                    <button class="btn btn-outline btn-small" type="button" onclick="openDetail('${safeId}')">전체 보기</button>
+                    <button class="compare-col-open" type="button" onclick="openDetail('${safeId}')">전체 공지 열기 →</button>
                 </div>
+                <button class="compare-col-more" type="button"
+                        aria-expanded="${expanded ? 'true' : 'false'}"
+                        onclick="toggleCompareBlockExpansion('${safeId}')">
+                    ${expanded ? '접기' : '더보기'}
+                </button>
             </article>`;
     }).join('');
 
-    wrap.innerHTML = `
-        <div class="compare-inline-head">
-            <span class="compare-inline-title">공지 비교 <strong>${blockIds.length}</strong> / ${maxCompareBlocks()}
-                <span class="compare-inline-hint">— 카드를 더 끌어다 놓아 추가</span></span>
-            <button class="btn btn-outline btn-small" type="button" onclick="clearCompareBlock()">비교 해제</button>
-        </div>
-        <div class="compare-inline-cols">${columns}</div>`;
-    return wrap;
+    const canAddBlock = blockIds.length < maxCompareBlocks();
+    const emptyOnLeft = blockIds.length === 1 && compareDockSide === 'right';
+    const emptyPlacement = emptyOnLeft ? 'left' : 'right';
+    const emptySlot = canAddBlock ? `
+        <button class="compare-empty-slot ${emptyOnLeft ? 'is-left' : 'is-right'}" type="button"
+                data-placement="${emptyPlacement}" aria-label="빈 반쪽에 공지 블록 추가"
+                ondragover="onCompareExternalNoticeDragOver(event)"
+                ondragleave="onCompareExternalNoticeDragLeave(event)"
+                ondrop="onCompareExternalNoticeDrop(event, '${emptyPlacement}')">
+            <span aria-hidden="true">+</span>
+            <strong>이쪽에 공지 놓기</strong>
+        </button>` : '';
+
+    stage.innerHTML = emptyOnLeft ? `${emptySlot}${blocks}` : `${blocks}${emptySlot}`;
+
+    stage.querySelectorAll('.compare-col').forEach(block => {
+        const id = block.dataset.compareId;
+        const handle = block.querySelector('.compare-col-drag-handle');
+        handle.addEventListener('dragstart', event => onCompareBlockDragStart(event, id));
+        handle.addEventListener('dragend', onCompareBlockDragEnd);
+        handle.addEventListener('pointerdown', event => onCompareHandlePointerDown(event, id));
+        block.addEventListener('dragover', event => onCompareBlockDragOver(event, block));
+        block.addEventListener('drop', event => onCompareBlockDrop(event, id));
+    });
 }
 
 // ========================================
@@ -1567,6 +2349,17 @@ document.addEventListener('keydown', function(e) {
         if (e.key === 'Escape') closeModal('image-viewer-modal');
         return;
     }
+    const detail = document.getElementById('notice-detail-view');
+    if (detail && !detail.hidden && detailImageArray.length > 1) {
+        if (e.key === 'ArrowLeft') {
+            navDetailImage(-1);
+            return;
+        }
+        if (e.key === 'ArrowRight') {
+            navDetailImage(1);
+            return;
+        }
+    }
     if (e.key !== 'Escape') return;
 
     // ESC 우선순위: 폰 미리보기 → 알림 설정 → 상세 페이지
@@ -1586,6 +2379,7 @@ document.addEventListener('DOMContentLoaded', async function () {
     updateLayoutToggleLabel();
     applyViewModule(getLayoutMode());
     updateBellState();
+    startRailClock();
 
     await loadData();
     await loadCategories();
@@ -1593,9 +2387,5 @@ document.addEventListener('DOMContentLoaded', async function () {
     renderRightRailAd();
     buildHostButtons();
     filterCards();
-    noticeViewportLoader.observePaginationSentinel(
-        document.getElementById('notice-scroll-sentinel'),
-        loadMoreNotices
-    );
     openNoticeFromUrl();   // 카톡 링크로 들어온 경우 해당 공지를 바로 연다
 });

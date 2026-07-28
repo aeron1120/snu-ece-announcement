@@ -19,9 +19,104 @@ let pastedImages = [];
 const MAX_NOTICE_IMAGES = 20;
 // AI 분석이 만든 3줄 요약. 저장 때 재분석 없이 그대로 쓴다.
 let composeAiSummary = [];
+let composeAiCategoryIds = [];
+let aiProgressTimer = null;
+let aiProgressValue = 0;
+let aiProgressCeiling = 0;
+let aiProgressActiveStep = 'prepare';
+let reviewInboxPollTimer = null;
+let reviewInboxPollInFlight = false;
+let adminFeedbackItems = [];
+let adminFeedbackFilter = 'all';
 
 // 제목 양식에서 쓰는 유형 목록. 편집할 때 기존 제목을 되돌려 읽는 데에도 쓴다.
 const TITLE_KINDS = ['모집', '안내', '신청', '접수', '공지', '행사', '변경 안내', '결과 발표', '기간 연장'];
+const AI_PROGRESS_STEPS = ['prepare', 'analyze', 'process', 'save'];
+
+function setAiProgress(value, status, activeStep = null, ceiling = value) {
+    aiProgressValue = Math.max(aiProgressValue, Math.min(100, Math.round(value)));
+    aiProgressCeiling = Math.max(aiProgressValue, Math.min(98, Math.round(ceiling)));
+    if (AI_PROGRESS_STEPS.includes(activeStep)) aiProgressActiveStep = activeStep;
+    const bar = document.getElementById('ai-progress-bar');
+    const percent = document.getElementById('ai-progress-percent');
+    const message = document.getElementById('ai-progress-status');
+    if (bar) bar.value = aiProgressValue;
+    if (percent) percent.textContent = `${aiProgressValue}%`;
+    if (message && status) message.textContent = status;
+
+    const activeIndex = AI_PROGRESS_STEPS.indexOf(aiProgressActiveStep);
+    document.querySelectorAll('[data-ai-step]').forEach(item => {
+        const index = AI_PROGRESS_STEPS.indexOf(item.dataset.aiStep);
+        item.classList.toggle('done', activeIndex >= 0 && index < activeIndex);
+        item.classList.toggle('active', index === activeIndex && aiProgressValue < 100);
+    });
+}
+
+function beginAiProgress(status = '원문을 준비하고 있습니다.') {
+    if (aiProgressTimer) clearInterval(aiProgressTimer);
+    aiProgressValue = 0;
+    aiProgressCeiling = 15;
+    aiProgressActiveStep = 'prepare';
+    const overlay = document.getElementById('ai-loading');
+    overlay.classList.remove('rate-limited');
+    overlay.style.display = 'flex';
+    document.getElementById('ai-progress-heading').innerHTML = '<strong>Gemini AI</strong> 작업 중';
+    setAiProgress(5, status, 'prepare', 15);
+    aiProgressTimer = setInterval(() => {
+        if (aiProgressValue < aiProgressCeiling) {
+            setAiProgress(aiProgressValue + 1, null, null, aiProgressCeiling);
+        }
+    }, 450);
+}
+
+function updateAiProgress(value, status, activeStep, ceiling = value + 12) {
+    setAiProgress(value, status, activeStep, ceiling);
+}
+
+function finishAiProgress(status = '작업이 완료되었습니다.') {
+    if (aiProgressTimer) clearInterval(aiProgressTimer);
+    aiProgressTimer = null;
+    setAiProgress(100, status, 'save', 100);
+    document.querySelectorAll('[data-ai-step]').forEach(item => {
+        item.classList.remove('active');
+        item.classList.add('done');
+    });
+}
+
+function hideAiProgress() {
+    if (aiProgressTimer) clearInterval(aiProgressTimer);
+    aiProgressTimer = null;
+    const overlay = document.getElementById('ai-loading');
+    overlay.style.display = 'none';
+    overlay.classList.remove('rate-limited');
+}
+
+function isGeminiRateLimitError(error) {
+    return error?.code === 'GEMINI_RATE_LIMIT' || Number(error?.status) === 429;
+}
+
+async function showGeminiRetryCountdown(error) {
+    if (aiProgressTimer) clearInterval(aiProgressTimer);
+    aiProgressTimer = null;
+    const overlay = document.getElementById('ai-loading');
+    const heading = document.getElementById('ai-progress-heading');
+    const status = document.getElementById('ai-progress-status');
+    const timer = document.getElementById('ai-progress-percent');
+    let remaining = Math.max(1, Math.ceil(Number(error?.retryAfterSeconds) || 60));
+
+    overlay.classList.add('rate-limited');
+    overlay.style.display = 'flex';
+    heading.textContent = 'Gemini 호출 대기';
+    while (remaining > 0) {
+        status.textContent = `분당 호출 초과로 ${remaining}초 뒤에 다시 실행 부탁드립니다.`;
+        timer.textContent = `${remaining}초`;
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        remaining -= 1;
+    }
+    status.textContent = '다시 실행할 수 있습니다.';
+    timer.textContent = '0초';
+    await new Promise(resolve => setTimeout(resolve, 700));
+}
 
 // ========================================
 // 🔐 인증 게이트
@@ -51,8 +146,6 @@ async function submitAdminGate() {
     }
 
     noticeAdminAuthToken = password;
-    sessionStorage.setItem('eceNoticeAdminToken', noticeAdminAuthToken);
-    sessionStorage.setItem('eceAdminToken', noticeAdminAuthToken);
     input.value = '';
     await enterAdminWorkspace();
 }
@@ -60,10 +153,11 @@ async function submitAdminGate() {
 async function enterAdminWorkspace() {
     document.getElementById('admin-gate').hidden = true;
     document.getElementById('admin-workspace').hidden = false;
-    document.getElementById('admin-logout').hidden = false;
+    document.getElementById('admin-mode-exit').textContent = '관리자 모드 나가기';
 
     await loadCategories();
     await loadReviewNotices();
+    startReviewInboxPolling();
     loadAdminFeedback();   // 탭 배지에 피드백 수를 채운다(백그라운드)
 
     // 공개 화면의 "관리자 페이지에서 수정" 링크로 들어온 경우 바로 편집 폼을 연다.
@@ -76,7 +170,7 @@ async function enterAdminWorkspace() {
     }
 }
 
-function logoutAdmin() {
+function exitAdminMode() {
     noticeAdminAuthToken = '';
     superAdminAuthToken = '';
     bannerManageAuthToken = '';
@@ -84,7 +178,7 @@ function logoutAdmin() {
     sessionStorage.removeItem('eceAdminToken');
     sessionStorage.removeItem('eceSuperAdminToken');
     sessionStorage.removeItem('eceBannerManageToken');
-    location.href = './admin.html';
+    location.href = './index.html';
 }
 
 // ========================================
@@ -202,6 +296,7 @@ function resetComposeForm() {
     editingNoticeId = null;
     pastedImages = [];
     composeAiSummary = [];
+    composeAiCategoryIds = [];
     renderPastePreview();
     const analyzeStatus = document.getElementById('analyze-status');
     if (analyzeStatus) analyzeStatus.textContent = '';
@@ -305,11 +400,20 @@ function parseAnalysisJson(text) {
 async function runNoticeAnalysis(content) {
     const today = new Date().toISOString().slice(0, 10);
     const prompt = `다음 공지 원문을 분석해서 JSON만 출력해. 코드블록·설명 없이 JSON 객체 하나만.
-형식: {"deadline":"YYYY-MM-DD 또는 빈문자열","subject":"핵심 내용 명사구 6~20자","type":"${TITLE_KINDS.join('|')} 중 하나","summary":["요약1","요약2","요약3"]}
+형식: {"deadline":"YYYY-MM-DD 또는 빈문자열","subject":"포스터용 핵심 문구 10~28자","type":"${TITLE_KINDS.join('|')} 중 하나","summary":["요약1","요약2","요약3"],"categorySlugs":["application|academics|benefits-partnerships|campus|governance 중 해당값"]}
 - 오늘 날짜는 ${today}. 마감일이 원문에 없거나 불명확하면 deadline은 빈문자열.
 - type은 반드시 제시한 보기 중 하나.
 - subject에는 유형 단어(${TITLE_KINDS.join(', ')})를 넣지 말고 핵심 명사구만. 예: "개강총회 참가자".
+- 사진 없는 카드에서 2~3줄로 자연스럽게 나뉘도록, 긴 한 덩어리 대신 의미가 분명한 짧은 어절 묶음으로 작성.
+- 격식적인 보도자료 문체보다 학생이 빠르게 읽는 자연스럽고 캐주얼한 표현을 사용.
+- 물음표 반복, 깨진 문자, 불완전한 조사, 같은 단어 반복을 절대 포함하지 말 것. 원문 글자가 깨졌다면 문맥상 확실한 내용만 한국어로 복원.
 - summary는 각 줄 명사형 종결의 3줄 요약.
+- 신청(application): 링크·폼·메일로 직접 제출해야 하고 마감이 있을 때만.
+- 학사(academics): 학점·졸업·수강에 직접 영향이 있고 대체 안내 채널이 부족할 때.
+- 혜택/제휴(benefits-partnerships): 돈·물품·할인·지원이 걸렸지만 놓쳐도 학사상 불이익이 없을 때.
+- 캠퍼스(campus): 특정 날짜에 출입·시설·교통·정전 등 캠퍼스 상태가 평소와 다를 때.
+- 자치(governance): 일반 학부생이 아니라 대의원·학생회 집행부 등 자치기구가 주 수신 대상일 때.
+- categorySlugs는 중복 선택할 수 있지만 약한 연관성으로 늘리지 말고 가능한 한 핵심 범주 하나만 선택.
 
 원문:
 ${content}`;
@@ -320,13 +424,25 @@ ${content}`;
         body: JSON.stringify({ prompt, model: GEMINI_MODEL })
     });
     const parsed = parseAnalysisJson(result?.text || '');
+    const allowedCategorySlugs = new Set([
+        'application', 'academics', 'benefits-partnerships', 'campus', 'governance'
+    ]);
+    const categorySlugs = Array.isArray(parsed.categorySlugs)
+        ? Array.from(new Set(parsed.categorySlugs
+            .map(value => String(value || '').trim())
+            .filter(value => allowedCategorySlugs.has(value))))
+        : [];
     return {
         deadline: (parsed.deadline && /^\d{4}-\d{2}-\d{2}$/.test(parsed.deadline)) ? parsed.deadline : '',
         subject: parsed.subject ? String(parsed.subject).slice(0, 60) : '',
         type: (parsed.type && TITLE_KINDS.includes(parsed.type)) ? parsed.type : '',
         summary: Array.isArray(parsed.summary)
             ? parsed.summary.map(item => String(item).trim()).filter(Boolean).slice(0, 3)
-            : []
+            : [],
+        categoryIds: categorySlugs
+            .map(slug => activeCategories.find(category => category.slug === slug)?.id)
+            .map(Number)
+            .filter(Number.isSafeInteger)
     };
 }
 
@@ -347,14 +463,17 @@ async function analyzeNotice() {
     }
 
     button.disabled = true;
-    document.getElementById('ai-loading').style.display = 'flex';
+    beginAiProgress('공지 원문을 준비하고 있습니다.');
     try {
+        updateAiProgress(18, 'Gemini가 원문을 분석하고 있습니다.', 'analyze', 76);
         const parsed = await runNoticeAnalysis(content);
+        updateAiProgress(82, '분석 결과를 입력 항목에 정리하고 있습니다.', 'process', 94);
 
         if (parsed.subject) document.getElementById('title-subject').value = parsed.subject;
         if (parsed.type) document.getElementById('title-kind').value = parsed.type;
         if (parsed.deadline) document.getElementById('post-deadline').value = parsed.deadline;
         composeAiSummary = parsed.summary;
+        composeAiCategoryIds = parsed.categoryIds;
 
         // 분석 결과는 양식 조합으로 흐르므로 직접수정 모드를 끈다.
         document.getElementById('title-manual').checked = false;
@@ -365,11 +484,18 @@ async function analyzeNotice() {
         setStatus(gotSomething
             ? 'AI 분석 완료. 값을 확인하고 필요하면 직접 고치세요.'
             : 'AI가 값을 추출하지 못했습니다. 직접 입력해주세요.', !gotSomething);
+        finishAiProgress('Gemini 분석이 완료되었습니다.');
+        await new Promise(resolve => setTimeout(resolve, 250));
     } catch (error) {
-        // 로컬처럼 GEMINI_API_KEY가 없으면 여기로 온다. 수동 입력으로 계속 진행 가능.
-        setStatus(`AI 분석을 쓸 수 없습니다(${error.message}). 아래에서 직접 입력해주세요.`, true);
+        if (isGeminiRateLimitError(error)) {
+            setStatus('Gemini 분당 호출 한도를 초과했습니다.', true);
+            await showGeminiRetryCountdown(error);
+        } else {
+            // 로컬처럼 GEMINI_API_KEY가 없으면 여기로 온다. 수동 입력으로 계속 진행 가능.
+            setStatus(`AI 분석을 쓸 수 없습니다(${error.message}). 아래에서 직접 입력해주세요.`, true);
+        }
     } finally {
-        document.getElementById('ai-loading').style.display = 'none';
+        hideAiProgress();
         button.disabled = false;
     }
 }
@@ -389,6 +515,10 @@ async function loadAdminFeedback() {
             headers: getNoticeAdminHeaders()
         });
         const items = Array.isArray(result?.feedback) ? result.feedback : [];
+        adminFeedbackItems = items.map(item => ({
+            ...item,
+            category: item.category === 'banner' ? 'banner' : 'general'
+        }));
         const badge = document.getElementById('feedback-count');
         if (badge) {
             badge.hidden = items.length === 0;
@@ -398,19 +528,88 @@ async function loadAdminFeedback() {
             status.textContent = items.length ? `받은 피드백 ${items.length}건 (작성자 정보 없음)` : '아직 받은 피드백이 없습니다.';
             status.style.color = 'var(--text-sub)';
         }
-        list.innerHTML = items.length
-            ? items.map(item => `
-                <div class="admin-feedback-item">
+        renderAdminFeedback();
+    } catch (error) {
+        if (status) { status.textContent = error.message; status.style.color = 'var(--danger)'; }
+        list.innerHTML = '<div class="review-empty">피드백을 불러오지 못했습니다.</div>';
+    }
+}
+
+function setAdminFeedbackFilter(category) {
+    adminFeedbackFilter = ['general', 'banner'].includes(category) ? category : 'all';
+    document.querySelectorAll('[data-feedback-filter]').forEach(button => {
+        button.classList.toggle('active', button.dataset.feedbackFilter === adminFeedbackFilter);
+    });
+    renderAdminFeedback();
+}
+
+function renderAdminFeedback() {
+    const list = document.getElementById('admin-feedback-list');
+    if (!list) return;
+    const visibleItems = adminFeedbackFilter === 'all'
+        ? adminFeedbackItems
+        : adminFeedbackItems.filter(item => item.category === adminFeedbackFilter);
+    list.innerHTML = visibleItems.length
+        ? visibleItems.map(item => {
+            const isBanner = item.category === 'banner';
+            const inquiry = isBanner && item.inquiry ? item.inquiry : null;
+            const contact = inquiry
+                ? [inquiry.phone, inquiry.email].filter(Boolean).map(value => escapeHtml(value)).join(' · ')
+                : '';
+            const safeLink = inquiry?.linkUrl && /^https?:\/\//i.test(inquiry.linkUrl)
+                ? escapeHtml(inquiry.linkUrl)
+                : '';
+            return `
+                <div class="admin-feedback-item ${isBanner ? 'is-banner' : ''}">
+                    <span class="feedback-kind ${isBanner ? 'banner' : 'general'}">${isBanner ? '배너 문의' : '일반 문의'}</span>
                     <p class="admin-feedback-msg">${escapeHtml(item.message)}</p>
+                    ${inquiry ? `
+                        <dl class="banner-inquiry-details">
+                            <div><dt>신청자</dt><dd>${escapeHtml(inquiry.name)} · ${escapeHtml(inquiry.organization)}</dd></div>
+                            <div><dt>연락처</dt><dd>${contact}</dd></div>
+                            <div><dt>희망 기간</dt><dd>${escapeHtml(inquiry.startDate)} ~ ${escapeHtml(inquiry.endDate)}</dd></div>
+                            ${safeLink ? `<div><dt>연결 링크</dt><dd><a href="${safeLink}" target="_blank" rel="noopener noreferrer">${safeLink}</a></dd></div>` : ''}
+                        </dl>
+                        ${item.hasImage ? `<button class="btn btn-outline btn-small" type="button"
+                            onclick="openBannerInquiryImage('${escapeHtml(item.id)}')">제출 이미지 보기</button>` : ''}
+                    ` : ''}
                     <div class="admin-feedback-foot">
                         <span>${escapeHtml(String(item.createdAt || '').slice(0, 16).replace('T', ' '))}</span>
                         <button class="btn btn-danger btn-small" type="button" onclick="deleteFeedback('${escapeHtml(item.id)}')">삭제</button>
                     </div>
-                </div>`).join('')
-            : '<div class="review-empty">아직 받은 피드백이 없습니다.</div>';
+                </div>`;
+        }).join('')
+        : '<div class="review-empty">이 종류의 피드백이 없습니다.</div>';
+}
+
+async function openBannerInquiryImage(id) {
+    const previewWindow = window.open('', '_blank');
+    if (previewWindow) previewWindow.opener = null;
+    try {
+        const response = await fetch(buildApiUrl(`/api/admin/feedback/${encodeURIComponent(id)}/image`), {
+            method: 'GET',
+            headers: getNoticeAdminHeaders()
+        });
+        if (!response.ok) {
+            const result = await response.json().catch(() => ({}));
+            throw new Error(result.error || '이미지를 찾을 수 없습니다.');
+        }
+        const imageUrl = URL.createObjectURL(await response.blob());
+        if (previewWindow) {
+            previewWindow.document.title = '제출 배너 이미지';
+            previewWindow.document.body.style.cssText = 'margin:0;display:grid;min-height:100vh;place-items:center;background:#111827';
+            const image = previewWindow.document.createElement('img');
+            image.src = imageUrl;
+            image.alt = '제출된 배너 이미지';
+            image.style.cssText = 'display:block;max-width:96vw;max-height:96vh;object-fit:contain';
+            previewWindow.addEventListener('beforeunload', () => URL.revokeObjectURL(imageUrl), { once: true });
+            previewWindow.document.body.appendChild(image);
+        } else {
+            URL.revokeObjectURL(imageUrl);
+        }
     } catch (error) {
-        if (status) { status.textContent = error.message; status.style.color = 'var(--danger)'; }
-        list.innerHTML = '<div class="review-empty">피드백을 불러오지 못했습니다.</div>';
+        previewWindow?.close();
+        alert(error.message || '이미지를 열지 못했습니다.');
     }
 }
 
@@ -452,9 +651,8 @@ async function generateAIAndSave() {
         return;
     }
 
-    document.getElementById('ai-loading').style.display = 'flex';
-
     let aiSummary = [];
+    let categoryIds = [];
     let finalImages = [];
     let existing = null;
 
@@ -462,38 +660,58 @@ async function generateAIAndSave() {
         existing = notices.find(n => String(n.id) === String(editingNoticeId)) || null;
     }
 
-    // 3줄 요약은 원문 분석 때 함께 만든다. 분석을 안 눌렀고 원문이 바뀌었으면
-    // 저장 직전에 한 번 분석해서 요약을 채운다(별도 요약 전용 호출은 없다).
-    if (composeAiSummary.length > 0) {
-        aiSummary = composeAiSummary;
-    } else if (!existing || existing.content !== content) {
-        try {
-            aiSummary = (await runNoticeAnalysis(content)).summary;
-        } catch (error) {
-            console.error('저장 직전 분석 실패:', error);
-            aiSummary = existing?.aiSummary || [];
-        }
-    } else {
-        aiSummary = existing.aiSummary || [];
-    }
-
-    // 붙여넣은 이미지 → 파일 첨부 순으로 합치고 최대 20장으로 자른다.
-    for (const src of pastedImages) {
-        if (finalImages.length >= MAX_NOTICE_IMAGES) break;
-        finalImages.push(src);
-    }
-    for (let i = 0; i < fileInput.files.length; i++) {
-        if (finalImages.length >= MAX_NOTICE_IMAGES) break;
-        finalImages.push(await getBase64(fileInput.files[i]));
-    }
-    // 붙여넣기도 파일 첨부도 없으면, 수정 중인 공지의 기존 사진을 그대로 유지한다.
-    if (finalImages.length === 0 && existing) {
-        finalImages = existing.images || [];
-    }
-
-    const newNoticeData = { title, host, target, deadline, content, aiSummary, images: finalImages };
-
+    beginAiProgress('공지 저장 준비를 시작합니다.');
     try {
+        // 3줄 요약은 원문 분석 때 함께 만든다. 분석을 안 눌렀고 원문이 바뀌었으면
+        // 저장 직전에 한 번 분석해서 요약을 채운다(별도 요약 전용 호출은 없다).
+        if (composeAiSummary.length > 0) {
+            updateAiProgress(42, '앞서 만든 Gemini 분석 결과를 확인하고 있습니다.', 'analyze', 58);
+            aiSummary = composeAiSummary;
+            categoryIds = composeAiCategoryIds;
+        } else if (!existing || existing.content !== content) {
+            updateAiProgress(18, 'Gemini가 원문을 분석하고 있습니다.', 'analyze', 68);
+            try {
+                const analysis = await runNoticeAnalysis(content);
+                aiSummary = analysis.summary;
+                categoryIds = analysis.categoryIds;
+            } catch (error) {
+                if (isGeminiRateLimitError(error)) throw error;
+                console.error('저장 직전 분석 실패:', error);
+                aiSummary = existing?.aiSummary || [];
+                categoryIds = existing?.categoryIds || [];
+            }
+        } else {
+            updateAiProgress(42, '기존 분석 결과를 확인하고 있습니다.', 'analyze', 58);
+            aiSummary = existing.aiSummary || [];
+            categoryIds = existing.categoryIds || [];
+        }
+
+        updateAiProgress(68, '첨부 이미지를 정리하고 있습니다.', 'process', 82);
+        // 붙여넣은 이미지 → 파일 첨부 순으로 합치고 최대 20장으로 자른다.
+        for (const src of pastedImages) {
+            if (finalImages.length >= MAX_NOTICE_IMAGES) break;
+            finalImages.push(src);
+        }
+        for (let i = 0; i < fileInput.files.length; i++) {
+            if (finalImages.length >= MAX_NOTICE_IMAGES) break;
+            finalImages.push(await getBase64(fileInput.files[i]));
+        }
+        // 붙여넣기도 파일 첨부도 없으면, 수정 중인 공지의 기존 사진을 그대로 유지한다.
+        if (finalImages.length === 0 && existing) {
+            finalImages = existing.images || [];
+        }
+
+        const newNoticeData = {
+            title,
+            host,
+            target,
+            deadline,
+            content,
+            aiSummary,
+            categoryIds,
+            images: finalImages
+        };
+        updateAiProgress(84, '공지 내용을 서버에 저장하고 있습니다.', 'save', 94);
         if (editingNoticeId) {
             await apiRequest(`/api/notices/${editingNoticeId}`, {
                 method: 'PUT',
@@ -507,14 +725,21 @@ async function generateAIAndSave() {
                 body: JSON.stringify(newNoticeData)
             });
         }
+        updateAiProgress(95, '저장된 공지 목록을 새로 불러오고 있습니다.', 'save', 98);
         await loadNoticePage(1, { replace: true });
+        finishAiProgress(editingNoticeId ? '공지 수정이 완료되었습니다.' : '공지 등록이 완료되었습니다.');
+        await new Promise(resolve => setTimeout(resolve, 250));
     } catch (error) {
-        document.getElementById('ai-loading').style.display = 'none';
-        alert(`공지 저장 실패: ${error.message}`);
+        if (isGeminiRateLimitError(error)) {
+            await showGeminiRetryCountdown(error);
+        } else {
+            alert(`공지 저장 실패: ${error.message}`);
+        }
         return;
+    } finally {
+        hideAiProgress();
     }
 
-    document.getElementById('ai-loading').style.display = 'none';
     alert(editingNoticeId ? '공지가 수정되었습니다.' : '공지가 등록되었습니다.');
     resetComposeForm();
     renderAdminNoticeList();
@@ -604,6 +829,7 @@ async function editAdminNotice(id) {
     // 새 붙여넣기 이미지·분석 요약은 초기화한다. 아무것도 바꾸지 않으면 기존 값이 유지된다.
     pastedImages = [];
     composeAiSummary = [];
+    composeAiCategoryIds = [];
     renderPastePreview();
     applyTitleToBuilder(notice.title);
     document.getElementById('post-target').value = notice.target || '전체';
@@ -653,11 +879,13 @@ function splitReviewValues(value) {
         .filter((item, index, all) => item && all.indexOf(item) === index);
 }
 
-async function loadReviewNotices() {
+async function loadReviewNotices({ quiet = false } = {}) {
     const list = document.getElementById('review-notice-list');
     if (!list) return;
-    list.innerHTML = '<div class="review-empty">검수 대기 공지를 불러오는 중입니다.</div>';
-    setReviewStatus('목록을 갱신하고 있습니다.');
+    if (!quiet) {
+        list.innerHTML = '<div class="review-empty">검수 대기 공지를 불러오는 중입니다.</div>';
+        setReviewStatus('목록을 갱신하고 있습니다.');
+    }
     try {
         const result = await apiRequest('/api/admin/review-notices', {
             method: 'GET',
@@ -678,9 +906,26 @@ async function loadReviewNotices() {
             await openReviewNotice(reviewNotices[0].id);
         }
     } catch (error) {
-        list.innerHTML = '<div class="review-empty">검수 목록을 불러오지 못했습니다.</div>';
-        setReviewStatus(error.message, true);
+        if (!quiet) {
+            list.innerHTML = '<div class="review-empty">검수 목록을 불러오지 못했습니다.</div>';
+            setReviewStatus(error.message, true);
+        }
     }
+}
+
+function startReviewInboxPolling() {
+    if (reviewInboxPollTimer) clearInterval(reviewInboxPollTimer);
+    reviewInboxPollTimer = setInterval(async () => {
+        const reviewPanel = document.getElementById('panel-review');
+        if (document.visibilityState !== 'visible' || !reviewPanel?.classList.contains('active')
+            || reviewInboxPollInFlight || reviewMutationInFlight) return;
+        reviewInboxPollInFlight = true;
+        try {
+            await loadReviewNotices({ quiet: true });
+        } finally {
+            reviewInboxPollInFlight = false;
+        }
+    }, 60_000);
 }
 
 function renderReviewNoticeList() {
@@ -995,6 +1240,13 @@ function renderBannerSection(placement, title) {
     if (!container) return;
 
     const slides = getBannerSlidesByPlacement(placement);
+    const maxBanners = 5;
+    const isAtLimit = slides.length >= maxBanners;
+    const limitStatus = document.getElementById('banner-limit-status');
+    if (limitStatus) {
+        limitStatus.textContent = `${slides.length} / ${maxBanners}`;
+        limitStatus.classList.toggle('is-full', isAtLimit);
+    }
     container.setAttribute('aria-label', title);
     container.innerHTML = '';
 
@@ -1002,27 +1254,70 @@ function renderBannerSection(placement, title) {
         const safeId = Number(slide.id);
         const safeText = escapeHtml(slide.text || '');
         const localExpiresAt = toDateTimeLocalValue(slide.expiresAt);
+        const safeImage = slide.src ? escapeHtml(slide.src) : '';
         const slideItem = document.createElement('div');
         slideItem.className = 'banner-item';
         slideItem.innerHTML = `
             <div class="banner-item-header">
-                <span class="banner-item-text">${safeText}</span>
+                <div>
+                    <span class="banner-order-chip">${idx + 1}</span>
+                    <span class="banner-item-text">${escapeHtml(slide.name || slide.text || '이름 없는 배너')}</span>
+                </div>
                 <div class="banner-item-actions">
-                    <button class="btn btn-outline btn-small" onclick="moveBanner('${placement}', ${idx}, -1)" ${idx === 0 ? 'disabled' : ''}>↑</button>
-                    <button class="btn btn-outline btn-small" onclick="moveBanner('${placement}', ${idx}, 1)" ${idx === slides.length - 1 ? 'disabled' : ''}>↓</button>
-                    <button class="btn btn-small btn-danger" onclick="deleteBannerSlide(${safeId})">삭제</button>
+                    <button class="btn btn-outline btn-small" type="button" aria-label="위로 이동" onclick="moveBanner('${placement}', ${idx}, -1)" ${idx === 0 ? 'disabled' : ''}>↑</button>
+                    <button class="btn btn-outline btn-small" type="button" aria-label="아래로 이동" onclick="moveBanner('${placement}', ${idx}, 1)" ${idx === slides.length - 1 ? 'disabled' : ''}>↓</button>
                 </div>
             </div>
-            <div class="banner-item-form">
-                <input type="text" maxlength="50" placeholder="관리용 이름" value="${escapeHtml(slide.name || '')}" class="banner-input-name-${safeId}">
-                <input type="text" maxlength="100" placeholder="배너 텍스트" value="${safeText}" class="banner-input-text-${safeId}">
-                <input type="color" value="${escapeHtml(slide.textColor || '#000000')}" class="banner-input-color-${safeId}">
-                <input type="datetime-local" value="${localExpiresAt}" data-original-local-value="${localExpiresAt}" class="banner-input-expires-at-${safeId}">
-                <textarea class="banner-input-description-${safeId}" maxlength="240" placeholder="짧은 광고 설명">${escapeHtml(slide.description || '')}</textarea>
-                <input type="url" class="banner-input-link-${safeId}" value="${escapeHtml(slide.linkUrl || '')}" placeholder="https://...">
-                <input type="text" class="banner-input-alt-${safeId}" maxlength="160" value="${escapeHtml(slide.altText || '')}" placeholder="이미지 대체 텍스트">
-                <input type="file" accept="image/*" class="banner-input-file-${safeId}">
-                <button class="btn btn-small" onclick="updateBannerSlide(${safeId})">수정</button>
+            <div class="banner-editor-layout">
+                <div class="banner-visual-column">
+                    <div class="banner-image-preview ${safeImage ? '' : 'is-empty'}" id="banner-preview-${safeId}">
+                        ${safeImage
+                            ? `<img src="${safeImage}" alt="">`
+                            : '<span>이미지 미등록<br><small>권장 4:5 세로형</small></span>'}
+                    </div>
+                    <label class="banner-upload-button">
+                        사진 교체
+                        <input type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml"
+                               class="banner-input-file-${safeId}"
+                               onchange="previewBannerUpload(this, 'banner-preview-${safeId}')">
+                    </label>
+                    ${safeImage ? `
+                        <label class="banner-remove-image">
+                            <input type="checkbox" class="banner-input-remove-${safeId}"> 기존 사진 제거
+                        </label>
+                    ` : ''}
+                </div>
+                <div class="banner-item-form">
+                    <label class="banner-field">
+                        <span>관리용 이름</span>
+                        <input type="text" maxlength="50" placeholder="예: 8월 학생회 행사" value="${escapeHtml(slide.name || '')}" class="banner-input-name-${safeId}">
+                    </label>
+                    <label class="banner-field">
+                        <span>공개 제목</span>
+                        <input type="text" maxlength="100" placeholder="배너 아래에 보일 제목" value="${safeText}" class="banner-input-text-${safeId}">
+                    </label>
+                    <label class="banner-field banner-field-wide">
+                        <span>짧은 설명</span>
+                        <textarea class="banner-input-description-${safeId}" maxlength="240" placeholder="광고의 핵심 내용을 한두 문장으로 적어주세요.">${escapeHtml(slide.description || '')}</textarea>
+                    </label>
+                    <label class="banner-field banner-field-wide">
+                        <span>클릭 시 연결 링크</span>
+                        <input type="url" class="banner-input-link-${safeId}" value="${escapeHtml(slide.linkUrl || '')}" placeholder="https://example.com/apply">
+                    </label>
+                    <label class="banner-field">
+                        <span>이미지 대체 텍스트</span>
+                        <input type="text" class="banner-input-alt-${safeId}" maxlength="160" value="${escapeHtml(slide.altText || '')}" placeholder="이미지 내용을 설명">
+                    </label>
+                    <label class="banner-field">
+                        <span>노출 종료</span>
+                        <input type="datetime-local" value="${localExpiresAt}" data-original-local-value="${localExpiresAt}" class="banner-input-expires-at-${safeId}">
+                    </label>
+                    <input type="hidden" value="${escapeHtml(slide.textColor || '#000000')}" class="banner-input-color-${safeId}">
+                    <div class="banner-form-actions banner-field-wide">
+                        <button class="btn btn-small" type="button" onclick="updateBannerSlide(${safeId})">변경사항 저장</button>
+                        <button class="btn btn-small btn-danger" type="button" onclick="deleteBannerSlide(${safeId})">배너 삭제</button>
+                    </div>
+                </div>
             </div>
         `;
         container.appendChild(slideItem);
@@ -1031,24 +1326,90 @@ function renderBannerSection(placement, title) {
     const addForm = document.createElement('div');
     addForm.className = 'banner-item banner-item-add';
     addForm.innerHTML = `
-        <div class="banner-item-header"><span>새 ${title} 추가</span></div>
-        <div class="banner-item-form">
-            <input type="text" id="new-right_rail-name" maxlength="50" placeholder="관리용 이름">
-            <input type="text" id="new-right_rail-text" maxlength="100" placeholder="배너 텍스트">
-            <input type="color" id="new-right_rail-color" value="#000000" placeholder="텍스트 색">
-            <input type="color" id="new-right_rail-bg" value="#ffffff" placeholder="배경 색">
-            <textarea id="new-right_rail-description" maxlength="240" placeholder="짧은 광고 설명"></textarea>
-            <input type="url" id="new-right_rail-link-url" placeholder="https://...">
-            <input type="text" id="new-right_rail-alt-text" maxlength="160" placeholder="이미지 대체 텍스트">
-            <input type="datetime-local" id="new-right_rail-expires-at">
-            <input type="file" id="new-right_rail-image" accept="image/*">
-            <button class="btn btn-small" type="button" onclick="addNewBannerSlide('${placement}')">추가</button>
+        <div class="banner-item-header">
+            <div>
+                <span class="banner-item-text">새 배너 추가하기</span>
+                <small>${isAtLimit ? '최대 5개가 등록되어 있습니다. 기존 배너를 삭제하면 추가할 수 있습니다.' : '등록 즉시 오른쪽 광고 영역의 순환 목록에 포함됩니다.'}</small>
+            </div>
+        </div>
+        <div class="banner-editor-layout ${isAtLimit ? 'is-disabled' : ''}">
+            <div class="banner-visual-column">
+                <div class="banner-image-preview is-empty" id="new-banner-preview">
+                    <span>사진 미리보기<br><small>권장 800×1000px</small></span>
+                </div>
+                <label class="banner-upload-button ${isAtLimit ? 'is-disabled' : ''}">
+                    사진 업로드
+                    <input type="file" id="new-right_rail-image"
+                           accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml"
+                           onchange="previewBannerUpload(this, 'new-banner-preview')" ${isAtLimit ? 'disabled' : ''}>
+                </label>
+            </div>
+            <div class="banner-item-form">
+                <label class="banner-field">
+                    <span>관리용 이름</span>
+                    <input type="text" id="new-right_rail-name" maxlength="50" placeholder="관리자만 구분하는 이름" ${isAtLimit ? 'disabled' : ''}>
+                </label>
+                <label class="banner-field">
+                    <span>공개 제목</span>
+                    <input type="text" id="new-right_rail-text" maxlength="100" placeholder="배너 아래에 보일 제목" ${isAtLimit ? 'disabled' : ''}>
+                </label>
+                <label class="banner-field banner-field-wide">
+                    <span>짧은 설명</span>
+                    <textarea id="new-right_rail-description" maxlength="240" placeholder="광고의 핵심 내용을 한두 문장으로 적어주세요." ${isAtLimit ? 'disabled' : ''}></textarea>
+                </label>
+                <label class="banner-field banner-field-wide">
+                    <span>클릭 시 연결 링크</span>
+                    <input type="url" id="new-right_rail-link-url" placeholder="https://example.com/apply" ${isAtLimit ? 'disabled' : ''}>
+                </label>
+                <label class="banner-field">
+                    <span>이미지 대체 텍스트</span>
+                    <input type="text" id="new-right_rail-alt-text" maxlength="160" placeholder="이미지 내용을 설명" ${isAtLimit ? 'disabled' : ''}>
+                </label>
+                <label class="banner-field">
+                    <span>노출 종료</span>
+                    <input type="datetime-local" id="new-right_rail-expires-at" ${isAtLimit ? 'disabled' : ''}>
+                </label>
+                <input type="hidden" id="new-right_rail-color" value="#000000">
+                <input type="hidden" id="new-right_rail-bg" value="#ffffff">
+                <div class="banner-form-actions banner-field-wide">
+                    <button class="btn btn-small" type="button" onclick="addNewBannerSlide('${placement}')" ${isAtLimit ? 'disabled' : ''}>배너 등록하기</button>
+                </div>
+            </div>
         </div>
     `;
     container.appendChild(addForm);
 }
 
+function previewBannerUpload(input, previewId) {
+    const file = input?.files?.[0];
+    const preview = document.getElementById(previewId);
+    if (!file || !preview) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+        preview.classList.remove('is-empty');
+        preview.innerHTML = `<img src="${escapeHtml(reader.result)}" alt="선택한 배너 이미지 미리보기">`;
+    };
+    reader.readAsDataURL(file);
+}
+
+function validateBannerImageFile(file) {
+    if (!file) return true;
+    if (!String(file.type || '').startsWith('image/')) {
+        alert('배너에는 이미지 파일만 업로드할 수 있습니다.');
+        return false;
+    }
+    if (file.size > 6 * 1024 * 1024) {
+        alert('배너 이미지는 6MB 이하로 업로드해주세요.');
+        return false;
+    }
+    return true;
+}
+
 async function addNewBannerSlide(placement) {
+    if (getBannerSlidesByPlacement(placement).length >= 5) {
+        alert('오른쪽 배너는 최대 5개까지 등록할 수 있습니다.');
+        return;
+    }
     const text = (document.getElementById(`new-${placement}-text`)?.value || '').trim();
     const name = (document.getElementById(`new-${placement}-name`)?.value || '').trim();
     const textColor = document.getElementById(`new-${placement}-color`)?.value || '#000000';
@@ -1059,6 +1420,7 @@ async function addNewBannerSlide(placement) {
     const expiresAt = document.getElementById(`new-${placement}-expires-at`)?.value || '';
     const imageInput = document.getElementById(`new-${placement}-image`);
     const imageFile = imageInput?.files?.[0] || null;
+    if (!validateBannerImageFile(imageFile)) return;
 
     if (!text && !imageFile) {
         alert('배너 텍스트 또는 이미지를 입력해주세요.');
@@ -1116,9 +1478,11 @@ async function updateBannerSlide(slideId) {
     const expiresAt = resolveUpdateExpiresAt(expiresInput);
     const imageInput = document.querySelector(`.banner-input-file-${slideId}`);
     const imageFile = imageInput?.files?.[0] || null;
+    if (!validateBannerImageFile(imageFile)) return;
     const imageSrc = imageFile ? await getBase64(imageFile) : null;
+    const removeExistingImage = Boolean(document.querySelector(`.banner-input-remove-${slideId}`)?.checked);
 
-    if (!newText && !imageSrc && !prevSlide.src) {
+    if (!newText && !imageSrc && (!prevSlide.src || removeExistingImage)) {
         alert('배너 텍스트 또는 이미지를 입력해주세요.');
         return;
     }
@@ -1132,7 +1496,7 @@ async function updateBannerSlide(slideId) {
                 text: newText || prevSlide.text || '이미지 배너',
                 textColor: newColor,
                 bgStyle: prevSlide.bgStyle || 'background: #ffffff;',
-                src: imageSrc || prevSlide.src || null,
+                src: imageSrc || (removeExistingImage ? null : (prevSlide.src || null)),
                 order: Number(prevSlide.order) || 0,
                 placement: prevSlide.placement || 'header',
                 description: descriptionInput ? descriptionInput.value.trim() : (prevSlide.description || ''),
@@ -1421,8 +1785,6 @@ function saveAdminInfo() {
 
                 if (newAdminPwd) {
                     noticeAdminAuthToken = newAdminPwd;
-                    sessionStorage.setItem('eceNoticeAdminToken', noticeAdminAuthToken);
-                    sessionStorage.setItem('eceAdminToken', noticeAdminAuthToken);
                     pwdChanged.push('공지 관리자 비밀번호');
                 }
                 if (newBannerPwd) pwdChanged.push('배너 비밀번호');
@@ -1444,9 +1806,13 @@ function saveAdminInfo() {
 
 document.addEventListener('DOMContentLoaded', async function () {
     // core.js가 공개 화면에서만 loadData()를 돌리므로 여기서 직접 채운다.
-    noticeAdminAuthToken = sessionStorage.getItem('eceNoticeAdminToken') || sessionStorage.getItem('eceAdminToken') || '';
-    superAdminAuthToken = sessionStorage.getItem('eceSuperAdminToken') || '';
-    bannerManageAuthToken = sessionStorage.getItem('eceBannerManageToken') || '';
+    noticeAdminAuthToken = '';
+    superAdminAuthToken = '';
+    bannerManageAuthToken = '';
+    sessionStorage.removeItem('eceNoticeAdminToken');
+    sessionStorage.removeItem('eceAdminToken');
+    sessionStorage.removeItem('eceSuperAdminToken');
+    sessionStorage.removeItem('eceBannerManageToken');
 
     pendingEditNoticeId = new URLSearchParams(location.search).get('edit');
     resetComposeForm();
@@ -1460,21 +1826,7 @@ document.addEventListener('DOMContentLoaded', async function () {
         console.error('관리자 설정 불러오기 실패:', error);
     }
 
-    if (noticeAdminAuthToken) {
-        // 세션에 남아 있는 토큰이 아직 유효한지 확인한 뒤에만 통과시킨다.
-        try {
-            await apiRequest('/api/admin/verify', {
-                method: 'POST',
-                headers: getNoticeAdminHeaders()
-            });
-            await enterAdminWorkspace();
-            return;
-        } catch {
-            noticeAdminAuthToken = '';
-            sessionStorage.removeItem('eceNoticeAdminToken');
-            sessionStorage.removeItem('eceAdminToken');
-        }
-    }
-
-    document.getElementById('admin-gate-password').focus();
+    const gatePassword = document.getElementById('admin-gate-password');
+    gatePassword.value = '';
+    gatePassword.focus();
 });

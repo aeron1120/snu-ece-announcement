@@ -61,26 +61,36 @@
 <div class="page-shell">
     <div class="drawer-scrim" id="drawer-scrim" onclick="closeMobileDrawer()"></div>
 
-    <aside class="site-rail brand-rail rail-left" id="left-brand-rail" aria-label="학교 바로가기">
+    <aside class="site-rail brand-rail rail-left" id="left-brand-rail" aria-label="학교 바로가기"
+           draggable="false" ondragstart="return false">
         <button type="button" class="drawer-close-btn mobile-only" aria-label="메뉴 닫기" onclick="closeMobileDrawer()">×</button>
-        <!-- 로고를 누르면 공지를 다시 불러온다. 서울대 엠블럼 파일이 없으면 둥근 'SNU' 마크로 떨어진다. -->
-        <button type="button" class="brand-logo-btn" id="brand-logo-btn" title="누르면 공지를 다시 불러옵니다"
-                aria-label="SNU ECE 공지방 새로고침" onclick="reloadNoticeBoard()">
+        <!-- 엠블럼을 누르면 상세·필터 주소를 지우고 홈을 완전히 새로 불러온다. -->
+        <button type="button" class="brand-logo-btn" id="brand-logo-btn" title="홈으로 돌아가기"
+                aria-label="SNU ECE 공지방 홈으로 돌아가기" onclick="goHomeAndReload()">
             <img class="brand-logo-img" id="brand-logo-img" src="./icons/snu-emblem.png" alt="서울대학교"
                  onerror="this.style.display='none'; document.getElementById('brand-logo-fallback').style.display='grid';">
-            <span class="brand-mark" id="brand-logo-fallback" aria-hidden="true" style="display:none;">서울대학교</span>
+            <span class="brand-mark" id="brand-logo-fallback" aria-hidden="true" style="display:none;">SNU</span>
         </button>
+        <p class="brand-university-name">서울대학교</p>
         <p class="brand-site-name">SNU ECE<br>공지방</p>
+        <p class="rail-section-label">관련 페이지</p>
         <nav class="brand-links" aria-label="서울대학교 관련 링크">
             <a href="https://www.snu.ac.kr/" target="_blank" rel="noopener noreferrer">서울대학교 홈페이지</a>
             <a href="https://ece.snu.ac.kr/" target="_blank" rel="noopener noreferrer">전기정보공학부</a>
             <a href="https://my.snu.ac.kr/" target="_blank" rel="noopener noreferrer">mySNU</a>
         </nav>
         <p class="rail-section-label">문의</p>
-        <nav class="brand-links" aria-label="문의">
-            <button type="button" onclick="openContactFromRail()">문의하기</button>
+        <nav class="brand-links inquiry-links" aria-label="문의">
+            <button type="button" onclick="openContactFromRail()">일반 문의하기</button>
+            <button type="button" onclick="openBannerInquiryFromRail()">배너 문의하기</button>
+        </nav>
+        <nav class="brand-links rail-admin-link" aria-label="관리">
             <a href="./admin.html">관리자 페이지</a>
         </nav>
+        <time class="rail-clock" id="rail-clock" aria-live="off">
+            <strong id="rail-clock-time">--:--:--</strong>
+            <span id="rail-clock-date">날짜를 불러오는 중</span>
+        </time>
     </aside>
 
     <main class="page-main" id="page-main">
@@ -88,13 +98,10 @@
 <div class="header">
     <button type="button" class="mobile-menu-btn" aria-label="메뉴 열기" onclick="openMobileDrawer()">☰</button>
     <div class="header-title-area">
-        <!-- 별도의 새로고침 버튼 대신 제목을 누르면 목록을 다시 받아온다. -->
-        <button type="button" class="site-title" id="site-title" title="누르면 공지를 다시 불러옵니다"
-                onclick="reloadNoticeBoard()">SNU ECE 공지방</button>
+        <h1 class="site-title" id="site-title">SNU ECE 공지방</h1>
         <button type="button" class="bell-toggle" id="bell-toggle" aria-pressed="false"
                 aria-label="공지 알림 받기" title="공지 알림 받기"
                 onclick="openNotificationPreferences()">🔔</button>
-        <span class="site-title-hint" id="site-title-hint">제목을 누르면 새로고침</span>
     </div>
 
     <div class="header-actions">
@@ -208,13 +215,47 @@
     </div>
 </div>
 
-<div class="grid" id="notice-grid"></div>
-<div id="notice-scroll-sentinel" aria-hidden="true"></div>
-<div class="notice-pagination" id="notice-pagination">
-    <button class="btn btn-outline" id="notice-load-more"
-            type="button" onclick="loadMoreNotices()">더 보기</button>
-    <p id="notice-load-more-status" aria-live="polite"></p>
-</div>
+<!-- 공지를 문서 블록으로 추가하면 이 영역에 자연스러운 세로 문서 흐름으로 쌓인다. -->
+<section class="spatial-workspace" id="spatial-workspace">
+    <div class="split-drop-overlay" id="split-drop-overlay" hidden aria-label="공지 분할 위치 선택">
+        <button class="split-drop-zone is-left" type="button" data-split-side="left"
+                aria-label="화면 왼쪽에 공지 놓기"
+                ondragover="onSplitDropZoneDragOver(event)"
+                ondragleave="onSplitDropZoneDragLeave(event)"
+                ondrop="onSplitDropZoneDrop(event, 'left')"
+                onclick="applyPendingNoticeSplit('left')">
+            <span class="split-drop-plus" aria-hidden="true">+</span>
+            <strong>왼쪽에 공지 놓기</strong>
+        </button>
+        <button class="split-drop-zone is-right" type="button" data-split-side="right"
+                aria-label="화면 오른쪽에 공지 놓기"
+                ondragover="onSplitDropZoneDragOver(event)"
+                ondragleave="onSplitDropZoneDragLeave(event)"
+                ondrop="onSplitDropZoneDrop(event, 'right')"
+                onclick="applyPendingNoticeSplit('right')">
+            <span class="split-drop-plus" aria-hidden="true">+</span>
+            <strong>오른쪽에 공지 놓기</strong>
+        </button>
+    </div>
+
+    <section class="compare-space" id="compare-space" aria-label="고정한 공지" hidden>
+        <div class="compare-space-stage" id="compare-space-stage"
+             ondragover="onCompareStageDragOver(event)"
+             ondrop="onCompareStageDrop(event)"></div>
+    </section>
+
+    <section class="notice-base-block" id="notice-base-block" aria-label="공지 목록">
+        <div class="grid" id="notice-grid"></div>
+        <nav class="notice-pagination" id="notice-pagination" aria-label="공지 페이지">
+            <button type="button" id="notice-page-prev" aria-label="이전 페이지" title="이전 페이지"
+                    onclick="goToPreviousNoticePage()">&lt;</button>
+            <div class="notice-page-numbers" id="notice-page-numbers"></div>
+            <button type="button" id="notice-page-next" aria-label="다음 페이지" title="다음 페이지"
+                    onclick="goToNextNoticePage()">&gt;</button>
+            <p id="notice-page-status" aria-live="polite"></p>
+        </nav>
+    </section>
+</section>
 </div><!-- /board-view -->
 
 <!-- 공지 상세: 모달이 아니라 목록을 대체하는 전체 페이지. 뒤로가기로 목록에 돌아온다. -->
@@ -223,8 +264,14 @@
     <div class="tags" id="detail-tags"></div>
     <h1 class="detail-title" id="detail-title"></h1>
     <p class="detail-meta" id="detail-meta"></p>
-    <div class="detail-hero" id="detail-hero" hidden>
+    <div class="detail-hero" id="detail-hero" hidden
+         ontouchstart="startImageSwipe(event)" ontouchend="endImageSwipe(event, 'detail')">
+        <button class="detail-image-nav previous" id="detail-image-prev" type="button"
+                aria-label="이전 사진" onclick="navDetailImage(-1, event)">‹</button>
         <img id="detail-hero-img" alt="">
+        <button class="detail-image-nav next" id="detail-image-next" type="button"
+                aria-label="다음 사진" onclick="navDetailImage(1, event)">›</button>
+        <span class="detail-image-counter" id="detail-image-counter"></span>
     </div>
     <div class="ai-box">
         <h4>Gemini AI 3줄 요약</h4>
@@ -254,7 +301,7 @@
             <span class="ad-label">AD</span>
             <h2>배너 광고 문의</h2>
             <p>학생들에게 소식을 알릴 세로 배너를 등록해보세요.</p>
-            <button class="rail-cta" type="button" onclick="openModal('contact-modal')">배너 문의하기</button>
+            <button class="rail-cta" type="button" onclick="openBannerInquiryFromRail()">배너 문의하기</button>
         </div>
     </aside>
 </div>
@@ -271,14 +318,16 @@
     </div>
 </div>
 
+<aside class="notice-hover-preview" id="notice-hover-preview" aria-live="polite" hidden></aside>
+
 <div class="overlay" id="contact-modal">
     <div class="modal feedback-modal" onclick="event.stopPropagation()">
         <button class="close-btn" onclick="closeModal('contact-modal')">×</button>
-        <h2 style="margin-top: 0; font-weight: 800;">익명 피드백</h2>
-        <p class="feedback-help">누가 썼는지 저장하지 않습니다. 이름·연락처·IP 어떤 것도 남기지 않으니 편하게 의견을 남겨주세요. 배너 광고 제휴 문의·불편사항도 여기에 남겨주세요.</p>
+        <h2 id="feedback-title" style="margin-top: 0; font-weight: 800;">익명 피드백</h2>
+        <p class="feedback-help" id="feedback-help">누가 썼는지 저장하지 않습니다. 이름·연락처·IP 어떤 것도 남기지 않으니 편하게 의견을 남겨주세요.</p>
         <div class="form-group" style="margin-bottom: 12px;">
             <textarea id="feedback-message" maxlength="2000"
-                      placeholder="개선 의견, 오류 제보, 광고 제휴 문의 등 무엇이든 적어주세요. (5자 이상)"
+                      placeholder="개선 의견이나 오류 제보를 적어주세요. (5자 이상)"
                       style="height: 180px;"></textarea>
         </div>
         <p id="feedback-status" class="review-status" aria-live="polite"></p>
@@ -288,15 +337,28 @@
     </div>
 </div>
 
-<div class="overlay" id="image-viewer-modal" style="z-index: 2000; flex-direction: column; background: rgba(0,0,0,0.85); backdrop-filter: blur(10px);">
-    <button class="nav-btn left" id="nav-left" onclick="navImage(-1, event)">❮</button>
-    <button class="nav-btn right" id="nav-right" onclick="navImage(1, event)">❯</button>
-    <div style="width: 100%; display: flex; justify-content: flex-end; padding: 20px; box-sizing: border-box; gap: 12px; margin-bottom: 20px;" onclick="event.stopPropagation()">
-        <span id="img-counter" style="color: white; margin-right: auto; padding: 10px; font-weight: bold; font-size: 16px;"></span>
-        <a id="viewer-download-btn" href="#" download="공지_첨부이미지.jpg" class="btn" style="background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.3); color: white; padding: 10px 20px; text-decoration: none;">⬇ 다운로드</a>
-        <button onclick="closeModal('image-viewer-modal')" style="background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.3); color: white; width: 44px; height: 44px; border-radius: 0; font-size: 24px; cursor: pointer; display: flex; align-items: center; justify-content: center;">×</button>
+<div class="overlay image-viewer" id="image-viewer-modal" role="dialog" aria-modal="true"
+     aria-label="공지 이미지 크게 보기" onclick="closeModal('image-viewer-modal')">
+    <header class="image-viewer-toolbar" onclick="event.stopPropagation()">
+        <span class="image-viewer-counter" id="img-counter"></span>
+        <div class="image-viewer-actions">
+            <button id="viewer-copy-btn" class="image-viewer-action" type="button"
+                    onclick="copyCurrentViewerImage(event)">이미지 복사</button>
+            <a id="viewer-download-btn" href="#" download="공지_첨부이미지.jpg"
+               class="image-viewer-action">다운로드</a>
+            <button class="image-viewer-close" type="button" aria-label="이미지 뷰어 닫기"
+                    onclick="closeModal('image-viewer-modal')">×</button>
+        </div>
+    </header>
+    <div class="image-viewer-stage" onclick="event.stopPropagation()"
+         ontouchstart="startImageSwipe(event)" ontouchend="endImageSwipe(event, 'viewer')">
+        <button class="nav-btn left" id="nav-left" type="button" aria-label="이전 사진"
+                onclick="navImage(-1, event)">‹</button>
+        <img id="viewer-img" src="" alt="확대된 공지 이미지"
+             title="우클릭으로도 이미지를 복사할 수 있습니다">
+        <button class="nav-btn right" id="nav-right" type="button" aria-label="다음 사진"
+                onclick="navImage(1, event)">›</button>
     </div>
-    <img id="viewer-img" src="" style="max-width: 90%; max-height: 75vh; object-fit: contain; box-shadow: 0 10px 30px rgba(0,0,0,0.5);" onclick="event.stopPropagation()">
 </div>
 
 <div class="overlay" id="notification-modal" aria-hidden="true">

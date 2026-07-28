@@ -163,6 +163,18 @@ create table if not exists public.categories (
   updated_at timestamptz not null default now()
 );
 
+insert into public.categories (name, slug, is_active)
+values
+  ('신청', 'application', true),
+  ('학사', 'academics', true),
+  ('혜택/제휴', 'benefits-partnerships', true),
+  ('캠퍼스', 'campus', true),
+  ('자치', 'governance', true)
+on conflict (slug) do update
+set name = excluded.name,
+    is_active = true,
+    updated_at = now();
+
 create table if not exists public.category_aliases (
   id bigint generated always as identity primary key,
   category_id bigint not null references public.categories(id) on delete cascade,
@@ -333,6 +345,7 @@ set search_path = public
 as $$
 declare
   created_row public.notices;
+  category_value jsonb;
 begin
   insert into public.notices (
     title, content, target, targets, host, deadline, ai_summary, images,
@@ -357,6 +370,18 @@ begin
     false
   )
   returning * into created_row;
+
+  if notice_payload ? 'categoryIds' then
+    for category_value in select * from jsonb_array_elements(notice_payload->'categoryIds')
+    loop
+      insert into public.notice_categories (notice_id, category_id)
+      select created_row.id, (category_value #>> '{}')::bigint
+      from public.categories
+      where id = (category_value #>> '{}')::bigint
+        and is_active = true
+      on conflict do nothing;
+    end loop;
+  end if;
 
   if should_notify then
     insert into public.notification_jobs (notice_id, kind, status)

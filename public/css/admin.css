@@ -82,6 +82,7 @@
     background: var(--primary); color: white; font-size: 12px; font-weight: 800;
 }
 .review-layout { display: grid; grid-template-columns: minmax(230px, 320px) minmax(0, 1fr); gap: 18px; }
+.review-auto-note { margin: -4px 0 8px; color: var(--text-sub); font-size: 13px; line-height: 1.55; }
 .review-list-pane { border-right: 1px solid var(--border); padding-right: 18px; }
 .review-list-pane > .btn { width: 100%; margin-bottom: 12px; }
 .review-notice-list { display: flex; flex-direction: column; gap: 8px; max-height: 68vh; overflow-y: auto; }
@@ -141,12 +142,100 @@
 .analyze-bar .btn { white-space: nowrap; }
 .analysis-fields { padding: 16px; border: 1px solid var(--border); background: #fafbfc; margin-bottom: 22px; }
 .analysis-fields .title-builder-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.ai-progress-overlay {
+    padding: 30px;
+    align-items: stretch;
+    text-align: left;
+}
+.ai-progress-overlay .spinner { align-self: center; }
+.ai-progress-heading { margin: 0 0 14px; color: var(--text-main); font-size: 17px; text-align: center; }
+.ai-progress-overlay progress {
+    width: min(520px, 100%);
+    height: 12px;
+    margin: 0 auto;
+    overflow: hidden;
+    border: 0;
+    border-radius: 999px;
+    background: #e5e7eb;
+    accent-color: var(--primary);
+}
+.ai-progress-overlay progress::-webkit-progress-bar { background: #e5e7eb; border-radius: 999px; }
+.ai-progress-overlay progress::-webkit-progress-value {
+    background: linear-gradient(90deg, var(--primary), #4d72c8);
+    border-radius: 999px;
+    transition: width .25s ease;
+}
+.ai-progress-overlay progress::-moz-progress-bar {
+    background: linear-gradient(90deg, var(--primary), #4d72c8);
+    border-radius: 999px;
+}
+.ai-progress-meta {
+    width: min(520px, 100%);
+    display: flex;
+    justify-content: space-between;
+    gap: 14px;
+    margin: 9px auto 16px;
+    color: var(--text-sub);
+    font-size: 13px;
+}
+.ai-progress-percent { color: var(--primary); font-variant-numeric: tabular-nums; }
+.ai-progress-steps {
+    width: min(520px, 100%);
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    margin: 0 auto;
+    padding: 0;
+    list-style: none;
+}
+.ai-progress-steps li {
+    padding: 8px 6px;
+    color: var(--text-sub);
+    background: #f4f5f7;
+    border: 1px solid var(--border);
+    font-size: 11.5px;
+    font-weight: 700;
+    text-align: center;
+}
+.ai-progress-steps li.active { color: var(--primary); background: var(--primary-light); border-color: var(--primary); }
+.ai-progress-steps li.done { color: var(--ok); background: var(--ok-bg); border-color: #b9d5c3; }
+.ai-progress-overlay.rate-limited { align-items: center; justify-content: center; }
+.ai-progress-overlay.rate-limited .spinner,
+.ai-progress-overlay.rate-limited progress,
+.ai-progress-overlay.rate-limited .ai-progress-steps { display: none; }
+.ai-progress-overlay.rate-limited .ai-progress-heading { margin-bottom: 8px; }
+.ai-progress-overlay.rate-limited .ai-progress-meta {
+    width: auto;
+    margin: 0;
+    align-items: center;
+    flex-direction: column;
+    font-size: 15px;
+    text-align: center;
+}
+.ai-progress-overlay.rate-limited .ai-progress-percent { font-size: 28px; }
 
 /* ---------- 익명 피드백 목록 ---------- */
 .admin-feedback-list { display: flex; flex-direction: column; gap: 10px; }
 .admin-feedback-item { padding: 14px 16px; border: 1px solid var(--border); background: white; }
+.admin-feedback-item.is-banner { border-left: 3px solid var(--primary); }
+.feedback-admin-filters { display: flex; flex-wrap: wrap; gap: 7px; margin: 10px 0 14px; }
+.feedback-kind {
+    display: inline-flex;
+    margin-bottom: 9px;
+    padding: 4px 8px;
+    color: var(--text-sub);
+    background: #f1f3f6;
+    font-size: 11px;
+    font-weight: 800;
+}
+.feedback-kind.banner { color: var(--primary-deep); background: var(--primary-light); }
 .admin-feedback-msg { margin: 0 0 10px; white-space: pre-wrap; word-break: break-word; line-height: 1.6; color: var(--text-main); }
 .admin-feedback-foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; color: var(--text-sub); font-size: 12px; font-variant-numeric: tabular-nums; }
+.banner-inquiry-details { display: grid; gap: 7px; margin: 12px 0; padding: 12px 14px; background: #f7f9fc; border: 1px solid var(--border); }
+.banner-inquiry-details div { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 10px; font-size: 12px; line-height: 1.55; }
+.banner-inquiry-details dt { color: var(--text-sub); font-weight: 800; }
+.banner-inquiry-details dd { min-width: 0; margin: 0; overflow-wrap: anywhere; color: var(--text-main); }
+.banner-inquiry-details a { color: var(--primary); }
 
 /* ---------- 이미지 붙여넣기 ---------- */
 .paste-dropzone {
@@ -183,22 +272,44 @@
 /* ---------- 배너 관리 ---------- */
 .banner-placement-section + .banner-placement-section { border-top: 1px solid var(--border); padding-top: 16px; margin-top: 16px; }
 .banner-placement-section h3 { margin: 0 0 10px; color: var(--text-main); font-size: 15px; }
+.banner-manager-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
+.banner-manager-heading h3 { margin-bottom: 4px; }
+.banner-manager-heading p { margin: 0; color: var(--text-sub); font-size: 13px; }
+.banner-manager-heading strong { min-width: 62px; padding: 7px 10px; border: 1px solid var(--border); color: var(--primary); text-align: center; font-variant-numeric: tabular-nums; }
+.banner-manager-heading strong.is-full { color: var(--danger); border-color: #e3c6c1; background: var(--danger-bg); }
 .banner-slides-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; }
-.banner-slides-list .banner-item { display: block; background: white; border: 1px solid var(--border); padding: 12px; }
+.banner-slides-list .banner-item { display: block; background: white; border: 1px solid var(--border); padding: 16px; }
 .banner-item-header { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; }
+.banner-item-header > div:first-child { min-width: 0; }
+.banner-item-header small { display: block; margin-top: 4px; color: var(--text-sub); font-size: 12px; font-weight: 400; }
+.banner-order-chip { display: inline-grid; width: 24px; height: 24px; place-items: center; margin-right: 8px; background: var(--primary); color: #fff; font-size: 12px; font-weight: 800; }
 .banner-item-text { font-size: 13.5px; font-weight: 600; color: var(--text-main); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
 .banner-item-actions { display: flex; align-items: center; gap: 6px; }
 .banner-item-actions .btn { min-height: 32px; padding: 5px 10px; font-size: 12.5px; }
-.banner-item-form { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-.banner-item-form input[type="text"] { flex: 1; min-width: 180px; padding: 8px 11px; border: 1px solid var(--border); font-size: 13.5px; }
-.banner-item-form input[type="url"],
-.banner-item-form input[type="datetime-local"],
-.banner-item-form textarea { flex: 1; min-width: 180px; padding: 8px 11px; border: 1px solid var(--border); font: inherit; font-size: 13.5px; }
-.banner-item-form textarea { min-height: 34px; resize: vertical; }
-.banner-item-form input[type="color"] { width: 42px; height: 34px; border: 1px solid var(--border); cursor: pointer; padding: 2px; }
-.banner-item-form input[type="file"] { font-size: 12px; padding: 6px; border: 1px solid var(--border); background: white; }
-.banner-item-form .btn { min-height: 34px; padding: 7px 13px; }
-.banner-item-add { background: var(--primary-light); }
+.banner-editor-layout { display: grid; grid-template-columns: 180px minmax(0, 1fr); gap: 18px; align-items: start; }
+.banner-editor-layout.is-disabled { opacity: 0.58; }
+.banner-visual-column { min-width: 0; }
+.banner-image-preview { display: grid; width: 100%; aspect-ratio: 4 / 5; place-items: center; overflow: hidden; border: 1px solid var(--border); background: #f5f7fb; }
+.banner-image-preview img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.banner-image-preview span { color: var(--text-sub); font-size: 13px; line-height: 1.6; text-align: center; }
+.banner-image-preview small { color: #8b93a1; }
+.banner-upload-button { display: block; margin-top: 8px; padding: 8px 10px; border: 1px solid var(--primary); color: var(--primary); font-size: 13px; font-weight: 700; text-align: center; cursor: pointer; }
+.banner-upload-button:hover { background: var(--primary-light); }
+.banner-upload-button.is-disabled { cursor: not-allowed; }
+.banner-upload-button input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.banner-remove-image { display: flex; align-items: center; gap: 6px; margin-top: 8px; color: var(--text-sub); font-size: 12px; cursor: pointer; }
+.banner-item-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; align-items: start; }
+.banner-field { display: grid; gap: 5px; min-width: 0; }
+.banner-field > span { color: var(--text-sub); font-size: 12px; font-weight: 700; }
+.banner-field-wide { grid-column: 1 / -1; }
+.banner-field input,
+.banner-field textarea { width: 100%; min-width: 0; padding: 9px 11px; border: 1px solid var(--border); font: inherit; font-size: 13.5px; background: #fff; }
+.banner-field textarea { min-height: 72px; resize: vertical; }
+.banner-field input:focus,
+.banner-field textarea:focus { outline: none; border-color: var(--primary); }
+.banner-form-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding-top: 4px; }
+.banner-item-form .btn { min-height: 36px; padding: 7px 13px; }
+.banner-item-add { background: #f7f9fd !important; border-color: #b8c8e8 !important; }
 .banner-item-add .banner-item-header { color: var(--primary); font-weight: 700; }
 
 /* ---------- 카테고리 추천 ---------- */
@@ -226,6 +337,10 @@
     .review-editor-grid { grid-template-columns: 1fr; }
     .review-editor-grid .wide { grid-column: auto; }
     .title-builder-grid { grid-template-columns: 1fr; }
+    .ai-progress-steps { grid-template-columns: repeat(2, 1fr); }
     .admin-notice-row { flex-direction: column; align-items: stretch; }
-    .banner-item-form input, .banner-item-form textarea { min-width: 0; width: 100%; }
+    .banner-editor-layout { grid-template-columns: 1fr; }
+    .banner-visual-column { max-width: 260px; }
+    .banner-item-form { grid-template-columns: 1fr; }
+    .banner-field-wide { grid-column: auto; }
 }

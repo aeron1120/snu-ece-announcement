@@ -4,6 +4,7 @@ import { mkdtemp, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { getAutomationConfig } from '../server/config/runtime-config.js';
+import { CANONICAL_NOTICE_CATEGORIES } from '../server/config/notice-categories.js';
 import { createAutomationStore } from '../server/storage/automation-store.js';
 
 test('automation configuration disables protected jobs when secrets are absent', () => {
@@ -28,6 +29,35 @@ test('automation configuration accepts complete crawl and push settings', () => 
     assert.equal(config.categories.windowDays, 60);
     assert.equal(config.categories.minimumNotices, 5);
     assert.equal(config.categories.minimumConfidence, 0.75);
+});
+
+test('JSON automation store supplies the five canonical notice categories in order', async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), 'ece-category-store-'));
+    const store = createAutomationStore({
+        useSupabase: false,
+        filePath: path.join(directory, 'automation.json'),
+        canonicalCategories: CANONICAL_NOTICE_CATEGORIES
+    });
+
+    const categories = await store.listCategories();
+
+    assert.deepEqual(
+        categories.map(category => category.name),
+        ['신청', '학사', '혜택/제휴', '캠퍼스', '자치']
+    );
+    assert.ok(categories.every(category => category.definition));
+
+    const created = await store.createManualNotice({
+        title: '신청 공지',
+        content: '폼 제출',
+        target: '전체',
+        categoryIds: [categories[0].id]
+    });
+    assert.deepEqual(created.categoryIds, [categories[0].id]);
+    assert.deepEqual(
+        (await store.listPublishedNotices())[0].categoryIds,
+        [categories[0].id]
+    );
 });
 
 test('Supabase schema contains automation tables, constraints, and RLS', async () => {

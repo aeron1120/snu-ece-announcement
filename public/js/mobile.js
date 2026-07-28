@@ -30,7 +30,11 @@ function isMobileDrawerOpen() {
     let touchStartX = null;
 
     function handleEscape(event) {
-        if (event.key === 'Escape' && isMobileDrawerOpen()) closeMobileDrawer();
+        if (event.key === 'Escape' && isMobileDrawerOpen()) {
+            closeMobileDrawer();
+            return;
+        }
+        handleNoticeCardArrowKey(event);
     }
 
     // 서랍 안의 링크를 누르면 서랍이 남아 있으면 안 된다.

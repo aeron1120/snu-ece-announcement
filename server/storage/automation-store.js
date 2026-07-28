@@ -27,6 +27,31 @@ function nextId(rows) {
     return rows.reduce((max, row) => Math.max(max, Number(row.id) || 0), 0) + 1;
 }
 
+function mergeCanonicalCategories(document, canonicalCategories = []) {
+    for (const canonical of canonicalCategories) {
+        const existing = document.categories.find(category =>
+            category.slug === canonical.slug || category.name === canonical.name
+        );
+        if (existing) {
+            existing.name = canonical.name;
+            existing.slug = canonical.slug;
+            existing.definition = canonical.definition;
+            existing.isActive = true;
+            continue;
+        }
+        document.categories.push({
+            id: nextId(document.categories),
+            name: canonical.name,
+            slug: canonical.slug,
+            definition: canonical.definition,
+            isActive: true,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+        });
+    }
+    return document;
+}
+
 function duplicateSourceError() {
     const error = new Error('duplicate source notice');
     error.code = 'DUPLICATE_SOURCE_NOTICE';
@@ -106,17 +131,20 @@ function toSupabaseNoticeInsert(notice) {
     };
 }
 
-function createJsonStore(filePath) {
+function createJsonStore(filePath, canonicalCategories = []) {
     let mutationQueue = Promise.resolve();
 
     async function readDocument() {
         await mutationQueue;
         try {
             const parsed = JSON.parse(await fs.readFile(filePath, 'utf8'));
-            return { ...emptyDocument(), ...parsed };
+            return mergeCanonicalCategories(
+                { ...emptyDocument(), ...parsed },
+                canonicalCategories
+            );
         } catch (error) {
             if (error.code !== 'ENOENT') throw error;
-            return emptyDocument();
+            return mergeCanonicalCategories(emptyDocument(), canonicalCategories);
         }
     }
 
@@ -132,10 +160,13 @@ function createJsonStore(filePath) {
             let document;
             try {
                 document = JSON.parse(await fs.readFile(filePath, 'utf8'));
-                document = { ...emptyDocument(), ...document };
+                document = mergeCanonicalCategories(
+                    { ...emptyDocument(), ...document },
+                    canonicalCategories
+                );
             } catch (error) {
                 if (error.code !== 'ENOENT') throw error;
-                document = emptyDocument();
+                document = mergeCanonicalCategories(emptyDocument(), canonicalCategories);
             }
             const result = await mutator(document);
             await writeDocument(document);
@@ -403,6 +434,11 @@ function createJsonStore(filePath) {
         async createManualNotice(payload, { notify = true } = {}) {
             return mutate(document => {
                 const now = new Date().toISOString();
+                const categoryIds = Array.from(new Set(
+                    (payload.categoryIds || []).map(Number)
+                )).filter(categoryId => document.categories.some(category =>
+                    Number(category.id) === categoryId && category.isActive !== false
+                ));
                 const notice = {
                     id: Date.now(),
                     ...payload,
@@ -411,7 +447,7 @@ function createJsonStore(filePath) {
                     targets: Array.isArray(payload.targets)
                         ? payload.targets
                         : [payload.target].filter(Boolean),
-                    categoryIds: [],
+                    categoryIds,
                     views: 0,
                     isDeleted: false,
                     publishedAt: now,
@@ -422,6 +458,12 @@ function createJsonStore(filePath) {
                     notice.id += 1;
                 }
                 document.notices.push(notice);
+                for (const categoryId of categoryIds) {
+                    document.noticeCategories.push({
+                        noticeId: notice.id,
+                        categoryId
+                    });
+                }
                 if (notify) {
                     document.notificationJobs.push({
                         id: nextId(document.notificationJobs),
@@ -445,13 +487,28 @@ function createJsonStore(filePath) {
                     && !item.isDeleted
                 );
                 if (!notice) return null;
+                const categoryIds = Array.from(new Set(
+                    (payload.categoryIds || []).map(Number)
+                )).filter(categoryId => document.categories.some(category =>
+                    Number(category.id) === categoryId && category.isActive !== false
+                ));
                 Object.assign(notice, payload, {
                     targets: Array.isArray(payload.targets)
                         ? payload.targets
                         : [payload.target].filter(Boolean),
+                    categoryIds,
                     updatedAt: new Date().toISOString()
                 });
-                return { ...notice };
+                document.noticeCategories = document.noticeCategories.filter(item =>
+                    Number(item.noticeId) !== Number(notice.id)
+                );
+                for (const categoryId of categoryIds) {
+                    document.noticeCategories.push({
+                        noticeId: notice.id,
+                        categoryId
+                    });
+                }
+                return { ...notice, categoryIds };
             });
         },
 
@@ -865,7 +922,7 @@ function createJsonStore(filePath) {
     };
 }
 
-function createSupabaseStore(supabase) {
+function createSupabaseStore(supabase, canonicalCategories = []) {
     return {
         async beginCrawlRun(sourceType) {
             const staleBefore = new Date(Date.now() - STALE_CRAWL_RUN_MS).toISOString();
@@ -1349,17 +1406,38 @@ function createSupabaseStore(supabase) {
         },
 
         async listCategories({ activeOnly = true } = {}) {
-            let query = supabase
-                .from('categories')
-                .select('*, category_aliases(alias)')
-                .order('name', { ascending: true });
-            if (activeOnly) query = query.eq('is_active', true);
-            const { data, error } = await query;
-            if (error) throw error;
-            return (data || []).map(category => ({
+            const fetchCategories = async () => {
+                let query = supabase
+                    .from('categories')
+                    .select('*, category_aliases(alias)')
+                    .order('name', { ascending: true });
+                if (activeOnly) query = query.eq('is_active', true);
+                const result = await query;
+                if (result.error) throw result.error;
+                return result.data || [];
+            };
+            let data = await fetchCategories();
+            const needsCanonicalSeed = canonicalCategories.some(canonical => {
+                const existing = data.find(category => category.slug === canonical.slug);
+                return !existing || existing.name !== canonical.name || existing.is_active !== true;
+            });
+            if (needsCanonicalSeed) {
+                const { error: seedError } = await supabase
+                    .from('categories')
+                    .upsert(canonicalCategories.map(category => ({
+                        name: category.name,
+                        slug: category.slug,
+                        is_active: true,
+                        updated_at: new Date().toISOString()
+                    })), { onConflict: 'slug' });
+                if (seedError) throw seedError;
+                data = await fetchCategories();
+            }
+            return data.map(category => ({
                 id: Number(category.id),
                 name: category.name,
                 slug: category.slug,
+                definition: canonicalCategories.find(item => item.slug === category.slug)?.definition || '',
                 isActive: category.is_active,
                 aliases: (category.category_aliases || []).map(alias => alias.alias)
             }));
@@ -1496,11 +1574,16 @@ function createSupabaseStore(supabase) {
     };
 }
 
-export function createAutomationStore({ supabase = null, useSupabase, filePath }) {
+export function createAutomationStore({
+    supabase = null,
+    useSupabase,
+    filePath,
+    canonicalCategories = []
+}) {
     if (useSupabase) {
         if (!supabase) throw new Error('Supabase client is required');
-        return createSupabaseStore(supabase);
+        return createSupabaseStore(supabase, canonicalCategories);
     }
     if (!filePath) throw new Error('Automation JSON file path is required');
-    return createJsonStore(filePath);
+    return createJsonStore(filePath, canonicalCategories);
 }
