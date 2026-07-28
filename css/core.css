@@ -147,18 +147,21 @@ body {
 /* 학내 홍보 레일 — 남색 바탕 위에 얹히므로 글자는 밝게 간다 */
 .ad-rail { justify-content: flex-start; }
 .rail-right { padding-left: 0; padding-right: 0; }
-.rail-right > .rail-section-label { padding: 0 22px; }
 #right-rail-ad-content {
     display: flex;
     width: 100%;
-    min-height: 0;
+    height: 100%;
+    min-height: 100%;
     flex: 1 1 auto;
     flex-direction: column;
     overflow: hidden;
 }
 .rail-ad-viewport {
+    display: flex;
     width: 100%;
-    min-height: 0;
+    min-height: 100%;
+    flex: 1 1 auto;
+    flex-direction: column;
     overflow: hidden;
 }
 .rail-ad-image-stage {
@@ -186,11 +189,6 @@ body {
     .rail-ad-image-stage { animation: none; transition: none; }
 }
 .rail-ad-item + .rail-ad-item { margin-top: 22px; padding-top: 22px; border-top: 1px solid rgba(255,255,255,0.18); }
-.ad-label {
-    display: inline-block; padding: 2px 6px;
-    background: var(--rail-text); color: var(--rail-bg);
-    font-size: 11px; font-weight: 800; letter-spacing: 0.08em;
-}
 .ad-rail h2 {
     display: -webkit-box;
     margin: 12px 0 8px;
@@ -436,7 +434,7 @@ body {
     display: grid;
     width: min(100%, 760px);
     min-height: 52px;
-    grid-template-columns: auto minmax(0, 1fr) 48px;
+    grid-template-columns: minmax(0, 1fr) 48px;
     align-items: center;
     gap: 10px;
     padding: 0 5px 0 18px;
@@ -450,12 +448,6 @@ body {
     border-color: var(--primary-deep);
     box-shadow: 0 8px 24px rgba(24, 62, 143, 0.16);
     transform: translateY(-1px);
-}
-.search-brand {
-    color: var(--primary);
-    font-size: 14px;
-    font-weight: 900;
-    letter-spacing: -0.04em;
 }
 .search-container input {
     width: 100%;

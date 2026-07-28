@@ -105,7 +105,6 @@
     <!-- 검색바. 대상 학번은 상세 필터에서만 조정한다. -->
     <div class="search-container" role="search">
         <label class="search-field" for="searchInput">
-            <span class="search-brand" aria-hidden="true">SNU</span>
             <input type="search" id="searchInput" placeholder="공지 제목과 내용을 검색해보세요"
                    autocomplete="off" onkeyup="scheduleNoticeSearch()">
             <button class="search-submit" type="button" onclick="filterCards()" aria-label="공지 검색">
@@ -271,7 +270,7 @@
 
 <!-- 공지 상세: 모달이 아니라 목록을 대체하는 전체 페이지. 뒤로가기로 목록에 돌아온다. -->
 <article class="notice-detail-view" id="notice-detail-view" hidden>
-    <button type="button" class="detail-back" onclick="closeDetail()">← 목록으로</button>
+    <button type="button" class="detail-back" onclick="closeDetail()">← 이전</button>
     <div class="tags" id="detail-tags"></div>
     <h1 class="detail-title" id="detail-title"></h1>
     <p class="detail-meta" id="detail-meta"></p>
@@ -310,13 +309,7 @@
     </main>
 
     <aside class="site-rail ad-rail rail-right" id="right-ad-rail" aria-label="학내 홍보">
-        <p class="rail-section-label">학내 홍보</p>
-        <div id="right-rail-ad-content" aria-live="polite">
-            <span class="ad-label">학생회</span>
-            <h2>학내 소식을 알리세요</h2>
-            <p>동아리·프로젝트·학생회 소식을 접수합니다.</p>
-            <button class="rail-cta" type="button" onclick="openBannerInquiryFromRail()">홍보 신청하기</button>
-        </div>
+        <div id="right-rail-ad-content" aria-live="polite"></div>
     </aside>
 </div>
 

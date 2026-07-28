@@ -35,7 +35,7 @@ let activeBannerSlideIndex = 0;
 let initialBannerRandomized = false;
 let bannerRotationInterval = null;
 let bannerTransitionTimer = null;
-let compareBlocks = [];   // 독립 비교 공간에 담긴 공지 id들 (데스크탑 4, 모바일 2)
+let compareBlocks = [];   // 독립 비교 공간에 담긴 공지 id들 (데스크톱 전용, 최대 4)
 let compareWorkspaceOpen = false;
 let compareDockSide = 'right';
 let compareLayoutMode = 'stack';
@@ -672,19 +672,10 @@ function renderRightRailInquiryFallback() {
     stopBannerRotation();
 
     container.innerHTML = `
-        <span class="ad-label">학내 홍보</span>
         <h2>학내 소식을 알리세요</h2>
         <p>동아리·프로젝트·학생회 소식을 접수합니다.</p>
         <button class="rail-cta" type="button" onclick="openBannerInquiryFromRail()">홍보 신청하기</button>
     `;
-}
-
-function getPromoTypeLabel(type) {
-    return {
-        club: '동아리',
-        project: '프로젝트',
-        council: '학생회'
-    }[type] || '학생회';
 }
 
 function renderRightRailAd({ restartRotation = true, transitionDirection = 0 } = {}) {
@@ -722,7 +713,6 @@ function renderRightRailAd({ restartRotation = true, transitionDirection = 0 } =
         ? ' is-entering-left'
         : (transitionDirection > 0 ? ' is-entering-right' : '');
     const content = `
-        <span class="ad-label">${getPromoTypeLabel(slide.type)}</span>
         <div class="rail-ad-image-stage${transitionClass}">${imageContent}</div>
         ${controls}
     `;
@@ -1571,9 +1561,19 @@ function renderNoticeCards(animate = false) {
     const grid = document.getElementById('notice-grid');
     grid.innerHTML = "";
 
+    const comparisonEnabled = getLayoutMode() === 'desktop';
+    if (!comparisonEnabled && (compareWorkspaceOpen || compareBlocks.length > 0)) {
+        compareBlocks = [];
+        compareWorkspaceOpen = false;
+        compareLayoutMode = 'stack';
+        expandedCompareBlocks.clear();
+    }
+
     // 비교 공간은 공지 그리드와 독립적으로 렌더한다. 공간에 담긴 공지는
     // 아래 일반 목록에서는 빼서 같은 공지가 두 곳에 동시에 보이지 않게 한다.
-    const blockIds = compareBlocks.filter(id => notices.some(n => String(n.id) === String(id)));
+    const blockIds = comparisonEnabled
+        ? compareBlocks.filter(id => notices.some(n => String(n.id) === String(id)))
+        : [];
     const blockSet = new Set(blockIds);
     renderCompareSpace(blockIds);
 
@@ -1644,13 +1644,16 @@ function renderNoticeCards(animate = false) {
         card.addEventListener('mouseenter', () => queueNoticeHoverPreview(notice.id, card));
         card.addEventListener('mouseleave', () => cancelNoticeHoverPreview(notice.id));
         // 노션처럼: 6점 핸들만 드래그하고, 카드는 평소처럼 눌러 상세를 연다.
-        card.innerHTML = `
+        const blockControlsHtml = comparisonEnabled ? `
             <div class="card-block-controls" onclick="event.stopPropagation()">
                 <button class="card-drag-handle" type="button" draggable="false"
                         aria-label="공지 들어서 화면 분할" title="끌어서 왼쪽 또는 오른쪽에 놓기">
                     <svg width="10" height="16" viewBox="0 0 10 16" aria-hidden="true"><g fill="currentColor"><circle cx="2.5" cy="3" r="1.3"/><circle cx="7.5" cy="3" r="1.3"/><circle cx="2.5" cy="8" r="1.3"/><circle cx="7.5" cy="8" r="1.3"/><circle cx="2.5" cy="13" r="1.3"/><circle cx="7.5" cy="13" r="1.3"/></g></svg>
                 </button>
             </div>
+        ` : '';
+        card.innerHTML = `
+            ${blockControlsHtml}
             ${posterHtml}
             <div class="card-body">
                 <div class="tags">
@@ -1669,7 +1672,7 @@ function renderNoticeCards(animate = false) {
             </div>
         `;
         const splitHandle = card.querySelector('.card-drag-handle');
-        splitHandle.addEventListener('pointerdown', event => onNoticeHandlePointerDown(event, notice.id));
+        splitHandle?.addEventListener('pointerdown', event => onNoticeHandlePointerDown(event, notice.id));
         grid.appendChild(card);
     });
 
@@ -2004,9 +2007,9 @@ function closeDetail() {
 const NOTICE_SPLIT_DRAG_TYPE = 'application/x-ece-notice-split';
 const COMPARE_BLOCK_DRAG_TYPE = 'application/x-ece-compare-block';
 const DESKTOP_MAX_COMPARE_BLOCKS = 4;
-const MOBILE_MAX_COMPARE_BLOCKS = 2;
+const MOBILE_MAX_COMPARE_BLOCKS = 0;
 
-// 넓은 화면에서는 최대 4개 조합, 폰에서는 읽을 수 있는 최대치인 2개만 둔다.
+// 비교/분할은 정밀한 포인터 조작이 가능한 데스크톱에서만 제공한다.
 function maxCompareBlocks() {
     return getLayoutMode() === 'mobile'
         ? MOBILE_MAX_COMPARE_BLOCKS

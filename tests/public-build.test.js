@@ -240,6 +240,23 @@ test('mobile mode opens a blurred phone preview instead of reflowing the desktop
     assert.match(html, /params\.get\('view'\)/);
 });
 
+test('mobile cards stay compact, keep paging, and disable notice comparison dragging', async () => {
+    const html = await readFile('index.html', 'utf8');
+    const app = await readFile('js/core.js', 'utf8');
+    const mobileCss = await readFile('css/mobile.css', 'utf8');
+    const renderCards = readNamedFunction(app, 'renderNoticeCards');
+
+    assert.doesNotMatch(html, /class="search-brand"/);
+    assert.match(html, /class="detail-back"[^>]*>← 이전</);
+    assert.match(mobileCss, /\.card\s*\{[^}]*height:\s*auto;[^}]*aspect-ratio:\s*0\.64/s);
+    assert.match(mobileCss, /\.card-img-preview\s*\{[^}]*object-fit:\s*cover/s);
+    assert.match(mobileCss, /\.notice-pagination\s*\{[^}]*display:\s*flex/s);
+    assert.match(mobileCss, /\.card-block-controls,[\s\S]*\.compare-space,[\s\S]*display:\s*none !important/s);
+    assert.match(renderCards, /const comparisonEnabled = getLayoutMode\(\) === 'desktop'/);
+    assert.match(renderCards, /const blockControlsHtml = comparisonEnabled/);
+    assert.match(renderCards, /splitHandle\?\.addEventListener/);
+});
+
 test('notice blocks use six-dot handles and expose only left/right split targets', async () => {
     const html = await readFile('index.html', 'utf8');
     const css = await readFile('css/core.css', 'utf8');
@@ -272,7 +289,7 @@ test('notice blocks use six-dot handles and expose only left/right split targets
     assert.match(app, /compareLayoutMode = 'columns'/);
     assert.match(app, /function onCompareBlockDrop/);
     assert.match(app, /DESKTOP_MAX_COMPARE_BLOCKS\s*=\s*4/);
-    assert.match(app, /MOBILE_MAX_COMPARE_BLOCKS\s*=\s*2/);
+    assert.match(app, /MOBILE_MAX_COMPARE_BLOCKS\s*=\s*0/);
     assert.doesNotMatch(html, /id="notice-block-menu"/);
     assert.doesNotMatch(app, /function openNoticeBlockMenu/);
     assert.match(app, /function moveCompareBlock/);
@@ -375,7 +392,7 @@ test('drag listeners and overlays are attached only through six-dot handles', as
 
     assert.match(renderSource, /handle\.addEventListener\('pointerdown'/);
     assert.doesNotMatch(renderSource, /block\.setAttribute\(['"]draggable/);
-    assert.match(app, /splitHandle\.addEventListener\('pointerdown', event => onNoticeHandlePointerDown/);
+    assert.match(app, /splitHandle\?\.addEventListener\('pointerdown', event => onNoticeHandlePointerDown/);
     assert.match(app, /function activatePointerNoticeDrag[\s\S]*suspendNoticeHoverPreview/);
     assert.match(app, /body\.classList\.add\('notice-dragging'\)/);
     assert.match(app, /body\.classList\.remove\('notice-dragging'\)/);
@@ -447,7 +464,7 @@ test('the public rail presents approved campus promotion instead of advertising 
     assert.doesNotMatch(headerActions, /openModal\('contact-modal'\)/);
     assert.match(html, />홍보 신청하기</);
     assert.match(app, />홍보 신청하기</);
-    assert.match(html, /class="rail-section-label">학내 홍보</);
+    assert.doesNotMatch(html, /class="rail-section-label">학내 홍보</);
     assert.match(html, /class="rail-section-label">문의</);
     assert.match(html, /onclick="openContactFromRail\(\)">일반 문의하기/);
     assert.match(html, /onclick="openBannerInquiryFromRail\(\)">홍보 신청하기/);
@@ -455,8 +472,8 @@ test('the public rail presents approved campus promotion instead of advertising 
     assert.doesNotMatch(html, /class="rail-section-label">배너 문의</);
     assert.match(app, /function openBannerInquiryFromRail/);
     assert.match(app, /window\.location\.href = '\.\/banner-inquiry\.html'/);
-    assert.match(app, /function getPromoTypeLabel/);
-    assert.match(app, /club: '동아리'[\s\S]*project: '프로젝트'[\s\S]*council: '학생회'/);
+    const renderRail = readNamedFunction(app, 'renderRightRailAd');
+    assert.doesNotMatch(renderRail, /class="ad-label"/);
     assert.match(schema, /create table if not exists public\.promo_slots/);
     assert.match(schema, /type text[\s\S]*title text[\s\S]*image_url text[\s\S]*link_url text[\s\S]*owner text[\s\S]*starts_at timestamptz[\s\S]*ends_at timestamptz[\s\S]*status text/);
 });
@@ -877,6 +894,7 @@ test('right-rail image errors restore the inquiry fallback', async () => {
 });
 
 test('right-rail banners start randomly, auto-rotate, and keep manual arrows directly below the image', async () => {
+    const html = await readFile('index.html', 'utf8');
     const app = await readFile('js/core.js', 'utf8');
     const css = await readFile('css/core.css', 'utf8');
     const desktopCss = await readFile('css/desktop.css', 'utf8');
@@ -900,7 +918,11 @@ test('right-rail banners start randomly, auto-rotate, and keep manual arrows dir
     assert.match(app, /function transitionRightRailBanner/);
     const renderSource = readNamedFunction(app, 'renderRightRailAd');
     assert.doesNotMatch(renderSource, /slide\.description|자세히 보기|<h2>/);
+    assert.doesNotMatch(renderSource, /class="ad-label"/);
+    assert.doesNotMatch(html, /class="rail-section-label">학내 홍보</);
     assert.match(app, /container\.innerHTML = `<div class="rail-ad-viewport">\$\{content\}<\/div>`/);
+    assert.match(css, /#right-rail-ad-content\s*\{[^}]*height:\s*100%;[^}]*min-height:\s*100%/s);
+    assert.match(css, /\.rail-ad-viewport\s*\{[^}]*display:\s*flex;[^}]*min-height:\s*100%/s);
     assert.match(desktopCss, /\.rail-right\s*\{[^}]*overflow:\s*hidden/s);
 });
 
