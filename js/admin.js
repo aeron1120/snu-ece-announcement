@@ -206,7 +206,12 @@ async function exitAdminMode() {
     sessionStorage.removeItem('eceSuperAdminToken');
     sessionStorage.removeItem('eceBannerManageToken');
     try {
-        await fetch('/api/admin/session', { method: 'DELETE' });
+        // core.js와 같은 규칙으로 API 주소를 만들고 쿠키를 함께 보낸다.
+        // 상대 경로로 부르면 정적 호스트로 가서 세션이 남는다.
+        await fetch(buildApiUrl('/api/admin/session'), {
+            method: 'DELETE',
+            credentials: 'include'
+        });
     } finally {
         // 나가면 공개 화면이 아니라 들어왔던 로그인 화면으로 돌아간다.
         location.replace('/admin');

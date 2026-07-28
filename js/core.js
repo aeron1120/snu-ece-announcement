@@ -314,6 +314,8 @@ function getBannerManageHeaders(tokenOverride = '') {
 async function apiRequest(path, options = {}) {
     const response = await fetch(buildApiUrl(path), {
         ...options,
+        // 관리자 세션 쿠키는 API가 다른 사이트에 있어도 따라가야 한다.
+        credentials: 'include',
         headers: {
             'Content-Type': 'application/json',
             ...(options.headers || {})

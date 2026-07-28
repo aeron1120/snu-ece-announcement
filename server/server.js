@@ -290,6 +290,11 @@ app.use((req, res, next) => {
     const allowedOrigin = process.env.FRONTEND_ORIGIN;
     if (allowedOrigin) {
         res.header('Access-Control-Allow-Origin', allowedOrigin);
+        // 관리자 세션은 HttpOnly 쿠키로 오간다. 프런트가 다른 사이트에 있으면
+        // 이 헤더가 없는 응답은 브라우저가 통째로 버린다.
+        // 와일드카드 출처와는 함께 쓸 수 없으므로 이 분기에서만 켠다.
+        res.header('Access-Control-Allow-Credentials', 'true');
+        res.header('Vary', 'Origin');
     } else {
         res.header('Access-Control-Allow-Origin', '*');
     }
@@ -322,19 +327,27 @@ function getAdminSession(req) {
     return { id: sessionId, ...session };
 }
 
+/* 배포에서는 정적 프런트와 API가 서로 다른 사이트에 있어 SameSite=Strict
+   쿠키가 요청에 실리지 않는다. 교차 사이트로 보내려면 None이어야 하고,
+   None은 Secure를 함께 요구한다. 로컬은 API가 프런트를 같이 서빙하는
+   동일 출처라 Lax로 충분하고, http에서도 동작한다. */
+function adminSessionCookiePolicy() {
+    return process.env.NODE_ENV === 'production'
+        ? 'SameSite=None; Secure'
+        : 'SameSite=Lax';
+}
+
 function setAdminSessionCookie(res, sessionId) {
-    const secure = process.env.NODE_ENV === 'production' ? '; Secure' : '';
     res.setHeader(
         'Set-Cookie',
-        `${ADMIN_SESSION_COOKIE}=${encodeURIComponent(sessionId)}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${Math.floor(ADMIN_SESSION_TTL_MS / 1000)}${secure}`
+        `${ADMIN_SESSION_COOKIE}=${encodeURIComponent(sessionId)}; HttpOnly; ${adminSessionCookiePolicy()}; Path=/; Max-Age=${Math.floor(ADMIN_SESSION_TTL_MS / 1000)}`
     );
 }
 
 function clearAdminSessionCookie(res) {
-    const secure = process.env.NODE_ENV === 'production' ? '; Secure' : '';
     res.setHeader(
         'Set-Cookie',
-        `${ADMIN_SESSION_COOKIE}=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0${secure}`
+        `${ADMIN_SESSION_COOKIE}=; HttpOnly; ${adminSessionCookiePolicy()}; Path=/; Max-Age=0`
     );
 }
 

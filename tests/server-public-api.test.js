@@ -196,7 +196,9 @@ test('admin pages require a short-lived HttpOnly server session', async t => {
     const setCookie = login.headers.get('set-cookie') || '';
     assert.match(setCookie, /ece_admin_session=/);
     assert.match(setCookie, /HttpOnly/i);
-    assert.match(setCookie, /SameSite=Strict/i);
+    // 로컬은 API가 프런트를 함께 서빙하는 동일 출처라 Lax로 충분하다.
+    // 배포(NODE_ENV=production)에서만 교차 사이트용 None으로 바뀐다.
+    assert.match(setCookie, /SameSite=Lax/i);
     const cookie = setCookie.split(';')[0];
 
     const workspace = await fetch(`${baseUrl}/admin/workspace`, {
@@ -307,4 +309,74 @@ test('admin roles gate their own screens and master needs no second password', a
         body: JSON.stringify({ newNoticeAdminToken: 'nope' })
     });
     assert.equal(blockedSettings.status, 401);
+});
+
+test('the admin session works when the frontend is on another site', async t => {
+    // Pages(정적)와 Render(API)는 서로 다른 사이트다. 브라우저가 세션 쿠키를
+    // 저장하고 다시 보내려면 세 가지가 모두 필요하다:
+    // 자격증명 허용 헤더, 구체적인 허용 출처, 그리고 SameSite=None.
+    const settingsPath = path.join(process.cwd(), 'server', 'data', 'settings.json');
+    const originalSettings = await readFile(settingsPath, 'utf8');
+    const settings = JSON.parse(originalSettings);
+    const password = 'cross-site-session-password';
+    settings.adminTokenHash = crypto.createHash('sha256').update(password).digest('hex');
+    await writeFile(settingsPath, JSON.stringify(settings, null, 2), 'utf8');
+    t.after(() => writeFile(settingsPath, originalSettings, 'utf8'));
+
+    const frontendOrigin = 'https://frontend.example';
+    const previousOrigin = process.env.FRONTEND_ORIGIN;
+    const previousNodeEnv = process.env.NODE_ENV;
+    process.env.FRONTEND_ORIGIN = frontendOrigin;
+    process.env.NODE_ENV = 'production';
+    t.after(() => {
+        if (previousOrigin === undefined) delete process.env.FRONTEND_ORIGIN;
+        else process.env.FRONTEND_ORIGIN = previousOrigin;
+        if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
+        else process.env.NODE_ENV = previousNodeEnv;
+    });
+
+    const server = await new Promise(resolve => {
+        const listening = app.listen(0, () => resolve(listening));
+    });
+    t.after(() => server.close());
+    const baseUrl = `http://127.0.0.1:${server.address().port}`;
+
+    const response = await fetch(`${baseUrl}/api/admin/session`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Origin: frontendOrigin },
+        body: JSON.stringify({ password })
+    });
+    assert.equal(response.status, 201);
+
+    // 자격증명을 실은 요청은 와일드카드 출처로는 통과하지 못한다.
+    assert.equal(response.headers.get('access-control-allow-origin'), frontendOrigin);
+    assert.equal(response.headers.get('access-control-allow-credentials'), 'true');
+
+    // SameSite=Strict면 교차 사이트 요청에 쿠키가 실리지 않는다.
+    const cookie = response.headers.get('set-cookie') || '';
+    assert.match(cookie, /SameSite=None/);
+    assert.match(cookie, /Secure/);
+    assert.match(cookie, /HttpOnly/);
+});
+
+test('credentials stay off while any origin is allowed', async t => {
+    // FRONTEND_ORIGIN이 없으면 서버는 모든 출처를 허용한다. 그 상태에서
+    // 자격증명까지 허용하면 브라우저가 응답을 통째로 버린다.
+    const previousOrigin = process.env.FRONTEND_ORIGIN;
+    delete process.env.FRONTEND_ORIGIN;
+    t.after(() => {
+        if (previousOrigin === undefined) delete process.env.FRONTEND_ORIGIN;
+        else process.env.FRONTEND_ORIGIN = previousOrigin;
+    });
+
+    const server = await new Promise(resolve => {
+        const listening = app.listen(0, () => resolve(listening));
+    });
+    t.after(() => server.close());
+
+    const response = await fetch(`http://127.0.0.1:${server.address().port}/api/health`, {
+        headers: { Origin: 'https://anywhere.example' }
+    });
+    assert.equal(response.headers.get('access-control-allow-origin'), '*');
+    assert.equal(response.headers.get('access-control-allow-credentials'), null);
 });

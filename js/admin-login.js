@@ -2,6 +2,16 @@ const adminLoginForm = document.getElementById('admin-login-form');
 const adminLoginPassword = document.getElementById('admin-login-password');
 const adminLoginError = document.getElementById('admin-login-error');
 
+// 배포에서는 이 화면과 API의 출처가 다르다. 상대 경로로 부르면 요청이
+// 정적 호스트로 가서 405가 돌아온다. core.js의 buildApiUrl과 같은 규칙이다.
+const adminLoginApiBase = (
+    typeof window.API_BASE_URL === 'string' ? window.API_BASE_URL : ''
+).trim().replace(/\/$/, '');
+
+function buildAdminLoginUrl(path) {
+    return adminLoginApiBase ? `${adminLoginApiBase}${path}` : path;
+}
+
 function getAdminWorkspaceUrl() {
     const edit = new URLSearchParams(location.search).get('edit');
     return edit
@@ -27,8 +37,10 @@ adminLoginForm.addEventListener('submit', async event => {
 
     button.disabled = true;
     try {
-        const response = await fetch('/api/admin/session', {
+        const response = await fetch(buildAdminLoginUrl('/api/admin/session'), {
             method: 'POST',
+            // 세션 쿠키를 다른 사이트의 API에서 받아 저장하려면 필요하다.
+            credentials: 'include',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ password, role })
         });

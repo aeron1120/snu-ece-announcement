@@ -1,6 +1,6 @@
 ﻿import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, writeFile, mkdir } from 'node:fs/promises';
+import { mkdtemp, readFile, writeFile, mkdir, readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runInNewContext } from 'node:vm';
@@ -760,7 +760,7 @@ test('Gemini quota errors show only a retry countdown and admin mode has one exi
     assert.doesNotMatch(html, /id="admin-logout"|>로그아웃<|공개 화면으로/);
     assert.match(admin, /getElementById\('admin-mode-exit'\)\.textContent = '관리자 모드 나가기'/);
     // 나가면 공개 화면이 아니라 들어왔던 로그인 화면으로 되돌아간다.
-    assert.match(admin, /async function exitAdminMode\(\)[\s\S]*fetch\('\/api\/admin\/session', \{ method: 'DELETE' \}\)[\s\S]*location\.replace\('\/admin'\)/);
+    assert.match(admin, /async function exitAdminMode\(\)[\s\S]*buildApiUrl\('\/api\/admin\/session'\)[\s\S]*method: 'DELETE'[\s\S]*location\.replace\('\/admin'\)/);
 });
 
 test('automatic ECE crawling feeds a live review inbox and original text is black', async () => {
@@ -1925,4 +1925,36 @@ test('banner slots show one at a time and the inbox toolbar acts on the selectio
     // 위쪽 표적 줄에는 왼쪽·오른쪽 둘만 남는다.
     const overlayBlock = html.slice(html.indexOf('id="split-drop-overlay"'), html.indexOf('id="split-trash-overlay"'));
     assert.equal((overlayBlock.match(/class="split-drop-zone/g) || []).length, 2);
+});
+
+test('the frontend never reaches the API through a relative URL', async () => {
+    // 배포에서는 정적 호스트(Pages)와 API(Render)가 서로 다른 출처다.
+    // 상대 경로로 부르면 요청이 정적 호스트로 가서 405가 돌아오고,
+    // 화면에는 원인을 알 수 없는 "실패했습니다"만 남는다.
+    const scripts = (await readdir('js')).filter(name => name.endsWith('.js'));
+    assert.ok(scripts.length > 0, 'js 디렉터리에 스크립트가 있어야 한다');
+
+    for (const name of scripts) {
+        const source = await readFile(path.join('js', name), 'utf8');
+        const relativeCalls = source.match(/fetch\(\s*['"`]\/api\//g) || [];
+        assert.deepEqual(
+            relativeCalls,
+            [],
+            `js/${name}은 API_BASE_URL을 거쳐 절대 주소로 호출해야 한다`
+        );
+    }
+
+    // 로그인 화면은 core.js를 싣지 않으므로 config.js를 직접 실어야
+    // window.API_BASE_URL이 생긴다.
+    const loginHtml = await readFile('admin-login.html', 'utf8');
+    assert.match(loginHtml, /<script[^>]+src="[^"]*js\/config\.js"/);
+});
+
+test('admin requests carry the session cookie across sites', async () => {
+    // HttpOnly 세션 쿠키는 요청이 credentials를 실어야만 다른 출처로 오간다.
+    const core = await readFile('js/core.js', 'utf8');
+    assert.match(core, /fetch\(buildApiUrl\(path\), \{[\s\S]{0,240}credentials:\s*'include'/);
+
+    const login = await readFile('js/admin-login.js', 'utf8');
+    assert.match(login, /credentials:\s*'include'/);
 });
