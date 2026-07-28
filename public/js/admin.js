@@ -214,7 +214,8 @@ async function exitAdminMode() {
         });
     } finally {
         // 나가면 공개 화면이 아니라 들어왔던 로그인 화면으로 돌아간다.
-        location.replace('/admin');
+        // 정적 호스트에서 /admin은 이 워크스페이스 자신이라 파일 이름을 쓴다.
+        location.replace('/admin-login.html');
     }
 }
 
@@ -2598,7 +2599,8 @@ document.addEventListener('DOMContentLoaded', async function () {
         currentAdminRole = ADMIN_TABS_BY_ROLE[session?.role] ? session.role : 'notice';
     } catch {
         const next = pendingEditNoticeId ? `?edit=${encodeURIComponent(pendingEditNoticeId)}` : '';
-        location.replace(`/admin${next}`);
+        // 정적 호스트에서 /admin은 이 화면 자신이라, 그리로 보내면 무한히 다시 뜬다.
+        location.replace(`/admin-login.html${next}`);
         return;
     }
 

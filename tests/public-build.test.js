@@ -760,7 +760,7 @@ test('Gemini quota errors show only a retry countdown and admin mode has one exi
     assert.doesNotMatch(html, /id="admin-logout"|>로그아웃<|공개 화면으로/);
     assert.match(admin, /getElementById\('admin-mode-exit'\)\.textContent = '관리자 모드 나가기'/);
     // 나가면 공개 화면이 아니라 들어왔던 로그인 화면으로 되돌아간다.
-    assert.match(admin, /async function exitAdminMode\(\)[\s\S]*buildApiUrl\('\/api\/admin\/session'\)[\s\S]*method: 'DELETE'[\s\S]*location\.replace\('\/admin'\)/);
+    assert.match(admin, /async function exitAdminMode\(\)[\s\S]*buildApiUrl\('\/api\/admin\/session'\)[\s\S]*method: 'DELETE'[\s\S]*location\.replace\('\/admin-login\.html'\)/);
 });
 
 test('automatic ECE crawling feeds a live review inbox and original text is black', async () => {
@@ -1957,4 +1957,21 @@ test('admin requests carry the session cookie across sites', async () => {
 
     const login = await readFile('js/admin-login.js', 'utf8');
     assert.match(login, /credentials:\s*'include'/);
+});
+
+test('admin navigation targets files that exist on the static host', async () => {
+    // 서버는 /admin과 /admin/workspace를 직접 라우팅하지만 정적 호스트에는
+    // 그런 파일이 없다. Pages에서 /admin은 워크스페이스 자신이고
+    // /admin/workspace는 공개 화면으로 떨어진다. 실제 파일 이름을 쓰면
+    // 서버(세션 게이트가 걸린 /admin.html)와 정적 호스트 양쪽에서 통한다.
+    const login = await readFile('js/admin-login.js', 'utf8');
+    assert.match(login, /\/admin\.html/);
+    assert.doesNotMatch(login, /\/admin\/workspace/);
+
+    const admin = await readFile('js/admin.js', 'utf8');
+    // 로그인 안 된 채로 열면 로그인 화면으로 나가야 한다.
+    // /admin으로 보내면 정적 호스트에서는 자기 자신이라 무한히 다시 뜬다.
+    assert.doesNotMatch(admin, /location\.replace\(`?'?\/admin(\$\{|'|`)/);
+    assert.match(admin, /location\.replace\('\/admin-login\.html'\)/);
+    assert.match(admin, /location\.replace\(`\/admin-login\.html\$\{next\}`\)/);
 });
