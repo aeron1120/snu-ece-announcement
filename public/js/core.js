@@ -53,6 +53,10 @@ let activeCompareDropPosition = 'after';
 let activeFeedbackCategory = 'general';
 let noticeHoverPreviewTimer = null;
 let activeHoverPreviewNoticeId = '';
+let preferredStudentYear = '';
+
+const STUDENT_YEAR_PREFERENCE_KEY = 'eceStudentEntryYear';
+const STUDENT_YEAR_PROMPTED_KEY = 'eceStudentEntryYearPrompted';
 
 let adminInfo = { name: "ECE 학생회장 (이름 : 박지호)", phone: "010-1234-5678", kakao: "snu_ece_pres" };
 let bannerAdminInfo = { name: "학생회 대외협력국 (국장 : 이배너)", phone: "010-8888-9999", kakao: "snu_ece_ads" };
@@ -968,6 +972,81 @@ function safeHttpUrl(value) {
     }
 }
 
+function readLocalPreference(key) {
+    try {
+        return localStorage.getItem(key) || '';
+    } catch {
+        return '';
+    }
+}
+
+function writeLocalPreference(key, value) {
+    try {
+        localStorage.setItem(key, value);
+    } catch {
+        // 저장소가 차단된 환경에서는 현재 세션의 화면만 갱신한다.
+    }
+}
+
+function noticeTargetLabels(notice) {
+    return [...new Set([
+        ...(Array.isArray(notice?.targets) ? notice.targets : []),
+        notice?.target
+    ].map(value => String(value || '').trim()).filter(Boolean))];
+}
+
+function noticeMatchesStudentYear(notice, studentYear = preferredStudentYear) {
+    const yearMatch = String(studentYear || '').match(/(\d{2})학번/);
+    if (!yearMatch) return true;
+    const studentNumber = Number(yearMatch[1]);
+    const labels = noticeTargetLabels(notice);
+    if (labels.length === 0 || labels.includes('전체')) return true;
+    return labels.some(label => {
+        const labelMatch = label.match(/(\d{2})학번/);
+        if (!labelMatch) return false;
+        const targetNumber = Number(labelMatch[1]);
+        if (/이상|↑/.test(label)) return studentNumber >= targetNumber;
+        return studentNumber === targetNumber;
+    });
+}
+
+function formatNoticeTargetBadge(notice) {
+    const label = String(notice?.target || noticeTargetLabels(notice)[0] || '전체');
+    return label.replace(/(\d{2})학번\s*이상/g, '$1학번↑');
+}
+
+function maybeAskStudentYear() {
+    preferredStudentYear = readLocalPreference(STUDENT_YEAR_PREFERENCE_KEY);
+    if (readLocalPreference(STUDENT_YEAR_PROMPTED_KEY)) return;
+    const modal = document.getElementById('student-year-modal');
+    if (!modal) return;
+    modal.style.display = 'flex';
+    modal.setAttribute('aria-hidden', 'false');
+}
+
+function closeStudentYearPrompt() {
+    const modal = document.getElementById('student-year-modal');
+    if (!modal) return;
+    modal.style.display = 'none';
+    modal.setAttribute('aria-hidden', 'true');
+}
+
+function saveStudentYearPreference() {
+    preferredStudentYear = document.getElementById('student-year-choice')?.value || '';
+    writeLocalPreference(STUDENT_YEAR_PREFERENCE_KEY, preferredStudentYear);
+    writeLocalPreference(STUDENT_YEAR_PROMPTED_KEY, '1');
+    closeStudentYearPrompt();
+    renderNoticeCards(true);
+}
+
+function skipStudentYearPreference() {
+    preferredStudentYear = '';
+    writeLocalPreference(STUDENT_YEAR_PREFERENCE_KEY, '');
+    writeLocalPreference(STUDENT_YEAR_PROMPTED_KEY, '1');
+    closeStudentYearPrompt();
+    renderNoticeCards(true);
+}
+
 // ========================================
 // 🎨 모달
 // ========================================
@@ -1302,6 +1381,7 @@ function updateFilterChips() {
 
     const dateFrom = document.getElementById('filter-date-from')?.value;
     const dateTo = document.getElementById('filter-date-to')?.value;
+    const target = document.getElementById('targetFilter')?.value || '전체';
 
     Object.entries(filterState).forEach(([group, val]) => {
         if (group === 'sort') return;
@@ -1313,6 +1393,14 @@ function updateFilterChips() {
             chipsArea.appendChild(chip);
         }
     });
+
+    if (target !== '전체') {
+        hasActive = true;
+        const chip = document.createElement('div');
+        chip.className = 'filter-chip';
+        chip.innerHTML = `<span>학번: ${escapeHtml(target)}</span><button onclick="event.stopPropagation(); resetTargetFilter()">×</button>`;
+        chipsArea.appendChild(chip);
+    }
 
     if (dateFrom || dateTo) {
         hasActive = true;
@@ -1344,6 +1432,13 @@ function clearDateRange() {
     updateFilterChips();
 }
 
+function resetTargetFilter() {
+    const target = document.getElementById('targetFilter');
+    if (target) target.value = '전체';
+    filterCards();
+    updateFilterChips();
+}
+
 function clearCategoryFilters() {
     selectedCategoryFilters.clear();
     buildCategoryTabs();
@@ -1364,6 +1459,8 @@ function resetAllFilters() {
     const dateTo = document.getElementById('filter-date-to');
     if (dateFrom) dateFrom.value = '';
     if (dateTo) dateTo.value = '';
+    const target = document.getElementById('targetFilter');
+    if (target) target.value = '전체';
     updateFilterChips();
     filterCards();
 }
@@ -1430,7 +1527,17 @@ function renderNoticeCards(animate = false) {
 
     const filtered = notices;
 
-    const baseNotices = filtered.filter(notice => !blockSet.has(String(notice.id)));
+    const unrankedBaseNotices = filtered.filter(notice => !blockSet.has(String(notice.id)));
+    const preferredNotices = [];
+    const otherNotices = [];
+    unrankedBaseNotices.forEach(notice => {
+        (preferredStudentYear && !noticeMatchesStudentYear(notice)
+            ? otherNotices
+            : preferredNotices).push(notice);
+    });
+    const baseNotices = preferredStudentYear
+        ? [...preferredNotices, ...otherNotices]
+        : unrankedBaseNotices;
     const singleBlockMode = blockIds.length === 1;
     const visibleBaseNotices = singleBlockMode
         ? baseNotices.slice(0, 2)
@@ -1455,7 +1562,8 @@ function renderNoticeCards(animate = false) {
             'card',
             datePresentation.badgeClass === 'expired' ? 'card-expired' : '',
             notice.isArchived ? 'is-archived' : '',
-            notice.isInGracePeriod ? 'is-grace-period' : ''
+            notice.isInGracePeriod ? 'is-grace-period' : '',
+            preferredStudentYear && !noticeMatchesStudentYear(notice) ? 'is-outside-student-target' : ''
         ].filter(Boolean).join(' ');
         const dateTagHtml = datePresentation.badgeText
             ? `<span class="tag ${datePresentation.badgeClass}">${escapeHtml(datePresentation.badgeText)}</span>`
@@ -1492,7 +1600,7 @@ function renderNoticeCards(animate = false) {
                 <div class="tags">
                     ${dateTagHtml}
                     ${notice.isPinned ? '<span class="tag pinned">고정</span>' : ''}
-                    <span class="tag target">${escapeHtml(notice.target || '전체')}</span>
+                    <span class="tag target">${escapeHtml(formatNoticeTargetBadge(notice))}</span>
                     ${notice.host ? `<span class="tag">${escapeHtml(notice.host)}</span>` : ''}
                 </div>
                 ${titleHtml}
@@ -1741,7 +1849,7 @@ async function openDetail(idStr) {
             ? `<span class="tag ${datePresentation.badgeClass}">${escapeHtml(datePresentation.badgeText)}</span>`
             : ''}
         ${notice.isPinned ? '<span class="tag pinned">고정</span>' : ''}
-        <span class="tag target">${escapeHtml(notice.target || '전체')}</span>
+        <span class="tag target">${escapeHtml(formatNoticeTargetBadge(notice))}</span>
         ${notice.host ? `<span class="tag">${escapeHtml(notice.host)}</span>` : ''}
     `;
     document.getElementById('detail-title').innerText = notice.title || "";
@@ -2274,7 +2382,7 @@ function renderCompareSpace(blockIds = compareBlocks) {
                     <p class="compare-col-kicker">${escapeHtml([
                         datePresentation.badgeText,
                         notice.isPinned ? '고정' : '',
-                        notice.target || '전체',
+                        formatNoticeTargetBadge(notice),
                         notice.host || '기타'
                     ].filter(Boolean).join(' · '))}</p>
                     <h3 class="compare-col-title">${escapeHtml(notice.title || '')}</h3>
@@ -2548,6 +2656,7 @@ document.addEventListener('DOMContentLoaded', async function () {
 
     await loadData();
     await loadCategories();
+    maybeAskStudentYear();
     buildCategoryTabs();
     syncNoticeSortChips();
     renderRightRailAd();

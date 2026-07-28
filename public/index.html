@@ -115,14 +115,8 @@
 </nav>
 
 <div class="search-wrapper">
-    <!-- 검색바 (학번 select + 키워드 input). 카테고리 탭 아래로 내렸다. -->
+    <!-- 검색바. 대상 학번은 상세 필터에서만 조정한다. -->
     <div class="search-container">
-        <select id="targetFilter" onchange="filterCards()">
-            <option value="전체">전체 학번</option>
-            <option value="26학번">26학번</option>
-            <option value="25학번">25학번</option>
-            <option value="24학번 이상">24학번 이상</option>
-        </select>
         <input type="text" id="searchInput" placeholder="검색어 입력 (예: 학생회 개강총회)" onkeyup="scheduleNoticeSearch()">
         <button class="btn" onclick="filterCards()">검색</button>
     </div>
@@ -140,6 +134,20 @@
     <!-- 고급 필터 패널 -->
     <div class="filter-panel" id="filter-panel">
         <div class="filter-panel-grid">
+
+            <!-- 대상 학번 -->
+            <div class="filter-group">
+                <label class="filter-group-label" for="targetFilter">대상 학번</label>
+                <select class="filter-select" id="targetFilter" onchange="filterCards(); updateFilterChips()">
+                    <option value="전체">전체 학번</option>
+                    <option value="26학번">26학번</option>
+                    <option value="25학번">25학번</option>
+                    <option value="24학번">24학번</option>
+                    <option value="24학번 이상">24학번 이상</option>
+                    <option value="23학번">23학번</option>
+                    <option value="23학번 이상">23학번 이상</option>
+                </select>
+            </div>
 
             <!-- 마감 상태 -->
             <div class="filter-group">
@@ -318,6 +326,29 @@
 </div>
 
 <aside class="notice-hover-preview" id="notice-hover-preview" aria-live="polite" hidden></aside>
+
+<div class="overlay student-year-overlay" id="student-year-modal" aria-hidden="true">
+    <div class="modal student-year-modal" role="dialog" aria-modal="true"
+         aria-labelledby="student-year-title" onclick="event.stopPropagation()">
+        <p class="review-eyebrow">첫 방문 맞춤 설정</p>
+        <h2 id="student-year-title">학번을 알려주세요</h2>
+        <p class="student-year-help">내 학번에 맞는 공지를 먼저 보여드립니다. 대상 밖 공지도 숨기지 않으며, 선택하지 않아도 모든 기능을 그대로 쓸 수 있습니다.</p>
+        <label class="filter-group-label" for="student-year-choice">내 학번</label>
+        <select id="student-year-choice">
+            <option value="26학번">26학번</option>
+            <option value="25학번">25학번</option>
+            <option value="24학번">24학번</option>
+            <option value="23학번">23학번</option>
+            <option value="22학번">22학번</option>
+            <option value="21학번">21학번</option>
+            <option value="20학번">20학번</option>
+        </select>
+        <div class="student-year-actions">
+            <button class="btn btn-outline" type="button" onclick="skipStudentYearPreference()">선택하지 않기</button>
+            <button class="btn" type="button" onclick="saveStudentYearPreference()">맞춤 적용</button>
+        </div>
+    </div>
+</div>
 
 <div class="overlay" id="contact-modal">
     <div class="modal feedback-modal" onclick="event.stopPropagation()">

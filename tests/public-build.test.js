@@ -1214,6 +1214,32 @@ test('notice filtering and sorting are requested from the server before cards re
     assert.doesNotMatch(renderSource, /\.sort\(/);
 });
 
+test('student-year preference is optional, asked once, and keeps out-of-target notices visible', async () => {
+    const html = await readFile('index.html', 'utf8');
+    const app = await readFile('js/core.js', 'utf8');
+    const css = await readFile('css/core.css', 'utf8');
+
+    const searchMarkup = html.slice(
+        html.indexOf('<div class="search-container">'),
+        html.indexOf('<!-- 고급 필터 토글 바 -->')
+    );
+    const filterMarkup = html.slice(
+        html.indexOf('<div class="filter-panel"'),
+        html.indexOf('<div class="notice-results-toolbar"')
+    );
+    assert.doesNotMatch(searchMarkup, /id="targetFilter"/);
+    assert.match(filterMarkup, /id="targetFilter"/);
+    assert.match(html, /id="student-year-modal"/);
+    assert.match(html, /선택하지 않아도 모든 기능을 그대로 쓸 수 있습니다/);
+    assert.match(app, /STUDENT_YEAR_PROMPTED_KEY/);
+    assert.match(app, /function saveStudentYearPreference/);
+    assert.match(app, /function skipStudentYearPreference/);
+    assert.match(app, /preferredNotices[\s\S]*otherNotices/);
+    assert.match(app, /is-outside-student-target/);
+    assert.match(app, /replace\(\/\(\\d\{2\}\)학번\\s\*이상\/g, '\$1학번↑'\)/);
+    assert.match(css, /\.card\.is-outside-student-target/);
+});
+
 test('image notices lazy-load a poster; imageless notices show a big title poster', async () => {
     const app = await readFile('js/core.js', 'utf8');
     const start = app.indexOf('function renderNoticeCards(');

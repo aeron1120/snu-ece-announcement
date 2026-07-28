@@ -424,7 +424,6 @@ body {
     display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
     padding: 0 0 16px;
 }
-.search-container select,
 .search-container input {
     padding: 10px 13px;
     border: 1px solid var(--border);
@@ -434,10 +433,8 @@ body {
     outline: none;
     transition: border-color 0.15s;
 }
-.search-container select { font-weight: 500; cursor: pointer; min-width: 130px; }
 .search-container input { flex: 1; min-width: 200px; }
-.search-container select:hover { border-color: #b9c0cb; }
-.search-container input:focus, .search-container select:focus { border-color: var(--primary); }
+.search-container input:focus { border-color: var(--primary); }
 
 .filter-toggle-bar {
     border: 1px solid var(--border);
@@ -466,6 +463,17 @@ body {
 .filter-panel-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 18px 20px; }
 .filter-group { display: flex; flex-direction: column; gap: 8px; }
 .filter-group-label { font-size: 12px; font-weight: 700; color: var(--text-sub); letter-spacing: 0.03em; }
+.filter-select {
+    min-height: 35px;
+    padding: 7px 10px;
+    color: #374151;
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: 0;
+    font: inherit;
+    font-size: 12.5px;
+}
+.filter-select:focus { border-color: var(--primary); outline: none; }
 .filter-btn-group { display: flex; flex-wrap: wrap; gap: 6px; }
 .filter-btn {
     background: white; color: #4b5563;
@@ -485,6 +493,14 @@ body {
 }
 /* 좌우 여백을 주면 "결과 4 건"처럼 숫자와 단위가 벌어진다. */
 .filter-result-count strong { color: var(--primary); }
+.card.is-outside-student-target {
+    opacity: 0.56;
+    filter: saturate(0.72);
+}
+.card.is-outside-student-target:hover,
+.card.is-outside-student-target:focus-within {
+    opacity: 0.82;
+}
 .notice-results-toolbar {
     display: flex;
     align-items: center;
@@ -1442,6 +1458,36 @@ body.notice-dragging .notice-hover-preview { display: none !important; }
 .feedback-category-btn:hover { color: var(--primary); border-color: var(--primary); transform: translateY(-1px); }
 .feedback-category-btn.active { color: white; background: var(--primary); border-color: var(--primary); }
 .feedback-category-btn:active { transform: translateY(1px); }
+
+.student-year-modal { width: min(460px, 100%); }
+.student-year-modal h2 {
+    margin: 7px 0 10px;
+    color: var(--primary-deep);
+    font-family: var(--serif);
+    font-size: 27px;
+}
+.student-year-help {
+    margin: 0 0 22px;
+    color: var(--text-sub);
+    font-size: 14px;
+    line-height: 1.7;
+}
+.student-year-modal select {
+    width: 100%;
+    min-height: 46px;
+    margin-top: 8px;
+    padding: 0 13px;
+    color: var(--text-main);
+    background: white;
+    border: 1px solid var(--border);
+    font: inherit;
+}
+.student-year-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-top: 22px;
+}
 
 /* ---------- 문의 모달 ---------- */
 .contact-row { gap: 12px; }

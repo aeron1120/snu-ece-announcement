@@ -145,7 +145,6 @@ html[data-view="mobile"] .image-viewer .nav-btn.right { right: 8px; }
 
 /* ---------- 검색 & 필터 ---------- */
 html[data-view="mobile"] .search-container { flex-direction: column; align-items: stretch; }
-html[data-view="mobile"] .search-container select,
 html[data-view="mobile"] .search-container input,
 html[data-view="mobile"] .search-container .btn { width: 100%; min-width: 0; }
 html[data-view="mobile"] .filter-toggle-bar { padding: 8px 12px; height: auto; }
@@ -155,6 +154,7 @@ html[data-view="mobile"] .filter-panel-grid { grid-template-columns: 1fr; }
 /* ---------- 모달 ---------- */
 html[data-view="mobile"] .modal { padding: 24px 18px; }
 html[data-view="mobile"] .form-row { flex-direction: column; gap: 0; }
+html[data-view="mobile"] .student-year-actions { grid-template-columns: 1fr; }
 /* 폰에서도 6점 핸들을 직접 끌며, 최대 두 블록을 세로로 읽는다. */
 html[data-view="mobile"] .card-block-controls {
     opacity: 1;
