@@ -128,7 +128,7 @@ html[data-view="mobile"] .header {
 html[data-view="mobile"] .header-title-area { width: auto; flex: 1; }
 html[data-view="mobile"] .header h1,
 html[data-view="mobile"] .site-title { font-size: 22px; white-space: normal; }
-html[data-view="mobile"] .site-title-mark { height: 34px; }
+html[data-view="mobile"] .site-title-mark { height: 44px; }
 html[data-view="mobile"] .header-actions {
     width: auto;
     margin-left: 0;

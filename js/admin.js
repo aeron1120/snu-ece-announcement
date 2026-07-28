@@ -129,9 +129,9 @@ async function showGeminiRetryCountdown(error) {
 /* 역할별로 열리는 탭.
    마스터는 전부, 공지 관리자는 공지 관련 셋, 배너 관리자는 배너만 본다. */
 const ADMIN_TABS_BY_ROLE = Object.freeze({
-    master: ['review', 'backfill', 'compose', 'notices', 'banner', 'feedback', 'settings'],
+    master: ['review', 'backfill', 'compose', 'notices', 'banner', 'banner-inquiry', 'feedback', 'settings'],
     notice: ['review', 'backfill', 'compose', 'notices'],
-    banner: ['banner']
+    banner: ['banner', 'banner-inquiry']
 });
 
 const ADMIN_ROLE_LABELS = Object.freeze({
@@ -228,6 +228,7 @@ function selectAdminTab(name) {
 
     if (name === 'notices') loadAdminNoticeList();
     if (name === 'feedback') loadAdminFeedback();
+    if (name === 'banner-inquiry') loadAdminFeedback();
     // 로그인할 때 이미 신분을 확인했으므로 배너·설정에서 비밀번호를 다시 묻지 않는다.
     if (name === 'banner') unlockBannerPanel();
     if (name === 'settings') unlockSettingsPanel();
@@ -802,6 +803,12 @@ async function loadAdminFeedback() {
             badge.hidden = generalItems.length === 0;
             badge.textContent = String(generalItems.length);
         }
+        const bannerBadge = document.getElementById('banner-inquiry-count');
+        const bannerItems = adminFeedbackItems.filter(item => item.category === 'banner');
+        if (bannerBadge) {
+            bannerBadge.hidden = bannerItems.length === 0;
+            bannerBadge.textContent = String(bannerItems.length);
+        }
         if (status) {
             status.textContent = generalItems.length ? `받은 문의 ${generalItems.length}건 (작성자 정보 없음)` : '아직 받은 일반 문의가 없습니다.';
             status.style.color = 'var(--text-sub)';
@@ -954,12 +961,15 @@ function toggleFeedbackSelection(id, checked) {
     syncFeedbackSelectionUi();
 }
 
-function toggleAllFeedbackSelection(checked) {
-    visibleFeedbackIds().forEach(id => {
-        if (checked) selectedFeedbackIds.add(id);
-        else selectedFeedbackIds.delete(id);
+// 지금 보이는 것이 모두 선택되어 있으면 해제, 아니면 전부 선택한다.
+function toggleAllFeedbackSelection() {
+    const visible = visibleFeedbackIds();
+    const allPicked = visible.length > 0 && visible.every(id => selectedFeedbackIds.has(id));
+    visible.forEach(id => {
+        if (allPicked) selectedFeedbackIds.delete(id);
+        else selectedFeedbackIds.add(id);
     });
-    document.querySelectorAll('.feedback-pick-box').forEach(box => { box.checked = checked; });
+    document.querySelectorAll('.feedback-pick-box').forEach(box => { box.checked = !allPicked; });
     syncFeedbackSelectionUi();
 }
 
@@ -973,13 +983,48 @@ function syncFeedbackSelectionUi() {
     const count = selectedFeedbackIds.size;
     const countEl = document.getElementById('feedback-selection-count');
     const exportButton = document.getElementById('feedback-export-selected');
+    const deleteButton = document.getElementById('feedback-delete-selected');
     const selectAll = document.getElementById('feedback-select-all');
     if (countEl) countEl.textContent = `${count}개 선택`;
     if (exportButton) exportButton.disabled = count === 0;
+    if (deleteButton) deleteButton.disabled = count === 0;
     if (selectAll) {
-        selectAll.checked = visible.length > 0 && count === visible.length;
-        selectAll.indeterminate = count > 0 && count < visible.length;
+        const allPicked = visible.length > 0 && count === visible.length;
+        selectAll.textContent = allPicked ? '전체 해제' : '전체 선택';
+        selectAll.setAttribute('aria-pressed', allPicked ? 'true' : 'false');
     }
+}
+
+// 고른 문의를 지운다. 되돌릴 수 없으므로 한 번 물어본다.
+async function deleteSelectedFeedback() {
+    const ids = Array.from(selectedFeedbackIds);
+    if (!ids.length) return;
+    if (!window.confirm(`선택한 문의 ${ids.length}건을 지울까요? 되돌릴 수 없습니다.`)) return;
+
+    const status = document.getElementById('feedback-export-status');
+    const button = document.getElementById('feedback-delete-selected');
+    if (button) button.disabled = true;
+    let removed = 0;
+    const failures = [];
+    for (const id of ids) {
+        try {
+            await apiRequest(`/api/admin/feedback/${encodeURIComponent(id)}`, {
+                method: 'DELETE',
+                headers: getNoticeAdminHeaders()
+            });
+            removed += 1;
+        } catch (error) {
+            failures.push(error.message);
+        }
+    }
+    selectedFeedbackIds.clear();
+    if (status) {
+        status.textContent = failures.length
+            ? `${removed}건 삭제, ${failures.length}건 실패: ${failures[0]}`
+            : `${removed}건을 지웠습니다.`;
+        status.style.color = failures.length ? 'var(--danger)' : 'var(--ok)';
+    }
+    await loadAdminFeedback();
 }
 
 // 브라우저에서 바로 .md 파일로 떨어뜨린다. 노션에 그대로 끌어다 놓으면 된다.
@@ -995,10 +1040,10 @@ function downloadTextFile(filename, text) {
     URL.revokeObjectURL(url);
 }
 
-async function exportAdminFeedback(scope) {
+async function exportAdminFeedback() {
     const status = document.getElementById('feedback-export-status');
-    const ids = scope === 'selected' ? Array.from(selectedFeedbackIds) : [];
-    if (scope === 'selected' && ids.length === 0) return;
+    const ids = Array.from(selectedFeedbackIds);
+    if (!ids.length) return;
 
     if (status) {
         status.textContent = '내보내는 중입니다.';
@@ -1938,18 +1983,10 @@ function renderBannerSubnav() {
             </button>`;
     }).join('');
 
-    const pendingCount = adminFeedbackItems.filter(item => item.category === 'banner').length;
-    const inquiryActive = activeBannerSlot === 'inquiry';
+    // 배너 문의는 위 탭으로 옮겼으므로 여기에는 배너 자리만 남는다.
     nav.innerHTML = `
         <p class="banner-subnav-heading">배너 자리</p>
-        ${slotItems}
-        <p class="banner-subnav-heading">접수</p>
-        <button type="button" class="banner-subnav-item${inquiryActive ? ' is-active' : ''}"
-                aria-current="${inquiryActive ? 'true' : 'false'}"
-                onclick="selectBannerSlot('inquiry')">
-            <span class="banner-subnav-label">배너 문의</span>
-            <span class="banner-subnav-sub">${pendingCount}건 접수</span>
-        </button>`;
+        ${slotItems}`;
 
     applyBannerSlotVisibility();
 }
@@ -1962,23 +1999,17 @@ function selectBannerSlot(slot) {
 // 고른 항목만 남기고 나머지는 접는다. 편집 중 입력값이 날아가지 않도록
 // 지우지 않고 감추기만 한다.
 function applyBannerSlotVisibility() {
-    const showInquiry = activeBannerSlot === 'inquiry';
-    const slotsSection = document.getElementById('banner-slots-section');
-    const inquirySection = document.getElementById('banner-inquiry-section');
-    if (slotsSection) slotsSection.hidden = showInquiry;
-    if (inquirySection) inquirySection.hidden = !showInquiry;
-
+    // 고른 자리 하나만 남기고 접는다. 편집 중 입력값이 날아가지 않도록
+    // 지우지 않고 감추기만 한다.
     document.querySelectorAll('#right-rail-slides-list .banner-item')
         .forEach((item, index) => {
-            item.hidden = showInquiry || index !== activeBannerSlot;
+            item.hidden = index !== activeBannerSlot;
         });
 
     // 아직 등록되지 않은 자리를 고르면 새로 만들라고 안내한다.
     const emptyNote = document.getElementById('banner-empty-slot-note');
     const slideCount = getBannerSlidesByPlacement('right_rail').length;
-    if (emptyNote) {
-        emptyNote.hidden = showInquiry || activeBannerSlot < slideCount;
-    }
+    if (emptyNote) emptyNote.hidden = activeBannerSlot < slideCount;
 }
 
 // 상단 가로 배너가 사라져 갈 곳이 없어진 슬라이드들. 관리 화면에서 아예 안 보이면

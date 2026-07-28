@@ -62,6 +62,9 @@
             <button type="button" class="admin-tab" data-tab="compose" onclick="selectAdminTab('compose')">공지 추가하기</button>
             <button type="button" class="admin-tab" data-tab="notices" onclick="selectAdminTab('notices')">공지 목록</button>
             <button type="button" class="admin-tab" data-tab="banner" onclick="selectAdminTab('banner')">배너 관리</button>
+            <button type="button" class="admin-tab" data-tab="banner-inquiry" onclick="selectAdminTab('banner-inquiry')">
+                배너 문의 <span class="tab-count" id="banner-inquiry-count" hidden>0</span>
+            </button>
             <button type="button" class="admin-tab" data-tab="feedback" onclick="selectAdminTab('feedback')">
                 문의함 <span class="tab-count" id="feedback-count" hidden>0</span>
             </button>
@@ -278,17 +281,6 @@
                         </p>
                     </section>
 
-                    <section class="banner-placement-section" id="banner-inquiry-section" hidden
-                             aria-labelledby="banner-inquiry-manager-title">
-                        <div class="banner-manager-heading">
-                            <div>
-                                <h3 id="banner-inquiry-manager-title">배너 문의 접수</h3>
-                                <p>신청자 정보와 제출 이미지를 확인한 뒤 배너 항목에서 승인 또는 반려하세요.</p>
-                            </div>
-                        </div>
-                        <div class="admin-feedback-list" id="banner-inquiry-admin-list"></div>
-                    </section>
-
                     <!-- 상단 배너 시절에 등록된 항목. 노출되는 자리가 없으므로 삭제만 남긴다. -->
                     <section class="banner-placement-section" id="legacy-banner-section"
                              aria-labelledby="legacy-banner-title" hidden>
@@ -299,7 +291,17 @@
             </div>
         </section>
 
-        <!-- ============ 일반 문의·배너 문의 ============ -->
+        <!-- ============ 배너 문의 접수 ============ -->
+        <section class="admin-panel" id="panel-banner-inquiry" aria-labelledby="panel-banner-inquiry-title">
+            <h2 id="panel-banner-inquiry-title">배너 문의 접수</h2>
+            <p class="review-auto-note">신청자 정보와 제출 이미지를 확인한 뒤 배너 관리에서 승인 또는 반려하세요.</p>
+            <div class="review-actions" style="justify-content: flex-start; border-top: none; padding-top: 0;">
+                <button class="btn btn-outline btn-small" type="button" onclick="loadAdminFeedback()">새로고침</button>
+            </div>
+            <div class="admin-feedback-list" id="banner-inquiry-admin-list"></div>
+        </section>
+
+        <!-- ============ 일반 문의 ============ -->
         <section class="admin-panel" id="panel-feedback" aria-labelledby="panel-feedback-title">
             <h2 id="panel-feedback-title">문의함</h2>
             <p id="feedback-admin-status" class="review-status" aria-live="polite"></p>
@@ -313,14 +315,13 @@
             </div>
             <div class="review-actions feedback-toolbar" style="justify-content: flex-start; border-top: none; padding-top: 0;">
                 <button class="btn btn-outline btn-small" type="button" onclick="loadAdminFeedback()">새로고침</button>
-                <label class="feedback-select-all">
-                    <input type="checkbox" id="feedback-select-all" onchange="toggleAllFeedbackSelection(this.checked)">
-                    전체 선택
-                </label>
+                <button class="btn btn-outline btn-small" type="button" id="feedback-select-all"
+                        aria-pressed="false" onclick="toggleAllFeedbackSelection()">전체 선택</button>
                 <span class="feedback-selection-count" id="feedback-selection-count">0개 선택</span>
                 <button class="btn btn-outline btn-small" type="button" id="feedback-export-selected"
-                        onclick="exportAdminFeedback('selected')" disabled>선택한 문의 내보내기</button>
-                <button class="btn btn-small" type="button" onclick="exportAdminFeedback('all')">노션 MD로 전부 내보내기</button>
+                        onclick="exportAdminFeedback()" disabled>.md 로 내보내기</button>
+                <button class="btn btn-danger btn-small" type="button" id="feedback-delete-selected"
+                        onclick="deleteSelectedFeedback()" disabled>삭제</button>
             </div>
             <p class="review-status" id="feedback-export-status" aria-live="polite"></p>
             <div class="admin-feedback-list" id="admin-feedback-list"></div>

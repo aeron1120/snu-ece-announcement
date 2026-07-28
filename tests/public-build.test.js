@@ -1838,9 +1838,9 @@ test('the admin console is usable on a phone and keeps AI editing in reach', asy
     }
 
     // 역할별로 열리는 탭이 코드에 못박혀 있다.
-    assert.match(admin, /master: \['review', 'backfill', 'compose', 'notices', 'banner', 'feedback', 'settings'\]/);
+    assert.match(admin, /master: \['review', 'backfill', 'compose', 'notices', 'banner', 'banner-inquiry', 'feedback', 'settings'\]/);
     assert.match(admin, /notice: \['review', 'backfill', 'compose', 'notices'\]/);
-    assert.match(admin, /banner: \['banner'\]/);
+    assert.match(admin, /banner: \['banner', 'banner-inquiry'\]/);
     // 쓸 수 없는 탭은 감추는 게 아니라 지운다.
     assert.match(readNamedFunction(admin, 'applyAdminRoleToChrome'), /tab\.remove\(\)/);
     assert.match(readNamedFunction(admin, 'applyAdminRoleToChrome'), /panel\.remove\(\)/);
@@ -1892,4 +1892,37 @@ test('the left rail never scrolls and the hover preview follows its card', async
 
     // 모바일 두 열이 나란히 끝나 생기는 아래 빈 띠를 벽돌 배치로 메운다.
     assert.match(mobileCss, /\.grid > \.card:nth-child\(2n\+1\)\s*\{\s*margin-top:\s*-22px/);
+});
+
+test('banner slots show one at a time and the inbox toolbar acts on the selection', async () => {
+    const adminCss = await readFile('css/admin.css', 'utf8');
+    const adminHtml = await readFile('admin.html', 'utf8');
+    const admin = await readFile('js/admin.js', 'utf8');
+
+    // .banner-item에 display를 명시했으므로 [hidden]의 기본값이 밀린다.
+    // 눌러 주지 않으면 배너 1을 골라도 다섯 개가 전부 보인다.
+    assert.match(adminCss, /\.banner-slides-list \.banner-item\[hidden\]\s*\{\s*display:\s*none !important/);
+    assert.match(readNamedFunction(admin, 'applyBannerSlotVisibility'), /item\.hidden = index !== activeBannerSlot/);
+
+    // 배너 문의는 왼쪽 목록이 아니라 위 탭으로 옮겼다.
+    assert.match(adminHtml, /data-tab="banner-inquiry"/);
+    assert.match(adminHtml, /id="panel-banner-inquiry"/);
+    assert.doesNotMatch(admin, /selectBannerSlot\('inquiry'\)/);
+
+    // 문의함 도구 막대: 전체 선택 · 내보내기 · 삭제 모두 선택 기준으로 움직인다.
+    assert.match(adminHtml, />\.md 로 내보내기</);
+    assert.match(adminHtml, /id="feedback-delete-selected"/);
+    assert.match(adminHtml, /id="feedback-select-all"[\s\S]*?toggleAllFeedbackSelection\(\)/);
+    assert.match(readNamedFunction(admin, 'exportAdminFeedback'), /if \(!ids\.length\) return/);
+    assert.match(readNamedFunction(admin, 'deleteSelectedFeedback'), /window\.confirm/);
+    assert.match(readNamedFunction(admin, 'toggleAllFeedbackSelection'), /allPicked/);
+
+    // 버리는 표적은 담는 표적과 떨어져 화면 아래 가운데에 뜬다.
+    const html = await readFile('index.html', 'utf8');
+    const css = await readFile('css/core.css', 'utf8');
+    assert.match(html, /id="split-trash-overlay"/);
+    assert.match(css, /\.split-trash-overlay\s*\{[\s\S]*?bottom:\s*22px;[\s\S]*?justify-content:\s*center/);
+    // 위쪽 표적 줄에는 왼쪽·오른쪽 둘만 남는다.
+    const overlayBlock = html.slice(html.indexOf('id="split-drop-overlay"'), html.indexOf('id="split-trash-overlay"'));
+    assert.equal((overlayBlock.match(/class="split-drop-zone/g) || []).length, 2);
 });

@@ -266,7 +266,11 @@
                 <rect x="13" y="4" width="8" height="16" rx="1.5" fill="currentColor" stroke="none"/>
             </svg>
         </button>
-        <!-- 여기에 놓으면 담지 않는다. 이미 담긴 공지라면 빼낸다. -->
+    </div>
+
+    <!-- 버리는 표적은 담는 표적과 멀리 떨어뜨려 화면 아래 가운데에 둔다.
+         손이 미끄러져 실수로 버리는 일이 없게 하려는 것이다. -->
+    <div class="split-trash-overlay" id="split-trash-overlay" hidden aria-hidden="true">
         <button class="split-drop-zone is-trash" type="button" data-split-side="trash"
                 aria-label="공지 버리기" title="버리기"
                 ondragover="onSplitDropZoneDragOver(event)"
@@ -278,6 +282,7 @@
                 <path stroke-linecap="round" d="M4 7h16M10 4h4M9 11v6M15 11v6"/>
                 <path stroke-linecap="round" d="M6 7l1 12.5a1.5 1.5 0 0 0 1.5 1.5h7a1.5 1.5 0 0 0 1.5-1.5L18 7"/>
             </svg>
+            <span class="split-trash-label">버리기</span>
         </button>
     </div>
 

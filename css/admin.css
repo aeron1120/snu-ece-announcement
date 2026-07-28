@@ -345,16 +345,6 @@
 /* ---------- 배너 관리 ---------- */
 /* 문의함 — 선택해서 내보내기 */
 .feedback-toolbar { flex-wrap: wrap; align-items: center; gap: 10px; }
-.feedback-select-all {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    color: var(--text-sub);
-    font-size: 13px;
-    font-weight: 700;
-    cursor: pointer;
-}
-.feedback-select-all input { width: 15px; height: 15px; accent-color: var(--primary); }
 .feedback-selection-count {
     color: var(--text-sub);
     font-size: 12.5px;
@@ -463,6 +453,9 @@
 .banner-manager-heading strong.is-full { color: var(--danger); border-color: #e3c6c1; background: var(--danger-bg); }
 .banner-slides-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; }
 .banner-slides-list .banner-item { display: block; background: white; border: 1px solid var(--border); padding: 16px; }
+/* display를 명시했으므로 [hidden]의 기본 display:none이 밀린다.
+   왼쪽 목록에서 고른 배너 하나만 남기려면 여기서 다시 눌러 줘야 한다. */
+.banner-slides-list .banner-item[hidden] { display: none !important; }
 .banner-item-header { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; }
 .banner-item-header > div:first-child { min-width: 0; }
 .banner-item-header small { display: block; margin-top: 4px; color: var(--text-sub); font-size: 12px; font-weight: 400; }

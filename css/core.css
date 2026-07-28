@@ -231,7 +231,7 @@ body {
 .brand-wordmark {
     display: block;
     width: 100%;
-    max-width: 176px;
+    max-width: 196px;
     height: auto;
     margin: -4px auto 2px;
     -webkit-user-drag: none;
@@ -502,7 +502,7 @@ body {
 }
 .header-title-area { display: flex; align-items: center; gap: 12px; min-width: 0; }
 /* 워드마크가 제목 자리를 대신한다. 글자 제목은 이미지가 없을 때만 나온다. */
-.site-title-mark { display: block; width: auto; height: 46px; -webkit-user-drag: none; }
+.site-title-mark { display: block; width: auto; height: 62px; -webkit-user-drag: none; }
 .site-title-text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; }
 .site-title.is-text .site-title-text { position: static; width: auto; height: auto; overflow: visible; clip: auto; }
 .header h1, .site-title {
@@ -1469,13 +1469,39 @@ body.notice-dragging .notice-hover-preview { display: none !important; }
     box-shadow: 0 8px 22px rgba(29, 72, 153, 0.34);
     transform: translateY(1px) scale(1.06);
 }
-/* 버리는 표적은 담는 표적과 색으로 구분한다. 왼쪽 두 개와 살짝 띄워 둔다. */
-.split-drop-zone.is-trash { margin-left: 8px; color: #8a5b55; }
+/* 버리는 표적. 화면 아래 가운데에 따로 떠 담는 표적과 멀찍이 떨어진다. */
+.split-trash-overlay {
+    position: fixed;
+    z-index: 1900;
+    right: 0;
+    bottom: 22px;
+    left: 0;
+    display: flex;
+    justify-content: center;
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(8px);
+    transition: opacity 0.16s ease, transform 0.16s cubic-bezier(0.33, 1, 0.68, 1);
+}
+.split-trash-overlay[hidden] { display: none; }
+.split-trash-overlay.visible { opacity: 1; transform: translateY(0); }
+.split-drop-zone.is-trash {
+    width: auto;
+    min-width: 108px;
+    height: 52px;
+    gap: 8px;
+    grid-auto-flow: column;
+    padding: 0 18px;
+    color: #8a5b55;
+    border-radius: 14px;
+    pointer-events: auto;
+}
+.split-trash-label { font-size: 12.5px; font-weight: 800; }
 .split-drop-zone.is-trash.active {
     color: #fff;
     background: var(--danger);
     border-color: var(--danger);
-    box-shadow: 0 8px 22px rgba(192, 57, 43, 0.34);
+    box-shadow: 0 10px 26px rgba(192, 57, 43, 0.36);
 }
 @media (prefers-reduced-motion: reduce) {
     .split-drop-overlay,

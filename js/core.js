@@ -2504,19 +2504,27 @@ function showSplitDropOverlay({ ignoreLimit = false } = {}) {
     // 새로 담을 때만 개수를 따진다. 이미 담긴 블록을 옮기는 경우는 예외다.
     if (!ignoreLimit && compareBlocks.length >= maxCompareBlocks()) return;
     overlay.hidden = false;
-    requestAnimationFrame(() => overlay.classList.add('visible'));
+    const trash = document.getElementById('split-trash-overlay');
+    if (trash) trash.hidden = false;
+    requestAnimationFrame(() => {
+        overlay.classList.add('visible');
+        trash?.classList.add('visible');
+    });
 }
 
 function hideSplitDropOverlay() {
     const overlay = document.getElementById('split-drop-overlay');
+    const trash = document.getElementById('split-trash-overlay');
     overlay?.classList.remove('visible');
-    overlay?.querySelectorAll('.split-drop-zone.active').forEach(zone => zone.classList.remove('active'));
+    trash?.classList.remove('visible');
+    document.querySelectorAll('.split-drop-zone.active').forEach(zone => zone.classList.remove('active'));
     document.querySelectorAll('.compare-empty-slot.active')
         .forEach(zone => zone.classList.remove('active'));
     document.getElementById('compare-space')?.classList.remove('is-notice-drop-active');
     document.getElementById('spatial-workspace')?.classList.remove('is-notice-drop-active');
     window.setTimeout(() => {
         if (overlay && !overlay.classList.contains('visible')) overlay.hidden = true;
+        if (trash && !trash.classList.contains('visible')) trash.hidden = true;
     }, 120);
 }
 
