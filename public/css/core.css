@@ -174,8 +174,9 @@ body {
     background: var(--rail-bg);
     color: var(--rail-text);
     flex-direction: column;
-    gap: 24px;
-    padding: 28px 22px;
+    /* 워드마크가 들어오며 세로가 길어졌다. 한 화면에 들어오도록 간격을 조인다. */
+    gap: 18px;
+    padding: 22px 22px 20px;
 }
 /* 로고 버튼. 서울대 엠블럼 이미지가 있으면 그걸, 없으면 명조 워드마크로 떨어진다.
    엠블럼은 배경을 깔지 않고 레일 남색 위에 그대로 얹어 배경과 자연스럽게 이어지게 한다.
@@ -500,6 +501,10 @@ body {
     border-bottom: 0;
 }
 .header-title-area { display: flex; align-items: center; gap: 12px; min-width: 0; }
+/* 워드마크가 제목 자리를 대신한다. 글자 제목은 이미지가 없을 때만 나온다. */
+.site-title-mark { display: block; width: auto; height: 46px; -webkit-user-drag: none; }
+.site-title-text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; }
+.site-title.is-text .site-title-text { position: static; width: auto; height: auto; overflow: visible; clip: auto; }
 .header h1, .site-title {
     font-family: var(--serif);
     color: var(--primary-deep);
@@ -1463,6 +1468,14 @@ body.notice-dragging .notice-hover-preview { display: none !important; }
     border-color: var(--primary);
     box-shadow: 0 8px 22px rgba(29, 72, 153, 0.34);
     transform: translateY(1px) scale(1.06);
+}
+/* 버리는 표적은 담는 표적과 색으로 구분한다. 왼쪽 두 개와 살짝 띄워 둔다. */
+.split-drop-zone.is-trash { margin-left: 8px; color: #8a5b55; }
+.split-drop-zone.is-trash.active {
+    color: #fff;
+    background: var(--danger);
+    border-color: var(--danger);
+    box-shadow: 0 8px 22px rgba(192, 57, 43, 0.34);
 }
 @media (prefers-reduced-motion: reduce) {
     .split-drop-overlay,

@@ -188,7 +188,9 @@ test('the public page drops the top banner, the saved-posts feature, and the ref
     assert.doesNotMatch(app, /savedPosts|toggleSave|toggleViewMode/);
 
     // 제목은 기능 없는 표제이며, 알림 받기만 종 토글로 유지한다.
-    assert.match(html, /<h1 class="site-title" id="site-title">SNU ECE 공지방<\/h1>/);
+    // 제목 자리는 워드마크 이미지가 차지하고, 글자는 이미지가 없을 때만 나온다.
+    assert.match(html, /<h1 class="site-title" id="site-title">[\s\S]*?id="site-title-mark"[\s\S]*?alt="SNU ECE 공지방"/);
+    assert.match(html, /<span class="site-title-text">SNU ECE 공지방<\/span>/);
     assert.doesNotMatch(html, /제목을 누르면 새로고침|site-title-hint|reloadNoticeBoard/);
     assert.match(html, /id="bell-toggle"[\s\S]*?aria-pressed="false"/);
     assert.match(html, /onclick="openNotificationPreferences\(\)"/);
@@ -1846,4 +1848,48 @@ test('the admin console is usable on a phone and keeps AI editing in reach', asy
     // 운영진이 마스터에게 남기는 창.
     assert.match(html, /id="staff-report-modal"/);
     assert.match(admin, /\/api\/admin\/staff-report/);
+});
+
+test('crawled attachments are fetched through the server so the source Referer check passes', async () => {
+    const server = await readFile('server/server.js', 'utf8');
+    const app = await readFile('js/core.js', 'utf8');
+
+    // ECE 홈페이지는 Referer가 자기 사이트가 아니면 첨부에 404를 준다.
+    // 원문 주소를 그대로 걸면 브라우저가 우리 도메인을 보내 전부 실패한다.
+    assert.match(server, /app\.get\('\/api\/notices\/:id\/attachments\/:index'/);
+    assert.match(server, /Referer: notice\.sourceUrl/);
+    // 공지에 실제로 적힌 주소만, 그것도 허용된 호스트만 대신 받는다.
+    assert.match(server, /ATTACHMENT_ALLOWED_HOSTS = new Set\(\['ece\.snu\.ac\.kr'/);
+    assert.match(server, /!ATTACHMENT_ALLOWED_HOSTS\.has\(target\.hostname\)/);
+    assert.match(server, /target\.protocol !== 'https:'/);
+    assert.match(server, /Content-Disposition/);
+
+    // 상세 화면의 첨부 링크는 원문이 아니라 우리 경로를 가리킨다.
+    assert.match(app, /\/api\/notices\/\$\{encodeURIComponent\(notice\.id\)\}\/attachments\/\$\{index\}/);
+    assert.doesNotMatch(app, /attachments\.map\(file =>[\s\S]{0,120}safeHttpUrl\(file\.url\)/);
+});
+
+test('the left rail never scrolls and the hover preview follows its card', async () => {
+    const desktopCss = await readFile('css/desktop.css', 'utf8');
+    const app = await readFile('js/core.js', 'utf8');
+    const html = await readFile('index.html', 'utf8');
+    const mobileCss = await readFile('css/mobile.css', 'utf8');
+
+    // 왼쪽 레일은 한 화면에 들어오므로 스크롤 막대를 두지 않는다.
+    assert.match(desktopCss, /\.rail-left\s*\{[^}]*overflow:\s*hidden/s);
+    assert.doesNotMatch(desktopCss, /\.site-rail\s*\{[^}]*overflow-y:\s*auto/s);
+    // 서비스 안내가 관련 페이지 맨 위에 온다.
+    assert.match(html, /aria-label="서울대학교 관련 링크">\s*<a href="\.\/service-guide\.html">서비스 안내<\/a>/);
+
+    // 미리보기는 fixed라 스크롤하면 카드와 간격이 벌어진다. 기준 카드를 따라간다.
+    assert.match(app, /function followNoticeHoverPreview/);
+    assert.match(app, /hoverPreviewAnchorCard = card/);
+    assert.match(app, /addEventListener\('scroll', followNoticeHoverPreview/);
+
+    // 끌어온 공지를 버릴 표적이 있다.
+    assert.match(html, /data-split-side="trash"/);
+    assert.match(app, /placement === 'trash'/);
+
+    // 모바일 두 열이 나란히 끝나 생기는 아래 빈 띠를 벽돌 배치로 메운다.
+    assert.match(mobileCss, /\.grid > \.card:nth-child\(2n\+1\)\s*\{\s*margin-top:\s*-22px/);
 });

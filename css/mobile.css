@@ -128,6 +128,7 @@ html[data-view="mobile"] .header {
 html[data-view="mobile"] .header-title-area { width: auto; flex: 1; }
 html[data-view="mobile"] .header h1,
 html[data-view="mobile"] .site-title { font-size: 22px; white-space: normal; }
+html[data-view="mobile"] .site-title-mark { height: 34px; }
 html[data-view="mobile"] .header-actions {
     width: auto;
     margin-left: 0;
@@ -254,7 +255,16 @@ html[data-view="mobile"] .notice-sort-chips button {
 }
 
 /* ---------- 공지 목록 ---------- */
-html[data-view="mobile"] .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+/* 두 열이 나란히 끝나면 아래에 빈 띠가 남는다. 왼쪽 열을 조금 끌어올려
+   벽돌처럼 어긋나게 두면 그 자리가 자연스럽게 메워진다. 끌어올린 만큼
+   위쪽에 자리를 미리 비워 두어 첫 줄이 잘리지 않는다. */
+html[data-view="mobile"] .grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    align-items: start;
+    padding-top: 22px;
+}
+html[data-view="mobile"] .grid > .card:nth-child(2n+1) { margin-top: -22px; }
 html[data-view="mobile"] .card {
     width: 100%;
     height: auto;

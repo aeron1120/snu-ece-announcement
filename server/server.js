@@ -2811,6 +2811,63 @@ app.use(createNoticeThumbnailRouter({
     defaultUrl: '/icons/default-notice-thumbnail.png'
 }));
 
+/* 크롤링한 공지의 첨부파일 내려받기.
+   ECE 홈페이지는 첨부 주소에 Referer가 없거나 자기 사이트가 아니면 404를 준다.
+   그래서 링크를 그대로 걸면 사용자 브라우저가 우리 도메인을 Referer로 보내
+   전부 실패한다. 서버가 원문 페이지를 Referer로 붙여 대신 받아 넘긴다. */
+const ATTACHMENT_ALLOWED_HOSTS = new Set(['ece.snu.ac.kr', 'www.ece.snu.ac.kr']);
+
+app.get('/api/notices/:id/attachments/:index', async (req, res) => {
+    try {
+        const id = Number.parseInt(req.params.id, 10);
+        const index = Number.parseInt(req.params.index, 10);
+        if (!Number.isSafeInteger(id) || !Number.isSafeInteger(index) || index < 0) {
+            return res.status(400).json({ error: '잘못된 첨부 요청입니다.' });
+        }
+
+        const notice = await getPublishedNoticeById(id);
+        const attachment = notice?.attachments?.[index];
+        if (!attachment?.url) {
+            return res.status(404).json({ error: '첨부파일을 찾을 수 없습니다.' });
+        }
+
+        // 공지에 실제로 적힌 주소만 받는다. 임의의 주소를 대신 받아주지 않는다.
+        let target;
+        try {
+            target = new URL(attachment.url);
+        } catch {
+            return res.status(400).json({ error: '첨부 주소가 올바르지 않습니다.' });
+        }
+        if (target.protocol !== 'https:' || !ATTACHMENT_ALLOWED_HOSTS.has(target.hostname)) {
+            return res.status(400).json({ error: '허용되지 않은 첨부 주소입니다.' });
+        }
+
+        const upstream = await fetch(target.toString(), {
+            headers: {
+                Referer: notice.sourceUrl || `${target.origin}/community/academics`,
+                'User-Agent': 'Mozilla/5.0 (compatible; SNU-ECE-Notice/1.0)'
+            }
+        });
+        if (!upstream.ok) {
+            return res.status(502).json({ error: `원문 서버에서 파일을 받지 못했습니다. (${upstream.status})` });
+        }
+
+        const fileName = String(attachment.name || 'attachment').replace(/[\r\n"]/g, '').slice(0, 120);
+        res.setHeader('Content-Type', upstream.headers.get('content-type') || 'application/octet-stream');
+        res.setHeader(
+            'Content-Disposition',
+            `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`
+        );
+        res.setHeader('Cache-Control', 'private, max-age=300');
+        const length = upstream.headers.get('content-length');
+        if (length) res.setHeader('Content-Length', length);
+
+        res.send(Buffer.from(await upstream.arrayBuffer()));
+    } catch (error) {
+        res.status(500).json({ error: error.message || '첨부파일 전달 실패' });
+    }
+});
+
 app.get('/api/notices/:id', async (req, res) => {
     try {
         const id = Number(req.params.id);

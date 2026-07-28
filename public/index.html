@@ -70,10 +70,10 @@
         <p class="brand-site-name" id="brand-site-name" hidden>SNU ECE 공지방</p>
         <p class="rail-section-label">관련 페이지</p>
         <nav class="brand-links" aria-label="서울대학교 관련 링크">
+            <a href="./service-guide.html">서비스 안내</a>
             <a href="https://www.snu.ac.kr/" target="_blank" rel="noopener noreferrer">서울대학교 홈페이지</a>
             <a href="https://ece.snu.ac.kr/" target="_blank" rel="noopener noreferrer">전기정보공학부</a>
             <a href="https://my.snu.ac.kr/" target="_blank" rel="noopener noreferrer">mySNU</a>
-            <a href="./service-guide.html">서비스 안내</a>
         </nav>
         <p class="rail-section-label">문의</p>
         <nav class="brand-links inquiry-links" aria-label="문의">
@@ -91,7 +91,13 @@
 <div class="header">
     <button type="button" class="mobile-menu-btn" aria-label="메뉴 열기" onclick="openMobileDrawer()">☰</button>
     <div class="header-title-area">
-        <h1 class="site-title" id="site-title">SNU ECE 공지방</h1>
+        <!-- 제목 자리에 워드마크를 넣는다. 이미지가 없으면 글자 제목으로 떨어진다. -->
+        <h1 class="site-title" id="site-title">
+            <img class="site-title-mark" id="site-title-mark" src="./icons/brand-wordmark-header.png"
+                 alt="SNU ECE 공지방" draggable="false"
+                 onerror="this.remove(); document.getElementById('site-title')?.classList.add('is-text');">
+            <span class="site-title-text">SNU ECE 공지방</span>
+        </h1>
         <button type="button" class="bell-toggle" id="bell-toggle" aria-pressed="false"
                 aria-label="공지 알림 받기" title="공지 알림 받기"
                 onclick="openNotificationPreferences()">🔔</button>
@@ -258,6 +264,19 @@
                  stroke-width="1.8" aria-hidden="true">
                 <rect x="3" y="4" width="8" height="16" rx="1.5" stroke-dasharray="3 2.4"/>
                 <rect x="13" y="4" width="8" height="16" rx="1.5" fill="currentColor" stroke="none"/>
+            </svg>
+        </button>
+        <!-- 여기에 놓으면 담지 않는다. 이미 담긴 공지라면 빼낸다. -->
+        <button class="split-drop-zone is-trash" type="button" data-split-side="trash"
+                aria-label="공지 버리기" title="버리기"
+                ondragover="onSplitDropZoneDragOver(event)"
+                ondragleave="onSplitDropZoneDragLeave(event)"
+                ondrop="onSplitDropZoneDrop(event, 'trash')"
+                onclick="applyPendingNoticeSplit('trash')">
+            <svg class="split-drop-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="1.8" aria-hidden="true">
+                <path stroke-linecap="round" d="M4 7h16M10 4h4M9 11v6M15 11v6"/>
+                <path stroke-linecap="round" d="M6 7l1 12.5a1.5 1.5 0 0 0 1.5 1.5h7a1.5 1.5 0 0 0 1.5-1.5L18 7"/>
             </svg>
         </button>
     </div>
