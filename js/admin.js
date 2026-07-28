@@ -20,6 +20,7 @@ const MAX_NOTICE_IMAGES = 20;
 // AI 분석이 만든 3줄 요약. 저장 때 재분석 없이 그대로 쓴다.
 let composeAiSummary = [];
 let composeAiCategoryIds = [];
+let aiDeadlineCandidate = '';
 let aiProgressTimer = null;
 let aiProgressValue = 0;
 let aiProgressCeiling = 0;
@@ -297,6 +298,8 @@ function resetComposeForm() {
     pastedImages = [];
     composeAiSummary = [];
     composeAiCategoryIds = [];
+    aiDeadlineCandidate = '';
+    renderAiDeadlineCandidate();
     renderPastePreview();
     const analyzeStatus = document.getElementById('analyze-status');
     if (analyzeStatus) analyzeStatus.textContent = '';
@@ -310,12 +313,41 @@ function resetComposeForm() {
     document.getElementById('post-title-manual').hidden = true;
     document.getElementById('post-target').value = '전체';
     document.getElementById('post-deadline').value = '';
+    document.getElementById('post-always-open').checked = false;
+    toggleAlwaysOpenState();
+    renderAiDeadlineCandidate();
     document.getElementById('post-content').value = '';
     document.getElementById('post-images').value = '';
     document.getElementById('panel-compose-title').textContent = '새 공지 등록';
     document.getElementById('submit-btn-text').textContent = '공지 업로드';
     document.getElementById('compose-cancel').hidden = true;
     refreshTitlePreview();
+}
+
+function renderAiDeadlineCandidate() {
+    const button = document.getElementById('ai-deadline-candidate');
+    if (!button) return;
+    button.hidden = !aiDeadlineCandidate;
+    button.textContent = aiDeadlineCandidate
+        ? `AI 후보 ${aiDeadlineCandidate} 적용`
+        : '';
+}
+
+function applyAiDeadlineCandidate() {
+    if (!aiDeadlineCandidate) return;
+    const alwaysOpen = document.getElementById('post-always-open');
+    const deadline = document.getElementById('post-deadline');
+    alwaysOpen.checked = false;
+    deadline.value = aiDeadlineCandidate;
+    toggleAlwaysOpenState();
+}
+
+function toggleAlwaysOpenState() {
+    const alwaysOpen = document.getElementById('post-always-open');
+    const deadline = document.getElementById('post-deadline');
+    if (!alwaysOpen || !deadline) return;
+    deadline.disabled = alwaysOpen.checked;
+    if (alwaysOpen.checked) deadline.value = '';
 }
 
 // ========================================
@@ -471,7 +503,8 @@ async function analyzeNotice() {
 
         if (parsed.subject) document.getElementById('title-subject').value = parsed.subject;
         if (parsed.type) document.getElementById('title-kind').value = parsed.type;
-        if (parsed.deadline) document.getElementById('post-deadline').value = parsed.deadline;
+        aiDeadlineCandidate = parsed.deadline || '';
+        renderAiDeadlineCandidate();
         composeAiSummary = parsed.summary;
         composeAiCategoryIds = parsed.categoryIds;
 
@@ -637,6 +670,7 @@ async function generateAIAndSave() {
     // 주관 기관은 제목 양식에서 고른 값을 그대로 쓴다. 따로 입력받지 않는다.
     const host = (isTitleManual() ? '' : getSelectedTitleHost()) || '기타';
     const deadline = document.getElementById('post-deadline').value;
+    const isAlwaysOpen = document.getElementById('post-always-open').checked;
     const content = document.getElementById('post-content').value.trim();
     const fileInput = document.getElementById('post-images');
 
@@ -706,6 +740,8 @@ async function generateAIAndSave() {
             host,
             target,
             deadline,
+            deadlineAt: deadline || null,
+            isAlwaysOpen,
             content,
             aiSummary,
             categoryIds,
@@ -830,10 +866,14 @@ async function editAdminNotice(id) {
     pastedImages = [];
     composeAiSummary = [];
     composeAiCategoryIds = [];
+    aiDeadlineCandidate = '';
+    renderAiDeadlineCandidate();
     renderPastePreview();
     applyTitleToBuilder(notice.title);
     document.getElementById('post-target').value = notice.target || '전체';
     document.getElementById('post-deadline').value = notice.deadline || '';
+    document.getElementById('post-always-open').checked = notice.isAlwaysOpen === true;
+    toggleAlwaysOpenState();
     document.getElementById('post-content').value = notice.content || '';
     document.getElementById('post-images').value = '';
     document.getElementById('panel-compose-title').textContent = '공지 수정';
@@ -1006,6 +1046,10 @@ function renderReviewEditor(notice) {
             <div class="form-group">
                 <label for="review-deadline">마감일</label>
                 <input id="review-deadline" type="date" value="${escapeHtml(notice.deadline || '')}">
+                <label class="title-manual-row">
+                    <input id="review-always-open" type="checkbox" ${notice.isAlwaysOpen ? 'checked' : ''}>
+                    상시 공지
+                </label>
             </div>
             <div class="form-group">
                 <label for="review-keywords">키워드 (쉼표로 구분)</label>
@@ -1052,6 +1096,8 @@ function collectReviewEdits() {
         content: document.getElementById('review-content').value.trim(),
         host: document.getElementById('review-host').value.trim(),
         deadline: document.getElementById('review-deadline').value || null,
+        deadlineAt: document.getElementById('review-deadline').value || null,
+        isAlwaysOpen: document.getElementById('review-always-open').checked,
         targets: splitReviewValues(document.getElementById('review-targets').value),
         keywords: splitReviewValues(document.getElementById('review-keywords').value),
         categoryIds: Array.from(

@@ -5,6 +5,9 @@ create table if not exists public.notices (
   target text not null default '전체',
   host text not null default '기타',
   deadline date,
+  deadline_at timestamptz,
+  expires_at timestamptz,
+  is_always_open boolean not null default false,
   ai_summary jsonb not null default '[]'::jsonb,
   images jsonb not null default '[]'::jsonb,
   has_images boolean generated always as (jsonb_array_length(images) > 0) stored,
@@ -98,7 +101,21 @@ alter table public.notices
   add column if not exists raw_content text,
   add column if not exists attachments jsonb not null default '[]'::jsonb,
   add column if not exists reviewed_at timestamptz,
-  add column if not exists review_note text;
+  add column if not exists review_note text,
+  add column if not exists deadline_at timestamptz,
+  add column if not exists expires_at timestamptz,
+  add column if not exists is_always_open boolean not null default false;
+
+update public.notices
+set deadline_at = (
+  (deadline::timestamp + interval '23 hours 59 minutes 59 seconds')
+  at time zone 'Asia/Seoul'
+)
+where deadline is not null
+  and deadline_at is null;
+
+create index if not exists notices_active_expiry_idx
+  on public.notices (is_deleted, status, expires_at);
 
 update public.notices
 set published_at = coalesce(published_at, created_at),
@@ -189,6 +206,54 @@ create table if not exists public.notice_categories (
   created_at timestamptz not null default now(),
   primary key (notice_id, category_id)
 );
+
+with ranked_notice_categories as (
+  select
+    nc.notice_id,
+    c.slug,
+    row_number() over (
+      partition by nc.notice_id
+      order by case c.slug
+        when 'academics' then 1
+        when 'application' then 2
+        when 'benefits-partnerships' then 3
+        when 'campus' then 4
+        when 'governance' then 5
+        else 99
+      end
+    ) as priority
+  from public.notice_categories nc
+  join public.categories c on c.id = nc.category_id
+)
+update public.notices n
+set expires_at = case ranked.slug
+  when 'academics' then coalesce(
+    n.deadline_at,
+    case
+      when extract(month from n.created_at at time zone 'Asia/Seoul') <= 6
+        then make_timestamptz(
+          extract(year from n.created_at at time zone 'Asia/Seoul')::integer,
+          6, 30, 23, 59, 59, 'Asia/Seoul'
+        )
+      else make_timestamptz(
+        extract(year from n.created_at at time zone 'Asia/Seoul')::integer,
+        12, 31, 23, 59, 59, 'Asia/Seoul'
+      )
+    end
+  ) + interval '7 days'
+  when 'application' then n.deadline_at + interval '3 days'
+  when 'benefits-partnerships' then coalesce(n.deadline_at, n.created_at + interval '60 days')
+  when 'campus' then (
+    date_trunc('day', n.deadline_at at time zone 'Asia/Seoul')
+    + interval '23 hours 59 minutes 59 seconds'
+  ) at time zone 'Asia/Seoul'
+  else null
+end
+from ranked_notice_categories ranked
+where ranked.notice_id = n.id
+  and ranked.priority = 1
+  and n.expires_at is null
+  and n.is_always_open = false;
 
 create table if not exists public.category_candidates (
   id bigint generated always as identity primary key,
@@ -348,7 +413,8 @@ declare
   category_value jsonb;
 begin
   insert into public.notices (
-    title, content, target, targets, host, deadline, ai_summary, images,
+    title, content, target, targets, host, deadline, deadline_at, expires_at,
+    is_always_open, ai_summary, images,
     status, source_type, raw_title, raw_content, analysis_status,
     published_at, views, is_deleted
   ) values (
@@ -358,6 +424,9 @@ begin
     jsonb_build_array(coalesce(nullif(notice_payload->>'target', ''), '전체')),
     coalesce(nullif(notice_payload->>'host', ''), '기타'),
     nullif(notice_payload->>'deadline', '')::date,
+    nullif(notice_payload->>'deadlineAt', '')::timestamptz,
+    nullif(notice_payload->>'expiresAt', '')::timestamptz,
+    coalesce((notice_payload->>'isAlwaysOpen')::boolean, false),
     coalesce(notice_payload->'aiSummary', '[]'::jsonb),
     coalesce(notice_payload->'images', '[]'::jsonb),
     'published',
@@ -420,6 +489,18 @@ begin
       deadline = case
         when edits ? 'deadline' then nullif(edits->>'deadline', '')::date
         else deadline
+      end,
+      deadline_at = case
+        when edits ? 'deadlineAt' then nullif(edits->>'deadlineAt', '')::timestamptz
+        else deadline_at
+      end,
+      expires_at = case
+        when edits ? 'expiresAt' then nullif(edits->>'expiresAt', '')::timestamptz
+        else expires_at
+      end,
+      is_always_open = case
+        when edits ? 'isAlwaysOpen' then coalesce((edits->>'isAlwaysOpen')::boolean, false)
+        else is_always_open
       end,
       ai_summary = case when edits ? 'aiSummary' then edits->'aiSummary' else ai_summary end,
       keywords = case when edits ? 'keywords' then edits->'keywords' else keywords end,

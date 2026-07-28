@@ -157,8 +157,14 @@
                         </select>
                     </div>
                     <div class="title-builder-field">
-                        <label for="post-deadline">마감일 <span style="font-weight:400;color:var(--text-sub);">(비우면 상시)</span></label>
+                        <label for="post-deadline">마감일 <span style="font-weight:400;color:var(--text-sub);">(관리자 확인 필수)</span></label>
                         <input type="date" id="post-deadline">
+                        <button class="btn btn-outline btn-small" id="ai-deadline-candidate" type="button"
+                                hidden onclick="applyAiDeadlineCandidate()"></button>
+                        <label class="title-manual-row">
+                            <input type="checkbox" id="post-always-open" onchange="toggleAlwaysOpenState()">
+                            상시 공지
+                        </label>
                     </div>
                 </div>
 

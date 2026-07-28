@@ -565,6 +565,13 @@ body {
     transform: translateY(-2px);
 }
 .card.card-expired { background-color: #f7f8fa; }
+.card.is-archived {
+    opacity: 0.58;
+}
+.card.is-archived:hover,
+.card.is-archived:focus-within {
+    opacity: 0.82;
+}
 
 /* 포스터 영역 — 사진이 있으면 사진, 없으면 큰 제목이 여기 온다 */
 .card-poster {

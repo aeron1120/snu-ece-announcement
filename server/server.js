@@ -7,6 +7,11 @@ import { createClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
 import cron from 'node-cron';
 import { getGeminiRetryAfterSeconds } from './services/gemini-rate-limit.js';
+import {
+    calculateNoticeLifecycle,
+    getNoticeLifecycleState,
+    normalizeDeadlineAt
+} from './services/notice-expiry.js';
 import { getAutomationConfig } from './config/runtime-config.js';
 import { CANONICAL_NOTICE_CATEGORIES } from './config/notice-categories.js';
 import { createAutomationStore } from './storage/automation-store.js';
@@ -421,7 +426,8 @@ function normalizeNoticeInput(body = {}) {
     const content = String(body.content || '').trim();
     const target = String(body.target || '전체').trim() || '전체';
     const host = String(body.host || '기타').trim() || '기타';
-    const deadline = String(body.deadline || '').trim();
+    const deadlineAt = normalizeDeadlineAt(body.deadlineAt || body.deadline || null);
+    const isAlwaysOpen = body.isAlwaysOpen === true || body.isAlwaysOpen === 'true';
     const aiSummary = Array.isArray(body.aiSummary)
         ? body.aiSummary.map(item => String(item || '').trim()).filter(Boolean).slice(0, 3)
         : [];
@@ -439,7 +445,9 @@ function normalizeNoticeInput(body = {}) {
         content,
         target,
         host,
-        deadline,
+        deadline: deadlineAt ? deadlineAt.slice(0, 10) : '',
+        deadlineAt,
+        isAlwaysOpen,
         aiSummary,
         categoryIds,
         images
@@ -483,7 +491,12 @@ function toClientNotice(row) {
         target: row.target || '전체',
         targets: Array.isArray(row.targets) ? row.targets : [],
         host: row.host || '기타',
-        deadline: row.deadline || '',
+        deadline: row.deadline || (row.deadlineAt || row.deadline_at || '').slice(0, 10),
+        deadlineAt: row.deadlineAt || row.deadline_at || null,
+        expiresAt: row.expiresAt || row.expires_at || null,
+        isAlwaysOpen: row.isAlwaysOpen === true || row.is_always_open === true,
+        isArchived: row.isArchived === true,
+        isInGracePeriod: row.isInGracePeriod === true,
         aiSummary: Array.isArray(row.aiSummary)
             ? row.aiSummary
             : (Array.isArray(row.ai_summary) ? row.ai_summary : []),
@@ -514,6 +527,11 @@ function toNoticeSummary(row) {
         targets: notice.targets,
         host: notice.host,
         deadline: notice.deadline,
+        deadlineAt: notice.deadlineAt,
+        expiresAt: notice.expiresAt,
+        isAlwaysOpen: notice.isAlwaysOpen,
+        isArchived: notice.isArchived,
+        isInGracePeriod: notice.isInGracePeriod,
         aiSummary: notice.aiSummary,
         keywords: notice.keywords,
         categoryIds: notice.categoryIds,
@@ -811,6 +829,7 @@ function normalizeNoticeListFilters(input = {}) {
     const views = String(input.views || '전체').trim();
     const sort = String(input.sort || '최신순').trim();
 
+    const archive = input.archive === 'true' || input.archive === true;
     return {
         categoryIds: Array.from(new Set(categoryIds)),
         search: String(input.search || '').trim().toLocaleLowerCase('ko-KR').slice(0, 200),
@@ -821,7 +840,10 @@ function normalizeNoticeListFilters(input = {}) {
         views: allowedViewStates.has(views) ? views : '전체',
         sort: allowedSorts.has(sort) ? sort : '최신순',
         dateFrom: cleanDate(input.dateFrom),
-        dateTo: cleanDate(input.dateTo)
+        dateTo: cleanDate(input.dateTo),
+        includeExpired: archive
+            || Boolean(String(input.search || '').trim())
+            || deadlineStatus === '마감됨'
     };
 }
 
@@ -843,6 +865,8 @@ function applyNoticeListFilters(rows, filters, { now = new Date() } = {}) {
     const keywords = filters.search ? filters.search.split(/\s+/).filter(Boolean) : [];
     const filtered = rows.filter(row => {
         const notice = toClientNotice(row);
+        const lifecycleState = getNoticeLifecycleState(notice, now);
+        if (lifecycleState.isExpired && !filters.includeExpired) return false;
         if (filters.target !== '전체'
             && notice.target !== '전체'
             && notice.target !== filters.target) return false;
@@ -852,7 +876,9 @@ function applyNoticeListFilters(rows, filters, { now = new Date() } = {}) {
             if (!keywords.every(keyword => searchTarget.includes(keyword))) return false;
         }
 
-        const deadlineState = getNoticeDeadlineState(notice.deadline, todayKey);
+        const deadlineState = notice.isAlwaysOpen
+            ? { hasDeadline: false, isExpired: false, isUrgent: false }
+            : getNoticeDeadlineState(notice.deadlineAt || notice.deadline, todayKey);
         if (filters.deadlineStatus === '진행중' && deadlineState.isExpired) return false;
         if (filters.deadlineStatus === '마감임박' && !deadlineState.isUrgent) return false;
         if (filters.deadlineStatus === '상시' && deadlineState.hasDeadline) return false;
@@ -872,7 +898,7 @@ function applyNoticeListFilters(rows, filters, { now = new Date() } = {}) {
         if (filters.views === '50이상' && notice.views < 50) return false;
         if (filters.views === '10미만' && notice.views >= 10) return false;
 
-        const deadlineKey = String(notice.deadline || '').slice(0, 10);
+        const deadlineKey = String(notice.deadlineAt || notice.deadline || '').slice(0, 10);
         if (filters.dateFrom && (!deadlineKey || deadlineKey < filters.dateFrom)) return false;
         if (filters.dateTo && deadlineKey && deadlineKey > filters.dateTo) return false;
         return true;
@@ -881,12 +907,17 @@ function applyNoticeListFilters(rows, filters, { now = new Date() } = {}) {
     return filtered.sort((left, right) => {
         const a = toClientNotice(left);
         const b = toClientNotice(right);
+        const aState = getNoticeLifecycleState(a, now);
+        const bState = getNoticeLifecycleState(b, now);
+        const lifecycleGroup = state => state.isExpired ? 2 : (state.isInGracePeriod ? 1 : 0);
+        const lifecycleDifference = lifecycleGroup(aState) - lifecycleGroup(bState);
+        if (lifecycleDifference !== 0) return lifecycleDifference;
         if (filters.sort === '마감임박순') {
-            const leftDeadline = a.deadline
-                ? new Date(`${String(a.deadline).slice(0, 10)}T00:00:00`).getTime()
+            const leftDeadline = a.deadlineAt || a.deadline
+                ? new Date(a.deadlineAt || `${String(a.deadline).slice(0, 10)}T00:00:00`).getTime()
                 : Number.POSITIVE_INFINITY;
-            const rightDeadline = b.deadline
-                ? new Date(`${String(b.deadline).slice(0, 10)}T00:00:00`).getTime()
+            const rightDeadline = b.deadlineAt || b.deadline
+                ? new Date(b.deadlineAt || `${String(b.deadline).slice(0, 10)}T00:00:00`).getTime()
                 : Number.POSITIVE_INFINITY;
             return leftDeadline - rightDeadline
                 || new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
@@ -899,8 +930,52 @@ function applyNoticeListFilters(rows, filters, { now = new Date() } = {}) {
     });
 }
 
+async function addNoticeLifecycle(rows) {
+    const categories = await automationStore.listCategories({ activeOnly: false });
+    const categorySlugById = new Map(categories.map(category => [
+        Number(category.id),
+        category.slug
+    ]));
+    return rows.map(row => {
+        const notice = toClientNotice(row);
+        let lifecycle = {
+            deadlineAt: notice.deadlineAt || notice.deadline || null,
+            expiresAt: notice.expiresAt,
+            isAlwaysOpen: notice.isAlwaysOpen
+        };
+        if (!notice.expiresAt && !notice.isAlwaysOpen) {
+            const categorySlugs = notice.categoryIds
+                .map(id => categorySlugById.get(Number(id)))
+                .filter(Boolean);
+            try {
+                lifecycle = calculateNoticeLifecycle({
+                    deadlineAt: notice.deadlineAt || notice.deadline || null,
+                    isAlwaysOpen: notice.isAlwaysOpen,
+                    categorySlugs,
+                    createdAt: notice.createdAt || notice.sourcePublishedAt || new Date().toISOString()
+                });
+            } catch {
+                lifecycle = {
+                    deadlineAt: notice.deadlineAt || normalizeDeadline(notice.deadline),
+                    expiresAt: null,
+                    isAlwaysOpen: notice.isAlwaysOpen
+                };
+            }
+        }
+        const state = getNoticeLifecycleState(lifecycle);
+        return {
+            ...row,
+            deadlineAt: lifecycle.deadlineAt,
+            expiresAt: lifecycle.expiresAt,
+            isAlwaysOpen: lifecycle.isAlwaysOpen,
+            isArchived: state.isExpired,
+            isInGracePeriod: state.isInGracePeriod
+        };
+    });
+}
+
 async function listNoticeFilterRows() {
-    if (!useSupabase) return listNotices();
+    if (!useSupabase) return addNoticeLifecycle(await listNotices());
 
     const rows = [];
     const batchSize = 1000;
@@ -908,7 +983,8 @@ async function listNoticeFilterRows() {
         const { data, error } = await supabase
             .from(SUPABASE_NOTICES_TABLE)
             .select(`
-                id,title,content,target,targets,host,deadline,ai_summary,keywords,views,
+                id,title,content,target,targets,host,deadline,deadline_at,expires_at,is_always_open,
+                ai_summary,keywords,views,
                 source_published_at,created_at,updated_at,has_images,notice_categories(category_id)
             `)
             .eq('is_deleted', false)
@@ -920,7 +996,7 @@ async function listNoticeFilterRows() {
         rows.push(...(data || []));
         if ((data || []).length < batchSize) break;
     }
-    return rows;
+    return addNoticeLifecycle(rows);
 }
 
 async function listNoticeSummaries({ page, limit, filters }) {
@@ -996,15 +1072,40 @@ async function loadPublishedNoticeThumbnailSource(id) {
     };
 }
 
+async function prepareNoticeStoragePayload(payload, { createdAt = new Date().toISOString() } = {}) {
+    const categories = await automationStore.listCategories({ activeOnly: false });
+    const categorySlugById = new Map(categories.map(category => [
+        Number(category.id),
+        category.slug
+    ]));
+    const categorySlugs = payload.categoryIds
+        .map(id => categorySlugById.get(Number(id)))
+        .filter(Boolean);
+    const lifecycle = calculateNoticeLifecycle({
+        deadlineAt: payload.deadlineAt,
+        isAlwaysOpen: payload.isAlwaysOpen,
+        categorySlugs,
+        createdAt
+    });
+    return {
+        ...payload,
+        deadline: lifecycle.deadlineAt ? lifecycle.deadlineAt.slice(0, 10) : '',
+        deadlineAt: lifecycle.deadlineAt,
+        expiresAt: lifecycle.expiresAt,
+        isAlwaysOpen: lifecycle.isAlwaysOpen
+    };
+}
+
 async function createNotice(payload) {
+    const preparedPayload = await prepareNoticeStoragePayload(payload);
     if (!useSupabase) {
-        return automationStore.createManualNotice(payload, { notify: true });
+        return automationStore.createManualNotice(preparedPayload, { notify: true });
     }
 
     const { data, error } = await supabase.rpc('create_manual_notice', {
         notice_payload: {
-            ...payload,
-            deadline: normalizeDeadline(payload.deadline)
+            ...preparedPayload,
+            deadline: normalizeDeadline(preparedPayload.deadline)
         },
         should_notify: true
     });
@@ -1017,17 +1118,22 @@ async function createNotice(payload) {
 }
 
 async function updateNotice(id, payload) {
+    const existingNotice = await getPublishedNoticeById(id);
+    if (!existingNotice) return null;
+    const preparedPayload = await prepareNoticeStoragePayload(payload, {
+        createdAt: existingNotice.createdAt || existingNotice.sourcePublishedAt || new Date().toISOString()
+    });
     if (!useSupabase) {
         const notices = await readNotices();
         const idx = notices.findIndex(n => Number(n.id) === id);
         if (idx === -1) {
-            return automationStore.updateManualNotice(id, payload);
+            return automationStore.updateManualNotice(id, preparedPayload);
         }
 
         const prev = notices[idx];
         const updated = {
             ...prev,
-            ...payload,
+            ...preparedPayload,
             id: prev.id,
             views: Number(prev.views) || 0
         };
@@ -1039,13 +1145,16 @@ async function updateNotice(id, payload) {
     const { data, error } = await supabase
         .from(SUPABASE_NOTICES_TABLE)
         .update({
-            title: payload.title,
-            content: payload.content,
-            target: payload.target,
-            host: payload.host,
-            deadline: normalizeDeadline(payload.deadline),
-            ai_summary: payload.aiSummary,
-            images: payload.images,
+            title: preparedPayload.title,
+            content: preparedPayload.content,
+            target: preparedPayload.target,
+            host: preparedPayload.host,
+            deadline: normalizeDeadline(preparedPayload.deadline),
+            deadline_at: preparedPayload.deadlineAt,
+            expires_at: preparedPayload.expiresAt,
+            is_always_open: preparedPayload.isAlwaysOpen,
+            ai_summary: preparedPayload.aiSummary,
+            images: preparedPayload.images,
             updated_at: new Date().toISOString()
         })
         .eq('id', id)
@@ -1063,10 +1172,10 @@ async function updateNotice(id, payload) {
             .delete()
             .eq('notice_id', id);
         if (deleteCategoryError) throw deleteCategoryError;
-        if (payload.categoryIds.length > 0) {
+        if (preparedPayload.categoryIds.length > 0) {
             const { error: insertCategoryError } = await supabase
                 .from('notice_categories')
-                .insert(payload.categoryIds.map(categoryId => ({
+                .insert(preparedPayload.categoryIds.map(categoryId => ({
                     notice_id: id,
                     category_id: categoryId
                 })));
@@ -1456,6 +1565,32 @@ app.use(createAutomationRouter({
     crawler: eceCrawler,
     analyzer: noticeAnalyzer,
     pushService,
+    prepareNoticePublication: async (notice, edits) => {
+        const merged = {
+            ...notice,
+            ...edits,
+            categoryIds: Array.isArray(edits.categoryIds)
+                ? edits.categoryIds
+                : (notice.categoryIds || []),
+            deadlineAt: Object.hasOwn(edits, 'deadlineAt')
+                ? edits.deadlineAt
+                : (Object.hasOwn(edits, 'deadline') ? edits.deadline : (notice.deadlineAt || notice.deadline)),
+            isAlwaysOpen: Object.hasOwn(edits, 'isAlwaysOpen')
+                ? edits.isAlwaysOpen
+                : notice.isAlwaysOpen
+        };
+        const prepared = await prepareNoticeStoragePayload(merged, {
+            createdAt: notice.createdAt || notice.sourcePublishedAt || new Date().toISOString()
+        });
+        return {
+            ...edits,
+            deadline: prepared.deadline,
+            deadlineAt: prepared.deadlineAt,
+            expiresAt: prepared.expiresAt,
+            isAlwaysOpen: prepared.isAlwaysOpen,
+            categoryIds: prepared.categoryIds
+        };
+    },
     requireAdmin: requireNoticeAdmin,
     config: automationConfig,
     frontendOrigin: process.env.FRONTEND_ORIGIN || ''
@@ -1760,7 +1895,8 @@ app.post('/api/notices', requireNoticeAdmin, async (req, res) => {
         const newNotice = await createNotice(payload);
         res.status(201).json({ notice: newNotice });
     } catch (error) {
-        res.status(500).json({ error: error.message || '공지 등록 실패' });
+        const status = error instanceof TypeError ? 400 : 500;
+        res.status(status).json({ error: error.message || '공지 등록 실패' });
     }
 });
 
@@ -1783,7 +1919,8 @@ app.put('/api/notices/:id', requireNoticeAdmin, async (req, res) => {
 
         res.json({ notice: updated });
     } catch (error) {
-        res.status(500).json({ error: error.message || '공지 수정 실패' });
+        const status = error instanceof TypeError ? 400 : 500;
+        res.status(status).json({ error: error.message || '공지 수정 실패' });
     }
 });
 

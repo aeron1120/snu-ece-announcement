@@ -11,6 +11,9 @@ function secretsMatch(actual, expected) {
 }
 
 function errorResponse(res, error) {
+    if (error instanceof TypeError) {
+        return res.status(400).json({ error: error.message });
+    }
     if (error?.code === 'NOTICE_NOT_PENDING') {
         return res.status(409).json({ error: '이미 처리되었거나 존재하지 않는 검수 공지입니다.' });
     }
@@ -38,6 +41,7 @@ export function createAutomationRouter({
     crawler,
     analyzer = null,
     pushService = null,
+    prepareNoticePublication = null,
     requireAdmin,
     config,
     frontendOrigin = ''
@@ -289,7 +293,6 @@ export function createAutomationRouter({
             });
             const updated = await store.updateReviewAnalysis(notice.id, {
                 aiSummary: analysis.summary,
-                deadline: analysis.deadline,
                 targets: analysis.targets,
                 keywords: analysis.keywords,
                 categoryIds: analysis.existingCategoryIds,
@@ -304,9 +307,17 @@ export function createAutomationRouter({
 
     router.post('/api/admin/review-notices/:id/publish', requireAdmin, async (req, res) => {
         try {
+            const pendingNotice = await store.getReviewNotice(req.params.id);
+            if (!pendingNotice) {
+                return res.status(404).json({ error: '검수 공지를 찾을 수 없습니다.' });
+            }
+            const requestedEdits = req.body?.edits || {};
+            const preparedEdits = prepareNoticePublication
+                ? await prepareNoticePublication(pendingNotice, requestedEdits)
+                : requestedEdits;
             const notice = await store.publishReviewNotice(
                 req.params.id,
-                req.body?.edits || {},
+                preparedEdits,
                 { notify: req.body?.notify !== false }
             );
             res.json({ notice });

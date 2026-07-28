@@ -484,8 +484,10 @@ test('the compose form leads with content/photo/target, then AI fills date/subje
     assert.match(admin, /async function analyzeNotice/);
     // 유형은 정해진 보기(TITLE_KINDS) 안에서만 채운다.
     assert.match(admin, /TITLE_KINDS\.includes\(parsed\.type\)/);
-    // 마감일·핵심내용도 분석으로 채워지되 수정 가능한 필드에 들어간다.
-    assert.match(admin, /getElementById\('post-deadline'\)\.value = parsed\.deadline/);
+    // AI 마감일은 후보로만 보여주고 관리자가 적용해야 입력란에 들어간다.
+    assert.match(admin, /aiDeadlineCandidate = parsed\.deadline/);
+    assert.match(admin, /function applyAiDeadlineCandidate/);
+    assert.doesNotMatch(admin, /getElementById\('post-deadline'\)\.value = parsed\.deadline/);
     assert.match(admin, /getElementById\('title-subject'\)\.value/);
     // 잡다한 설명 문구(panel-help)는 제거했다.
     assert.doesNotMatch(html, /class="panel-help"/);
@@ -1055,6 +1057,7 @@ test('expired notices use a neutral card and badge state in list and detail view
     assert.match(app, /dDay\.isUrgent\s*\?\s*'d-day'/);
     assert.match(css, /\.card\.card-expired\s*\{/);
     assert.match(css, /\.tags \.tag\.expired\s*\{/);
+    assert.match(css, /\.card\.is-archived\s*\{[^}]*opacity\s*:/s);
     assert.doesNotMatch(css, /\.card\.card-expired[^{]*\{[^}]*opacity\s*:/s);
     assert.doesNotMatch(css, /\.card\.card-expired[^{]*\{[^}]*text-decoration\s*:/s);
 });

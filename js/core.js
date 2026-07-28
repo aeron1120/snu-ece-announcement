@@ -1343,7 +1343,7 @@ function renderNoticeCards(animate = false) {
         : baseNotices;
 
     visibleBaseNotices.forEach(notice => {
-        const dDay = calcDDay(notice.deadline);
+        const dDay = calcDDay(notice.isAlwaysOpen ? null : notice.deadline);
         const rawTitle = notice.title || "제목 없음";
         const safeTitle = escapeHtml(rawTitle);
         const hasImg = Object.hasOwn(notice, 'hasImages')
@@ -1357,7 +1357,12 @@ function renderNoticeCards(animate = false) {
                </div>`
             : `<div class="card-poster is-text"><p class="card-poster-title">${renderPosterTitle(rawTitle)}</p></div>`;
 
-        const cardClass = dDay.isExpired ? "card card-expired" : "card";
+        const cardClass = [
+            'card',
+            dDay.isExpired ? 'card-expired' : '',
+            notice.isArchived ? 'is-archived' : '',
+            notice.isInGracePeriod ? 'is-grace-period' : ''
+        ].filter(Boolean).join(' ');
         const deadlineTagClass = dDay.isExpired ? 'expired' : dDay.isUrgent ? 'd-day' : '';
 
         // 날짜는 요일까지 보여준다. 마감일이 있으면 마감일을, 없으면 등록일을 기준으로.
@@ -1638,7 +1643,7 @@ async function openDetail(idStr) {
             console.error('조회수 반영 실패:', error);
         });
 
-    const dDay = calcDDay(notice.deadline);
+    const dDay = calcDDay(notice.isAlwaysOpen ? null : notice.deadline);
     const deadlineTagClass = dDay.isExpired
         ? 'expired'
         : dDay.isUrgent
@@ -2157,7 +2162,7 @@ function renderCompareSpace(blockIds = compareBlocks) {
     const blocks = blockIds.map((id, index) => {
         const notice = notices.find(n => String(n.id) === String(id));
         if (!notice) return '';
-        const dDay = calcDDay(notice.deadline);
+        const dDay = calcDDay(notice.isAlwaysOpen ? null : notice.deadline);
         const summary = (notice.aiSummary || []).map(item => `<li>${escapeHtml(item)}</li>`).join('')
             || '<li class="is-empty">요약 없음</li>';
         const thumb = (notice.images && notice.images.length > 0)
