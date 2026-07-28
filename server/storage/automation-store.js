@@ -95,6 +95,8 @@ function toSupabaseNotice(row) {
         expiresAt: row.expires_at,
         isAlwaysOpen: row.is_always_open === true,
         isPinned: row.is_pinned === true,
+        isHidden: row.is_hidden === true,
+        surveyReward: row.survey_reward || '',
         aiSummary: Array.isArray(row.ai_summary) ? row.ai_summary : [],
         keywords: Array.isArray(row.keywords) ? row.keywords : [],
         attachments: Array.isArray(row.attachments) ? row.attachments : [],
@@ -134,6 +136,7 @@ function toSupabaseNoticeInsert(notice) {
         attachments: notice.attachments || [],
         analysis_status: notice.analysisStatus || 'pending',
         analysis_confidence: notice.analysisConfidence ?? null,
+        survey_reward: notice.surveyReward || '',
         crawl_metadata: notice.crawlMetadata || {},
         images: [],
         views: 0,
@@ -354,6 +357,7 @@ function createJsonStore(filePath, canonicalCategories = []) {
                     'title', 'content', 'target', 'targets', 'host', 'deadline',
                     'deadlineAt', 'expiresAt', 'isAlwaysOpen',
                     'isPinned',
+                    'isHidden', 'surveyReward',
                     'aiSummary', 'keywords', 'attachments', 'analysisConfidence'
                 ];
                 for (const field of editableFields) {
@@ -436,6 +440,20 @@ function createJsonStore(filePath, canonicalCategories = []) {
                         .filter(item => Number(item.noticeId) === Number(notice.id))
                         .map(item => Number(item.categoryId))
                 }));
+        },
+
+        async setPublishedNoticeHidden(id, hidden) {
+            return mutate(document => {
+                const notice = document.notices.find(item =>
+                    Number(item.id) === Number(id)
+                    && item.status === 'published'
+                    && !item.isDeleted
+                );
+                if (!notice) return null;
+                notice.isHidden = Boolean(hidden);
+                notice.updatedAt = new Date().toISOString();
+                return { ...notice };
+            });
         },
 
         async listNotificationJobs() {
@@ -1069,10 +1087,13 @@ function createSupabaseStore(supabase, canonicalCategories = []) {
         async updateReviewAnalysis(id, analysis) {
             const payload = {};
             const fieldMap = {
+                title: 'title',
+                content: 'content',
                 aiSummary: 'ai_summary',
                 deadline: 'deadline',
                 targets: 'targets',
                 keywords: 'keywords',
+                surveyReward: 'survey_reward',
                 analysisStatus: 'analysis_status',
                 analysisConfidence: 'analysis_confidence',
                 ocrText: 'ocr_text'
@@ -1148,6 +1169,19 @@ function createSupabaseStore(supabase, canonicalCategories = []) {
                 .order('published_at', { ascending: false });
             if (error) throw error;
             return (data || []).map(toSupabaseNotice);
+        },
+
+        async setPublishedNoticeHidden(id, hidden) {
+            const { data, error } = await supabase
+                .from('notices')
+                .update({ is_hidden: Boolean(hidden), updated_at: new Date().toISOString() })
+                .eq('id', Number(id))
+                .eq('status', 'published')
+                .eq('is_deleted', false)
+                .select('*, notice_categories(category_id)')
+                .maybeSingle();
+            if (error) throw error;
+            return data ? toSupabaseNotice(data) : null;
         },
 
         async listNotificationJobs() {

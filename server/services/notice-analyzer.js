@@ -60,11 +60,14 @@ export function validateNoticeAnalysis(value, activeCategoryIds = new Set()) {
     }
 
     return {
+        editedTitle: String(value.editedTitle || '').trim().slice(0, 300),
+        editedContent: String(value.editedContent || '').trim().slice(0, 30000),
         summary,
         deadline: normalizeDeadline(value.deadline),
         targets: targets.length > 0 ? targets : ['전체'],
         keywords,
         existingCategoryIds,
+        surveyReward: String(value.surveyReward || '').trim().slice(0, 120),
         confidence: Math.min(1, Math.max(0, rawConfidence)),
         analysisStatus: 'succeeded'
     };
@@ -96,11 +99,14 @@ function buildPrompt({ title, content, categories, correction }) {
 서울대학교 전기정보공학부 공지를 분석하세요.
 반드시 다음 JSON 형태만 출력하세요.
 {
+  "editedTitle": "중복·깨진 문자를 정리한 읽기 쉬운 제목",
+  "editedContent": "원문의 사실과 링크를 보존하고 문단·목록만 읽기 쉽게 정돈한 본문",
   "summary": ["핵심 요약 1", "핵심 요약 2", "핵심 요약 3"],
   "deadline": "YYYY-MM-DD 또는 null",
   "targets": ["전체 또는 NN학번"],
   "keywords": ["최대 10개"],
   "existingCategoryIds": [기존 카테고리 ID],
+  "surveyReward": "설문 참여 보상·추첨 상품을 짧게 요약하거나 빈 문자열",
   "confidence": 0과 1 사이 숫자
 }
 
@@ -110,8 +116,16 @@ function buildPrompt({ title, content, categories, correction }) {
 - 혜택/제휴: 돈·물품·할인·지원 등 경제적 이익이 있지만 놓쳐도 학사상 불이익은 없습니다.
 - 캠퍼스: 특정 날짜에 출입·시설·교통·정전 등 캠퍼스 상태가 평소와 달라집니다.
 - 자치: 일반 학부생이 아니라 대의원·학생회 집행부 등 자치기구 구성원이 주 수신 대상입니다.
+- 설문조사: 프로그램 참가 신청이 아니라 응답자의 의견·경험·만족도·연구 자료를 수집하는 설문, 인터뷰, 사용자 조사입니다. 단순 행사 신청폼은 설문조사가 아닙니다.
+- 설문조사에 상품·기프티콘·사례비·추첨 보상이 있으면 surveyReward에 상품명과 조건을 한 문장으로 적습니다. 보상이 없거나 확인되지 않으면 빈 문자열입니다.
 - 여러 범주가 명백히 동시에 성립하면 중복 선택할 수 있지만, 약한 연관성으로 늘리지 말고 가능한 한 가장 핵심적인 한 범주만 선택합니다.
 - 제목의 단어만 보지 말고 본문의 행동 요구, 마감, 실제 영향과 수신 대상을 근거로 판단합니다.
+
+편집 원칙:
+- editedTitle은 의미를 바꾸거나 정보를 새로 만들지 말고, 깨진 문자·불필요한 반복만 정리합니다.
+- editedContent는 날짜·금액·연락처·URL·신청 조건을 임의로 바꾸지 않습니다.
+- 긴 덩어리는 빈 줄과 짧은 문단으로 나누고, 나열은 줄바꿈으로 정돈합니다.
+- 원문에 없는 사실을 추정하거나 홍보 문구를 덧붙이지 않습니다.
 
 활성 카테고리:
 ${categoryList}

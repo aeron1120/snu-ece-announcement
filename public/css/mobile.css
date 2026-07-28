@@ -61,10 +61,10 @@ html[data-view="mobile"] .rail-right {
     display: flex;
     position: static;
     width: 100%;
-    padding: 24px 16px 32px;
+    padding: 24px 0 32px;
 }
 html[data-view="mobile"] #right-rail-ad-content { min-height: 360px; }
-html[data-view="mobile"] .rail-ad-image { height: min(118vw, 520px); aspect-ratio: 9 / 16; }
+html[data-view="mobile"] .rail-ad-image { height: auto; aspect-ratio: auto; }
 
 /* ---------- 헤더 ---------- */
 html[data-view="mobile"] .header {
@@ -87,7 +87,7 @@ html[data-view="mobile"] .mobile-mode-btn,
 html[data-preview="1"] .mobile-mode-btn { display: none !important; }
 
 /* ---------- 카테고리 탭 ---------- */
-html[data-view="mobile"] .category-tabs { overflow-x: hidden; }
+html[data-view="mobile"] .category-tabs { overflow-x: auto; }
 html[data-view="mobile"] .category-tabs-inner {
     display: flex;
     width: max-content;
@@ -204,10 +204,10 @@ html[data-view="mobile"] .split-drop-zone strong {
 
 @media (max-width: 420px) {
     html[data-view="mobile"] .category-tabs-inner {
-        width: 100%;
-        justify-content: space-between;
-        gap: 0;
-        padding: 0 10px;
+        width: max-content;
+        justify-content: flex-start;
+        gap: 24px;
+        padding: 0 18px;
     }
     html[data-view="mobile"] .category-tab {
         min-width: 0;

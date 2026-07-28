@@ -72,7 +72,7 @@ test('notice list filters support contextual empty results and server-side sorti
         normalizeNoticeListFilters({ sort: '조회순' }),
         { now: new Date('2026-07-28T12:00:00+09:00') }
     );
-    assert.deepEqual(byViews.map(notice => notice.id), [2, 1, 3]);
+    assert.deepEqual(byViews.map(notice => notice.id), [1, 3]);
 });
 
 test('OCR text is searchable without becoming public card content', () => {
@@ -121,6 +121,7 @@ test('notice list filter normalization rejects unknown states instead of widenin
             sort: '최신순',
             dateFrom: '',
             dateTo: '',
+            archiveMode: '',
             includeExpired: false
         }
     );
@@ -159,7 +160,7 @@ test('default lists hide archived notices while search keeps them after active r
     assert.deepEqual(searchResult.map(notice => notice.id), [10, 11]);
 });
 
-test('deadline grace-period notices stay visible after active notices', () => {
+test('deadline-passed notices leave the default list and appear in the archive tab', () => {
     const now = new Date('2026-07-28T12:00:00+09:00');
     const result = applyNoticeListFilters([
         {
@@ -177,5 +178,30 @@ test('deadline grace-period notices stay visible after active notices', () => {
             expiresAt: '2026-07-29T14:59:59.000Z'
         }
     ], normalizeNoticeListFilters({ sort: '최신순' }), { now });
-    assert.deepEqual(result.map(notice => notice.id), [20, 21]);
+    assert.deepEqual(result.map(notice => notice.id), [20]);
+    const archived = applyNoticeListFilters([
+        {
+            ...rows[0],
+            id: 20,
+            deadlineAt: '2026-08-01T14:59:59.000Z',
+            expiresAt: '2026-08-04T14:59:59.000Z'
+        },
+        {
+            ...rows[0],
+            id: 21,
+            deadlineAt: '2026-07-25T14:59:59.000Z',
+            expiresAt: '2026-07-29T14:59:59.000Z'
+        }
+    ], normalizeNoticeListFilters({ archive: 'expired' }), { now });
+    assert.deepEqual(archived.map(notice => notice.id), [21]);
+});
+
+test('hidden notices never enter public list results', () => {
+    const result = applyNoticeListFilters([
+        rows[0],
+        { ...rows[0], id: 99, isHidden: true }
+    ], normalizeNoticeListFilters({ search: '수강' }), {
+        now: new Date('2026-07-28T12:00:00+09:00')
+    });
+    assert.deepEqual(result.map(notice => notice.id), [1]);
 });

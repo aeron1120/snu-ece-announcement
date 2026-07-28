@@ -23,5 +23,10 @@ export const CANONICAL_NOTICE_CATEGORIES = Object.freeze([
         name: '자치',
         slug: 'governance',
         definition: '주 수신 대상이 일반 학부생이 아니라 대의원·학생회 집행부 등 자치기구 구성원인 공지'
+    }),
+    Object.freeze({
+        name: '설문조사',
+        slug: 'survey',
+        definition: '프로그램 참가 신청이 아니라 의견·경험·만족도·연구 자료를 수집하기 위해 설문, 인터뷰 또는 사용자 조사를 요청하는 공지'
     })
 ]);

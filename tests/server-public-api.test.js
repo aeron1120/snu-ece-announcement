@@ -43,6 +43,8 @@ test('notice summaries expose card metadata without heavy detail fields', () => 
         expiresAt: '2026-08-04T14:59:59.000Z',
         isAlwaysOpen: false,
         isPinned: false,
+        isHidden: false,
+        surveyReward: '',
         isArchived: false,
         isInGracePeriod: false,
         aiSummary: ['summary'],

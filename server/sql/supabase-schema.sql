@@ -9,6 +9,8 @@ create table if not exists public.notices (
   expires_at timestamptz,
   is_always_open boolean not null default false,
   is_pinned boolean not null default false,
+  is_hidden boolean not null default false,
+  survey_reward text not null default '',
   ai_summary jsonb not null default '[]'::jsonb,
   images jsonb not null default '[]'::jsonb,
   has_images boolean generated always as (jsonb_array_length(images) > 0) stored,
@@ -197,7 +199,9 @@ alter table public.notices
   add column if not exists deadline_at timestamptz,
   add column if not exists expires_at timestamptz,
   add column if not exists is_always_open boolean not null default false,
-  add column if not exists is_pinned boolean not null default false;
+  add column if not exists is_pinned boolean not null default false,
+  add column if not exists is_hidden boolean not null default false,
+  add column if not exists survey_reward text not null default '';
 
 update public.notices
 set deadline_at = (
@@ -507,7 +511,7 @@ declare
 begin
   insert into public.notices (
     title, content, target, targets, host, deadline, deadline_at, expires_at,
-    is_always_open, is_pinned, ai_summary, images,
+    is_always_open, is_pinned, is_hidden, survey_reward, ai_summary, images,
     status, source_type, raw_title, raw_content, analysis_status,
     published_at, views, is_deleted
   ) values (
@@ -521,6 +525,8 @@ begin
     nullif(notice_payload->>'expiresAt', '')::timestamptz,
     coalesce((notice_payload->>'isAlwaysOpen')::boolean, false),
     coalesce((notice_payload->>'isPinned')::boolean, false),
+    coalesce((notice_payload->>'isHidden')::boolean, false),
+    coalesce(notice_payload->>'surveyReward', ''),
     coalesce(notice_payload->'aiSummary', '[]'::jsonb),
     coalesce(notice_payload->'images', '[]'::jsonb),
     'published',
@@ -599,6 +605,14 @@ begin
       is_pinned = case
         when edits ? 'isPinned' then coalesce((edits->>'isPinned')::boolean, false)
         else is_pinned
+      end,
+      is_hidden = case
+        when edits ? 'isHidden' then coalesce((edits->>'isHidden')::boolean, false)
+        else is_hidden
+      end,
+      survey_reward = case
+        when edits ? 'surveyReward' then coalesce(edits->>'surveyReward', '')
+        else survey_reward
       end,
       ai_summary = case when edits ? 'aiSummary' then edits->'aiSummary' else ai_summary end,
       keywords = case when edits ? 'keywords' then edits->'keywords' else keywords end,

@@ -608,6 +608,8 @@ function normalizeNoticeInput(body = {}) {
     const deadlineAt = normalizeDeadlineAt(body.deadlineAt || body.deadline || null);
     const isAlwaysOpen = body.isAlwaysOpen === true || body.isAlwaysOpen === 'true';
     const isPinned = body.isPinned === true || body.isPinned === 'true';
+    const isHidden = body.isHidden === true || body.isHidden === 'true';
+    const surveyReward = String(body.surveyReward || '').trim().slice(0, 120);
     const aiSummary = Array.isArray(body.aiSummary)
         ? body.aiSummary.map(item => String(item || '').trim()).filter(Boolean).slice(0, 3)
         : [];
@@ -618,7 +620,7 @@ function normalizeNoticeInput(body = {}) {
         (Array.isArray(body.categoryIds) ? body.categoryIds : [])
             .map(Number)
             .filter(id => Number.isSafeInteger(id) && id > 0)
-    )).slice(0, 5);
+    )).slice(0, 6);
 
     return {
         title,
@@ -629,6 +631,8 @@ function normalizeNoticeInput(body = {}) {
         deadlineAt,
         isAlwaysOpen,
         isPinned,
+        isHidden,
+        surveyReward,
         aiSummary,
         categoryIds,
         images
@@ -677,6 +681,8 @@ function toClientNotice(row) {
         expiresAt: row.expiresAt || row.expires_at || null,
         isAlwaysOpen: row.isAlwaysOpen === true || row.is_always_open === true,
         isPinned: row.isPinned === true || row.is_pinned === true,
+        isHidden: row.isHidden === true || row.is_hidden === true,
+        surveyReward: String(row.surveyReward || row.survey_reward || ''),
         isArchived: row.isArchived === true,
         isInGracePeriod: row.isInGracePeriod === true,
         aiSummary: Array.isArray(row.aiSummary)
@@ -713,6 +719,8 @@ function toNoticeSummary(row) {
         expiresAt: notice.expiresAt,
         isAlwaysOpen: notice.isAlwaysOpen,
         isPinned: notice.isPinned,
+        isHidden: notice.isHidden,
+        surveyReward: notice.surveyReward || extractSurveyReward(row.content || row.rawContent || ''),
         isArchived: notice.isArchived,
         isInGracePeriod: notice.isInGracePeriod,
         aiSummary: notice.aiSummary,
@@ -1053,7 +1061,8 @@ function normalizeNoticeListFilters(input = {}) {
     const views = String(input.views || '전체').trim();
     const sort = String(input.sort || '최신순').trim();
 
-    const archive = input.archive === 'true' || input.archive === true;
+    const archiveMode = input.archive === 'expired' ? 'expired' : '';
+    const archive = input.archive === 'true' || input.archive === true || archiveMode === 'expired';
     return {
         categoryIds: Array.from(new Set(categoryIds)),
         search: String(input.search || '').trim().toLocaleLowerCase('ko-KR').slice(0, 200),
@@ -1065,6 +1074,7 @@ function normalizeNoticeListFilters(input = {}) {
         sort: allowedSorts.has(sort) ? sort : '최신순',
         dateFrom: cleanDate(input.dateFrom),
         dateTo: cleanDate(input.dateTo),
+        archiveMode,
         includeExpired: archive
             || Boolean(String(input.search || '').trim())
             || deadlineStatus === '마감됨'
@@ -1090,7 +1100,13 @@ function applyNoticeListFilters(rows, filters, { now = new Date() } = {}) {
     const filtered = rows.filter(row => {
         const notice = toClientNotice(row);
         const lifecycleState = getNoticeLifecycleState(notice, now);
-        if (lifecycleState.isExpired && !filters.includeExpired) return false;
+        if (notice.isHidden) return false;
+        const deadlineState = notice.isAlwaysOpen
+            ? { hasDeadline: false, isExpired: false, isUrgent: false }
+            : getNoticeDeadlineState(notice.deadlineAt || notice.deadline, todayKey);
+        const isClosed = lifecycleState.isExpired || deadlineState.isExpired;
+        if (filters.archiveMode === 'expired' && !isClosed) return false;
+        if (filters.archiveMode !== 'expired' && isClosed && !filters.includeExpired) return false;
         if (filters.target !== '전체'
             && notice.target !== '전체'
             && notice.target !== filters.target) return false;
@@ -1101,9 +1117,6 @@ function applyNoticeListFilters(rows, filters, { now = new Date() } = {}) {
             if (!keywords.every(keyword => searchTarget.includes(keyword))) return false;
         }
 
-        const deadlineState = notice.isAlwaysOpen
-            ? { hasDeadline: false, isExpired: false, isUrgent: false }
-            : getNoticeDeadlineState(notice.deadlineAt || notice.deadline, todayKey);
         if (filters.deadlineStatus === '진행중' && deadlineState.isExpired) return false;
         if (filters.deadlineStatus === '마감임박' && !deadlineState.isUrgent) return false;
         if (filters.deadlineStatus === '상시' && deadlineState.hasDeadline) return false;
@@ -1154,6 +1167,14 @@ function applyNoticeListFilters(rows, filters, { now = new Date() } = {}) {
             - new Date(a.createdAt || a.sourcePublishedAt || 0).getTime()
             || b.id - a.id;
     });
+}
+
+function extractSurveyReward(content) {
+    const text = String(content || '').replace(/\s+/g, ' ').trim();
+    if (!text) return '';
+    const rewardPattern = /(?:추첨|선착순|참여자|응답자|사례비|리워드|상품|경품|기프티콘|쿠폰)[^.!?\n]{0,80}(?:원|명|개|기프티콘|쿠폰|상품권|사례비|지급|증정|제공)/i;
+    const match = text.match(rewardPattern);
+    return match ? match[0].trim().slice(0, 120) : '';
 }
 
 async function addNoticeLifecycle(rows) {
@@ -1209,7 +1230,7 @@ async function listNoticeFilterRows() {
         const { data, error } = await supabase
             .from(SUPABASE_NOTICES_TABLE)
             .select(`
-                id,title,content,target,targets,host,deadline,deadline_at,expires_at,is_always_open,is_pinned,
+                id,title,content,target,targets,host,deadline,deadline_at,expires_at,is_always_open,is_pinned,is_hidden,survey_reward,
                 ai_summary,keywords,ocr_text,views,
                 source_published_at,created_at,updated_at,has_images,notice_categories(category_id)
             `)
@@ -1380,6 +1401,8 @@ async function updateNotice(id, payload) {
             expires_at: preparedPayload.expiresAt,
             is_always_open: preparedPayload.isAlwaysOpen,
             is_pinned: preparedPayload.isPinned,
+            is_hidden: preparedPayload.isHidden,
+            survey_reward: preparedPayload.surveyReward,
             ai_summary: preparedPayload.aiSummary,
             images: preparedPayload.images,
             updated_at: new Date().toISOString()
@@ -1482,6 +1505,34 @@ function isBannerExpiryActive(expiresAt, now = Date.now()) {
 
     const expiresAtMs = Date.parse(value);
     return Number.isFinite(expiresAtMs) && expiresAtMs > now;
+}
+
+async function setNoticeHidden(id, hidden) {
+    if (!useSupabase) {
+        const notices = await readNotices();
+        const idx = notices.findIndex(notice => Number(notice.id) === id && !notice.isDeleted);
+        if (idx >= 0) {
+            notices[idx] = {
+                ...notices[idx],
+                isHidden: Boolean(hidden),
+                updatedAt: new Date().toISOString()
+            };
+            await writeNotices(notices);
+            return notices[idx];
+        }
+        return automationStore.setPublishedNoticeHidden(id, hidden);
+    }
+
+    const { data, error } = await supabase
+        .from(SUPABASE_NOTICES_TABLE)
+        .update({ is_hidden: Boolean(hidden), updated_at: new Date().toISOString() })
+        .eq('id', id)
+        .eq('is_deleted', false)
+        .eq('status', 'published')
+        .select('*, notice_categories(category_id)')
+        .maybeSingle();
+    if (error) throw error;
+    return data ? toClientNotice(data) : null;
 }
 
 function isPromoSlotPublic(row, now = Date.now()) {
@@ -2224,17 +2275,7 @@ app.post('/api/banner-inquiries', bannerInquiryJson, async (req, res) => {
         const imageFileName = `${id}.jpg`;
         await fs.writeFile(path.join(bannerInquiryImageDir, imageFileName), imageBuffer);
 
-        const items = await readFeedback();
-        items.unshift({
-            id,
-            category: 'banner',
-            message: `${inquiry.title}\n${inquiry.description}`,
-            inquiry,
-            imageFileName,
-            createdAt: new Date().toISOString()
-        });
-        await writeFeedback(items.slice(0, 1000));
-        await createBannerSlide(normalizeBannerPayload({
+        const pendingSlide = await createBannerSlide(normalizeBannerPayload({
             name: `${inquiry.organization} · ${inquiry.title}`.slice(0, 50),
             text: inquiry.title,
             src: imageDataUrl,
@@ -2249,6 +2290,18 @@ app.post('/api/banner-inquiries', bannerInquiryJson, async (req, res) => {
             expiresAt: `${inquiry.endDate}T23:59:59+09:00`,
             order: 999
         }));
+
+        const items = await readFeedback();
+        items.unshift({
+            id,
+            category: 'banner',
+            message: `${inquiry.title}\n${inquiry.description}`,
+            inquiry,
+            bannerSlideId: pendingSlide.id,
+            imageFileName,
+            createdAt: new Date().toISOString()
+        });
+        await writeFeedback(items.slice(0, 1000));
         res.status(201).json({ ok: true });
     } catch (error) {
         res.status(500).json({ error: error.message || '학내 홍보 신청 저장 실패' });
@@ -2382,6 +2435,26 @@ app.get('/api/notices', async (req, res) => {
         res.json(await listNoticeSummaries({ page, limit, filters }));
     } catch (error) {
         res.status(500).json({ error: error.message || '공지 조회 실패' });
+    }
+});
+
+app.get('/api/admin/notices', requireNoticeAdmin, async (req, res) => {
+    try {
+        const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
+        const limit = Math.min(100, Math.max(1, Number.parseInt(req.query.limit, 10) || 20));
+        const rows = await addNoticeLifecycle(await listNotices());
+        const offset = (page - 1) * limit;
+        res.json({
+            notices: rows.slice(offset, offset + limit).map(toNoticeSummary),
+            pagination: {
+                page,
+                limit,
+                total: rows.length,
+                totalPages: Math.ceil(rows.length / limit)
+            }
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message || '관리자 공지 조회 실패' });
     }
 });
 
@@ -2556,6 +2629,20 @@ app.get('/api/banner-slides', async (req, res) => {
         res.json({ slides });
     } catch (error) {
         res.status(500).json({ error: error.message || '배너 조회 실패' });
+    }
+});
+
+app.patch('/api/notices/:id/visibility', requireNoticeAdmin, async (req, res) => {
+    try {
+        const id = Number(req.params.id);
+        if (!Number.isSafeInteger(id)) {
+            return res.status(400).json({ error: '유효하지 않은 id입니다.' });
+        }
+        const notice = await setNoticeHidden(id, req.body?.hidden === true);
+        if (!notice) return res.status(404).json({ error: '공지 없음' });
+        res.json({ notice: toNoticeSummary(notice) });
+    } catch (error) {
+        res.status(500).json({ error: error.message || '공지 공개 상태 변경 실패' });
     }
 });
 

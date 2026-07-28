@@ -293,14 +293,17 @@ export function createAutomationRouter({
                 content: notice.rawContent || notice.content
             });
             const updated = await store.updateReviewAnalysis(notice.id, {
+                title: analysis.editedTitle || notice.title,
+                content: analysis.editedContent || notice.content,
                 aiSummary: analysis.summary,
                 targets: analysis.targets,
                 keywords: analysis.keywords,
                 categoryIds: analysis.existingCategoryIds,
+                surveyReward: analysis.surveyReward,
                 analysisStatus: 'succeeded',
                 analysisConfidence: analysis.confidence
             });
-            res.json({ notice: updated });
+            res.json({ notice: updated, deadlineCandidate: analysis.deadline });
         } catch (error) {
             errorResponse(res, error);
         }

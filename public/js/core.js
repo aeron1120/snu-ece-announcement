@@ -45,6 +45,7 @@ let noticeSplitDragOverlay = null;
 let noticeSplitOverlayTimer = null;
 let noticeDragInProgress = false;
 let suppressNoticeClickUntil = 0;
+let pointerNoticeDrag = null;
 let pointerDraggedCompareId = '';
 let pointerDragHandle = null;
 let compareDragOverlay = null;
@@ -65,13 +66,15 @@ let superAdminAuthToken = '';
 let bannerManageAuthToken = '';
 let activeCategories = [];
 let selectedCategoryFilters = new Set();
+let archiveTabActive = false;
 
 const NOTICE_CATEGORY_ORDER = Object.freeze([
     'application',
     'academics',
     'benefits-partnerships',
     'campus',
-    'governance'
+    'governance',
+    'survey'
 ]);
 
 function orderedNoticeCategories(categories = activeCategories) {
@@ -440,7 +443,8 @@ function getNoticeListFilters() {
         views: filterState.views,
         sort: filterState.sort,
         dateFrom: document.getElementById('filter-date-from')?.value || '',
-        dateTo: document.getElementById('filter-date-to')?.value || ''
+        dateTo: document.getElementById('filter-date-to')?.value || '',
+        archive: archiveTabActive ? 'expired' : ''
     };
 }
 
@@ -1318,7 +1322,9 @@ async function loadCategories() {
 function buildCategoryTabs() {
     const inner = document.getElementById('category-tabs-inner');
     if (!inner) return;
-    const current = selectedCategoryFilters.size === 0
+    const current = archiveTabActive
+        ? 'expired'
+        : selectedCategoryFilters.size === 0
         ? 'all'
         : (selectedCategoryFilters.size === 1 ? [...selectedCategoryFilters][0] : 'multi');
     let html = `<button type="button" class="category-tab ${current === 'all' ? 'active' : ''}" data-category="all" onclick="selectCategoryTab('all')">전체</button>`;
@@ -1326,16 +1332,21 @@ function buildCategoryTabs() {
         const id = Number(category.id);
         return `<button type="button" class="category-tab ${current === id ? 'active' : ''}" data-category="${id}" onclick="selectCategoryTab('${id}')">${escapeHtml(category.name)}</button>`;
     }).join('');
+    html += `<button type="button" class="category-tab category-tab-archive ${current === 'expired' ? 'active' : ''}"
+        data-category="expired" onclick="selectCategoryTab('expired')">마감/만료</button>`;
     inner.innerHTML = html;
 }
 
 function selectCategoryTab(value) {
     selectedCategoryFilters.clear();
-    if (value !== 'all') selectedCategoryFilters.add(Number(value));
+    archiveTabActive = value === 'expired';
+    if (value !== 'all' && value !== 'expired') selectedCategoryFilters.add(Number(value));
     document.querySelectorAll('#category-tabs-inner .category-tab').forEach(tab => {
         const selected = value === 'all'
             ? tab.dataset.category === 'all'
-            : Number(tab.dataset.category) === Number(value);
+            : (value === 'expired'
+                ? tab.dataset.category === 'expired'
+                : Number(tab.dataset.category) === Number(value));
         tab.classList.toggle('active', selected);
         tab.setAttribute('aria-current', selected ? 'true' : 'false');
     });
@@ -1346,6 +1357,7 @@ function selectCategoryTab(value) {
 }
 
 function getDefaultSortForCategory(value = 'all') {
+    if (value === 'expired') return '최신순';
     if (value === 'all') return '최신순';
     const category = activeCategories.find(item => Number(item.id) === Number(value));
     return ['application', 'benefits-partnerships', 'campus'].includes(category?.slug)
@@ -1450,6 +1462,7 @@ function resetTargetFilter() {
 
 function clearCategoryFilters() {
     selectedCategoryFilters.clear();
+    archiveTabActive = false;
     buildCategoryTabs();
     filterState.sort = getDefaultSortForCategory('all');
     syncNoticeSortChips();
@@ -1461,6 +1474,7 @@ function resetAllFilters() {
     Object.keys(filterState).forEach(g => { filterState[g] = FILTER_DEFAULTS[g]; });
     document.querySelectorAll('.filter-btn').forEach(b => { b.classList.toggle('active', b.dataset.val === FILTER_DEFAULTS[b.dataset.group]); });
     selectedCategoryFilters.clear();
+    archiveTabActive = false;
     buildCategoryTabs();
     filterState.sort = getDefaultSortForCategory('all');
     syncNoticeSortChips();
@@ -1569,6 +1583,7 @@ function renderNoticeCards(animate = false) {
 
         const cardClass = [
             'card',
+            datePresentation.badgeClass === 'd-day' ? 'card-urgent' : '',
             datePresentation.badgeClass === 'expired' ? 'card-expired' : '',
             notice.isArchived ? 'is-archived' : '',
             notice.isInGracePeriod ? 'is-grace-period' : '',
@@ -1581,6 +1596,9 @@ function renderNoticeCards(animate = false) {
         const excerpt = Array.isArray(notice.aiSummary) ? notice.aiSummary.join(' ') : '';
         // 이미지 카드만 본문 위에 제목을 다시 보여준다(텍스트 카드는 포스터가 곧 제목).
         const titleHtml = hasImg ? `<h3 class="card-title">${safeTitle}</h3>` : '';
+        const surveyRewardHtml = notice.surveyReward
+            ? `<div class="survey-reward" aria-label="설문 참여 보상">🎁 ${escapeHtml(notice.surveyReward)}</div>`
+            : '';
 
         const card = document.createElement('div');
         card.className = cardClass;
@@ -1599,7 +1617,7 @@ function renderNoticeCards(animate = false) {
         // 노션처럼: 6점 핸들만 드래그하고, 카드는 평소처럼 눌러 상세를 연다.
         card.innerHTML = `
             <div class="card-block-controls" onclick="event.stopPropagation()">
-                <button class="card-drag-handle" type="button" draggable="true"
+                <button class="card-drag-handle" type="button" draggable="false"
                         aria-label="공지 들어서 화면 분할" title="끌어서 왼쪽 또는 오른쪽에 놓기">
                     <svg width="10" height="16" viewBox="0 0 10 16" aria-hidden="true"><g fill="currentColor"><circle cx="2.5" cy="3" r="1.3"/><circle cx="7.5" cy="3" r="1.3"/><circle cx="2.5" cy="8" r="1.3"/><circle cx="7.5" cy="8" r="1.3"/><circle cx="2.5" cy="13" r="1.3"/><circle cx="7.5" cy="13" r="1.3"/></g></svg>
                 </button>
@@ -1613,6 +1631,7 @@ function renderNoticeCards(animate = false) {
                     ${notice.host ? `<span class="tag">${escapeHtml(notice.host)}</span>` : ''}
                 </div>
                 ${titleHtml}
+                ${surveyRewardHtml}
                 <div class="card-date">${escapeHtml(datePresentation.dateLabel)}</div>
                 ${excerpt ? `<p class="card-excerpt">${escapeHtml(excerpt)}</p>` : ''}
                 <div class="card-meta">
@@ -1621,11 +1640,7 @@ function renderNoticeCards(animate = false) {
             </div>
         `;
         const splitHandle = card.querySelector('.card-drag-handle');
-        splitHandle.addEventListener('pointerdown', () => {
-            if (typeof suspendNoticeHoverPreview === 'function') suspendNoticeHoverPreview();
-        });
-        splitHandle.addEventListener('dragstart', event => onNoticeSplitDragStart(event, notice.id));
-        splitHandle.addEventListener('dragend', onNoticeSplitDragEnd);
+        splitHandle.addEventListener('pointerdown', event => onNoticeHandlePointerDown(event, notice.id));
         grid.appendChild(card);
     });
 
@@ -2036,6 +2051,89 @@ function onNoticeSplitDragEnd() {
     }, 80);
 }
 
+function onNoticeHandlePointerDown(event, id) {
+    if (event.button !== undefined && event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    pointerNoticeDrag = {
+        id: String(id),
+        pointerId: event.pointerId,
+        handle: event.currentTarget,
+        startX: event.clientX,
+        startY: event.clientY,
+        active: false,
+        placement: ''
+    };
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    document.addEventListener('pointermove', onNoticeHandlePointerMove, { passive: false });
+    document.addEventListener('pointerup', onNoticeHandlePointerEnd, { once: true });
+    document.addEventListener('pointercancel', onNoticeHandlePointerEnd, { once: true });
+}
+
+function activatePointerNoticeDrag(event) {
+    if (!pointerNoticeDrag || pointerNoticeDrag.active) return;
+    pointerNoticeDrag.active = true;
+    suspendNoticeHoverPreview();
+    noticeDragInProgress = true;
+    activeNoticeSplitDragId = pointerNoticeDrag.id;
+    document.body.classList.add('notice-dragging');
+    const notice = notices.find(item => String(item.id) === pointerNoticeDrag.id);
+    noticeSplitDragOverlay?.remove();
+    noticeSplitDragOverlay = document.createElement('div');
+    noticeSplitDragOverlay.className = 'notice-split-drag-overlay is-pointer-overlay';
+    noticeSplitDragOverlay.textContent = notice?.title || '공지';
+    document.body.appendChild(noticeSplitDragOverlay);
+    showSplitDropOverlay();
+    positionNoticePointerOverlay(event.clientX, event.clientY);
+}
+
+function positionNoticePointerOverlay(clientX, clientY) {
+    if (!noticeSplitDragOverlay) return;
+    noticeSplitDragOverlay.style.transform = `translate3d(${clientX + 16}px, ${clientY + 16}px, 0)`;
+}
+
+function onNoticeHandlePointerMove(event) {
+    if (!pointerNoticeDrag || event.pointerId !== pointerNoticeDrag.pointerId) return;
+    const distance = Math.hypot(
+        event.clientX - pointerNoticeDrag.startX,
+        event.clientY - pointerNoticeDrag.startY
+    );
+    if (!pointerNoticeDrag.active && distance < 6) return;
+    event.preventDefault();
+    activatePointerNoticeDrag(event);
+    positionNoticePointerOverlay(event.clientX, event.clientY);
+    document.querySelectorAll('.split-drop-zone.active, .compare-empty-slot.active')
+        .forEach(zone => zone.classList.remove('active'));
+    const target = document.elementFromPoint?.(event.clientX, event.clientY)
+        ?.closest?.('.split-drop-zone, .compare-empty-slot');
+    pointerNoticeDrag.placement = target?.dataset?.splitSide || target?.dataset?.placement || '';
+    if (['left', 'right'].includes(pointerNoticeDrag.placement)) target.classList.add('active');
+}
+
+function onNoticeHandlePointerEnd(event) {
+    if (!pointerNoticeDrag || event.pointerId !== pointerNoticeDrag.pointerId) return;
+    const drag = pointerNoticeDrag;
+    pointerNoticeDrag = null;
+    document.removeEventListener('pointermove', onNoticeHandlePointerMove);
+    document.removeEventListener('pointerup', onNoticeHandlePointerEnd);
+    document.removeEventListener('pointercancel', onNoticeHandlePointerEnd);
+    drag.handle?.releasePointerCapture?.(event.pointerId);
+    if (!drag.active) return;
+    event.preventDefault();
+    suppressNoticeClickUntil = Date.now() + 300;
+    noticeDragInProgress = false;
+    document.body.classList.remove('notice-dragging');
+    noticeSplitDragOverlay?.remove();
+    noticeSplitDragOverlay = null;
+    if (['left', 'right'].includes(drag.placement)) {
+        activeNoticeSplitDragId = drag.id;
+        applyPendingNoticeSplit(drag.placement);
+    } else {
+        hideSplitDropOverlay();
+        activeNoticeSplitDragId = '';
+    }
+}
+
 function onSplitDropZoneDragOver(event) {
     if (!hasDragType(event, NOTICE_SPLIT_DRAG_TYPE)) return;
     event.preventDefault();
@@ -2209,7 +2307,6 @@ function positionComparePointerOverlay(clientX, clientY) {
 }
 
 function onCompareHandlePointerDown(event, id) {
-    if (event.pointerType === 'mouse') return;
     event.preventDefault();
     event.stopPropagation();
     pointerDraggedCompareId = String(id);
@@ -2380,7 +2477,7 @@ function renderCompareSpace(blockIds = compareBlocks) {
             <article class="compare-col notion-block${expanded ? ' is-expanded' : ''}${dockClass}"
                      data-compare-id="${safeId}" tabindex="0">
                 <div class="compare-col-controls" aria-label="${index + 1}번 블록 도구">
-                    <button class="compare-col-drag-handle" type="button" draggable="true"
+                    <button class="compare-col-drag-handle" type="button" draggable="false"
                             aria-label="${index + 1}번 블록 순서 변경" title="끌어서 블록 순서 변경">
                         <svg width="10" height="16" viewBox="0 0 10 16" aria-hidden="true"><g fill="currentColor"><circle cx="2.5" cy="3" r="1.3"/><circle cx="7.5" cy="3" r="1.3"/><circle cx="2.5" cy="8" r="1.3"/><circle cx="7.5" cy="8" r="1.3"/><circle cx="2.5" cy="13" r="1.3"/><circle cx="7.5" cy="13" r="1.3"/></g></svg>
                     </button>
@@ -2434,8 +2531,6 @@ function renderCompareSpace(blockIds = compareBlocks) {
     stage.querySelectorAll('.compare-col').forEach(block => {
         const id = block.dataset.compareId;
         const handle = block.querySelector('.compare-col-drag-handle');
-        handle.addEventListener('dragstart', event => onCompareBlockDragStart(event, id));
-        handle.addEventListener('dragend', onCompareBlockDragEnd);
         handle.addEventListener('pointerdown', event => onCompareHandlePointerDown(event, id));
         block.addEventListener('dragover', event => onCompareBlockDragOver(event, block));
         block.addEventListener('drop', event => onCompareBlockDrop(event, id));

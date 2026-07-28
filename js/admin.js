@@ -20,6 +20,7 @@ const MAX_NOTICE_IMAGES = 20;
 // AI 분석이 만든 3줄 요약. 저장 때 재분석 없이 그대로 쓴다.
 let composeAiSummary = [];
 let composeAiCategoryIds = [];
+let composeSurveyReward = '';
 let aiDeadlineCandidate = '';
 let aiProgressTimer = null;
 let aiProgressValue = 0;
@@ -29,6 +30,7 @@ let reviewInboxPollTimer = null;
 let reviewInboxPollInFlight = false;
 let adminFeedbackItems = [];
 let adminFeedbackFilter = 'all';
+let adminNoticePagination = { page: 0, total: 0, totalPages: 0 };
 let kakaoBackfillBatchId = '';
 let kakaoBackfillDrafts = [];
 
@@ -411,6 +413,7 @@ function resetComposeForm() {
     pastedImages = [];
     composeAiSummary = [];
     composeAiCategoryIds = [];
+    composeSurveyReward = '';
     aiDeadlineCandidate = '';
     renderAiDeadlineCandidate();
     renderPastePreview();
@@ -546,7 +549,7 @@ function parseAnalysisJson(text) {
 async function runNoticeAnalysis(content) {
     const today = new Date().toISOString().slice(0, 10);
     const prompt = `다음 공지 원문을 분석해서 JSON만 출력해. 코드블록·설명 없이 JSON 객체 하나만.
-형식: {"deadline":"YYYY-MM-DD 또는 빈문자열","subject":"포스터용 핵심 문구 10~28자","type":"${TITLE_KINDS.join('|')} 중 하나","summary":["요약1","요약2","요약3"],"categorySlugs":["application|academics|benefits-partnerships|campus|governance 중 해당값"]}
+형식: {"deadline":"YYYY-MM-DD 또는 빈문자열","subject":"포스터용 핵심 문구 10~28자","type":"${TITLE_KINDS.join('|')} 중 하나","summary":["요약1","요약2","요약3"],"categorySlugs":["application|academics|benefits-partnerships|campus|governance|survey 중 해당값"],"surveyReward":"설문 보상 또는 빈문자열"}
 - 오늘 날짜는 ${today}. 마감일이 원문에 없거나 불명확하면 deadline은 빈문자열.
 - type은 반드시 제시한 보기 중 하나.
 - subject에는 유형 단어(${TITLE_KINDS.join(', ')})를 넣지 말고 핵심 명사구만. 예: "개강총회 참가자".
@@ -559,6 +562,8 @@ async function runNoticeAnalysis(content) {
 - 혜택/제휴(benefits-partnerships): 돈·물품·할인·지원이 걸렸지만 놓쳐도 학사상 불이익이 없을 때.
 - 캠퍼스(campus): 특정 날짜에 출입·시설·교통·정전 등 캠퍼스 상태가 평소와 다를 때.
 - 자치(governance): 일반 학부생이 아니라 대의원·학생회 집행부 등 자치기구가 주 수신 대상일 때.
+- 설문조사(survey): 참가 신청이 아니라 의견·경험·만족도·연구 자료를 수집하는 설문·인터뷰·사용자 조사일 때. 단순 행사 신청폼은 제외.
+- 설문 상품·기프티콘·사례비·추첨 보상이 있으면 surveyReward에 조건과 상품명을 60자 이내로 적고, 없으면 빈문자열.
 - categorySlugs는 중복 선택할 수 있지만 약한 연관성으로 늘리지 말고 가능한 한 핵심 범주 하나만 선택.
 
 원문:
@@ -571,7 +576,7 @@ ${content}`;
     });
     const parsed = parseAnalysisJson(result?.text || '');
     const allowedCategorySlugs = new Set([
-        'application', 'academics', 'benefits-partnerships', 'campus', 'governance'
+        'application', 'academics', 'benefits-partnerships', 'campus', 'governance', 'survey'
     ]);
     const categorySlugs = Array.isArray(parsed.categorySlugs)
         ? Array.from(new Set(parsed.categorySlugs
@@ -585,6 +590,7 @@ ${content}`;
         summary: Array.isArray(parsed.summary)
             ? parsed.summary.map(item => String(item).trim()).filter(Boolean).slice(0, 3)
             : [],
+        surveyReward: String(parsed.surveyReward || '').trim().slice(0, 120),
         categoryIds: categorySlugs
             .map(slug => activeCategories.find(category => category.slug === slug)?.id)
             .map(Number)
@@ -621,6 +627,7 @@ async function analyzeNotice() {
         renderAiDeadlineCandidate();
         composeAiSummary = parsed.summary;
         composeAiCategoryIds = parsed.categoryIds;
+        composeSurveyReward = parsed.surveyReward;
 
         // 분석 결과는 양식 조합으로 흐르므로 직접수정 모드를 끈다.
         document.getElementById('title-manual').checked = false;
@@ -667,15 +674,17 @@ async function loadAdminFeedback() {
             category: ['banner', 'summary_mismatch'].includes(item.category) ? item.category : 'general'
         }));
         const badge = document.getElementById('feedback-count');
+        const generalItems = adminFeedbackItems.filter(item => item.category !== 'banner');
         if (badge) {
-            badge.hidden = items.length === 0;
-            badge.textContent = String(items.length);
+            badge.hidden = generalItems.length === 0;
+            badge.textContent = String(generalItems.length);
         }
         if (status) {
-            status.textContent = items.length ? `받은 피드백 ${items.length}건 (작성자 정보 없음)` : '아직 받은 피드백이 없습니다.';
+            status.textContent = generalItems.length ? `받은 문의 ${generalItems.length}건 (작성자 정보 없음)` : '아직 받은 일반 문의가 없습니다.';
             status.style.color = 'var(--text-sub)';
         }
         renderAdminFeedback();
+        renderBannerInquiryAdmin();
     } catch (error) {
         if (status) { status.textContent = error.message; status.style.color = 'var(--danger)'; }
         list.innerHTML = '<div class="review-empty">피드백을 불러오지 못했습니다.</div>';
@@ -683,7 +692,7 @@ async function loadAdminFeedback() {
 }
 
 function setAdminFeedbackFilter(category) {
-    adminFeedbackFilter = ['general', 'banner', 'summary_mismatch'].includes(category) ? category : 'all';
+    adminFeedbackFilter = ['general', 'summary_mismatch'].includes(category) ? category : 'all';
     document.querySelectorAll('[data-feedback-filter]').forEach(button => {
         button.classList.toggle('active', button.dataset.feedbackFilter === adminFeedbackFilter);
     });
@@ -693,9 +702,10 @@ function setAdminFeedbackFilter(category) {
 function renderAdminFeedback() {
     const list = document.getElementById('admin-feedback-list');
     if (!list) return;
+    const feedbackOnly = adminFeedbackItems.filter(item => item.category !== 'banner');
     const visibleItems = adminFeedbackFilter === 'all'
-        ? adminFeedbackItems
-        : adminFeedbackItems.filter(item => item.category === adminFeedbackFilter);
+        ? feedbackOnly
+        : feedbackOnly.filter(item => item.category === adminFeedbackFilter);
     list.innerHTML = visibleItems.length
         ? visibleItems.map(item => {
             const isBanner = item.category === 'banner';
@@ -729,6 +739,49 @@ function renderAdminFeedback() {
                 </div>`;
         }).join('')
         : '<div class="review-empty">이 종류의 피드백이 없습니다.</div>';
+}
+
+function renderBannerInquiryAdmin() {
+    const list = document.getElementById('banner-inquiry-admin-list');
+    if (!list) return;
+    const inquiries = adminFeedbackItems.filter(item => item.category === 'banner');
+    list.innerHTML = inquiries.length ? inquiries.map(item => {
+        const inquiry = item.inquiry || {};
+        const contact = [inquiry.phone, inquiry.email].filter(Boolean).join(' · ');
+        const safeLink = inquiry.linkUrl && /^https?:\/\//i.test(inquiry.linkUrl)
+            ? escapeHtml(inquiry.linkUrl)
+            : '';
+        return `
+            <article class="admin-feedback-item is-banner">
+                <span class="feedback-kind banner">승인 대기 문의</span>
+                <p class="admin-feedback-msg"><strong>${escapeHtml(inquiry.title || '제목 없음')}</strong><br>${escapeHtml(inquiry.description || '')}</p>
+                <dl class="banner-inquiry-details">
+                    <div><dt>신청자</dt><dd>${escapeHtml(inquiry.name || '')} · ${escapeHtml(inquiry.organization || '')}</dd></div>
+                    <div><dt>연락처</dt><dd>${escapeHtml(contact)}</dd></div>
+                    <div><dt>희망 기간</dt><dd>${escapeHtml(inquiry.startDate || '')} ~ ${escapeHtml(inquiry.endDate || '')}</dd></div>
+                    ${safeLink ? `<div><dt>연결 링크</dt><dd><a href="${safeLink}" target="_blank" rel="noopener noreferrer">${safeLink}</a></dd></div>` : ''}
+                </dl>
+                <div class="admin-feedback-foot">
+                    <span>${escapeHtml(String(item.createdAt || '').slice(0, 16).replace('T', ' '))}</span>
+                    <div>
+                        ${item.hasImage ? `<button class="btn btn-outline btn-small" type="button" onclick="openBannerInquiryImage('${escapeHtml(item.id)}')">제출 이미지</button>` : ''}
+                        ${item.bannerSlideId ? `<button class="btn btn-small" type="button" onclick="focusBannerSlide('${Number(item.bannerSlideId)}')">배너 검토</button>` : ''}
+                        <button class="btn btn-danger btn-small" type="button" onclick="deleteFeedback('${escapeHtml(item.id)}')">접수 삭제</button>
+                    </div>
+                </div>
+            </article>`;
+    }).join('') : '<div class="review-empty">접수된 배너 문의가 없습니다.</div>';
+}
+
+function focusBannerSlide(id) {
+    const element = document.getElementById(`banner-slide-${Number(id)}`);
+    if (!element) {
+        alert('연결된 배너 항목을 찾지 못했습니다. 위 목록에서 승인 대기 항목을 확인해주세요.');
+        return;
+    }
+    element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    element.classList.add('is-highlighted');
+    window.setTimeout(() => element.classList.remove('is-highlighted'), 1400);
 }
 
 async function openBannerInquiryImage(id) {
@@ -804,6 +857,7 @@ async function generateAIAndSave() {
 
     let aiSummary = [];
     let categoryIds = [];
+    let surveyReward = '';
     let finalImages = [];
     let existing = null;
 
@@ -819,22 +873,26 @@ async function generateAIAndSave() {
             updateAiProgress(42, '앞서 만든 Gemini 분석 결과를 확인하고 있습니다.', 'analyze', 58);
             aiSummary = composeAiSummary;
             categoryIds = composeAiCategoryIds;
+            surveyReward = composeSurveyReward;
         } else if (!existing || existing.content !== content) {
             updateAiProgress(18, 'Gemini가 원문을 분석하고 있습니다.', 'analyze', 68);
             try {
                 const analysis = await runNoticeAnalysis(content);
                 aiSummary = analysis.summary;
                 categoryIds = analysis.categoryIds;
+                surveyReward = analysis.surveyReward;
             } catch (error) {
                 if (isGeminiRateLimitError(error)) throw error;
                 console.error('저장 직전 분석 실패:', error);
                 aiSummary = existing?.aiSummary || [];
                 categoryIds = existing?.categoryIds || [];
+                surveyReward = existing?.surveyReward || '';
             }
         } else {
             updateAiProgress(42, '기존 분석 결과를 확인하고 있습니다.', 'analyze', 58);
             aiSummary = existing.aiSummary || [];
             categoryIds = existing.categoryIds || [];
+            surveyReward = existing.surveyReward || '';
         }
 
         updateAiProgress(68, '첨부 이미지를 정리하고 있습니다.', 'process', 82);
@@ -860,6 +918,8 @@ async function generateAIAndSave() {
             deadlineAt: deadline || null,
             isAlwaysOpen,
             isPinned,
+            isHidden: existing?.isHidden === true,
+            surveyReward,
             content,
             aiSummary,
             categoryIds,
@@ -880,7 +940,7 @@ async function generateAIAndSave() {
             });
         }
         updateAiProgress(95, '저장된 공지 목록을 새로 불러오고 있습니다.', 'save', 98);
-        await loadNoticePage(1, { replace: true });
+        await loadAdminNoticeList();
         finishAiProgress(editingNoticeId ? '공지 수정이 완료되었습니다.' : '공지 등록이 완료되었습니다.');
         await new Promise(resolve => setTimeout(resolve, 250));
     } catch (error) {
@@ -913,24 +973,35 @@ function setAdminNoticeStatus(message, isError = false) {
 async function loadAdminNoticeList() {
     setAdminNoticeStatus('공지 목록을 불러오는 중입니다.');
     try {
-        await loadNoticePage(1, { replace: true });
+        const result = await apiRequest('/api/admin/notices?page=1&limit=20', {
+            method: 'GET',
+            headers: getNoticeAdminHeaders()
+        });
+        notices = Array.isArray(result?.notices) ? result.notices : [];
+        adminNoticePagination = result?.pagination || { page: 1, total: notices.length, totalPages: 1 };
         renderAdminNoticeList();
-        setAdminNoticeStatus(`전체 ${noticeRepository.pagination.total}건 중 ${notices.length}건 표시`);
+        setAdminNoticeStatus(`전체 ${adminNoticePagination.total}건 중 ${notices.length}건 표시`);
     } catch (error) {
         setAdminNoticeStatus(error.message, true);
     }
 }
 
 async function loadMoreAdminNotices() {
-    const { page, totalPages } = noticeRepository.pagination;
+    const { page, totalPages } = adminNoticePagination;
     if (page >= totalPages) {
         setAdminNoticeStatus('마지막 공지까지 모두 불러왔습니다.');
         return;
     }
     try {
-        await loadNoticePage(page + 1);
+        const result = await apiRequest(`/api/admin/notices?page=${page + 1}&limit=20`, {
+            method: 'GET',
+            headers: getNoticeAdminHeaders()
+        });
+        const knownIds = new Set(notices.map(notice => String(notice.id)));
+        notices.push(...(result.notices || []).filter(notice => !knownIds.has(String(notice.id))));
+        adminNoticePagination = result.pagination || adminNoticePagination;
         renderAdminNoticeList();
-        setAdminNoticeStatus(`전체 ${noticeRepository.pagination.total}건 중 ${notices.length}건 표시`);
+        setAdminNoticeStatus(`전체 ${adminNoticePagination.total}건 중 ${notices.length}건 표시`);
     } catch (error) {
         setAdminNoticeStatus(error.message, true);
     }
@@ -942,7 +1013,7 @@ function renderAdminNoticeList() {
 
     const more = document.getElementById('admin-notice-more');
     if (more) {
-        const { page, totalPages } = noticeRepository.pagination;
+        const { page, totalPages } = adminNoticePagination;
         more.hidden = totalPages === 0 || page >= totalPages;
     }
 
@@ -954,20 +1025,41 @@ function renderAdminNoticeList() {
     list.innerHTML = notices.map(notice => {
         const id = escapeHtml(String(notice.id));
         return `
-            <div class="admin-notice-row ${String(notice.id) === String(editingNoticeId) ? 'is-editing' : ''}">
+            <div class="admin-notice-row ${String(notice.id) === String(editingNoticeId) ? 'is-editing' : ''} ${notice.isHidden ? 'is-hidden' : ''}">
                 <div class="admin-notice-row-main">
                     <span class="admin-notice-row-title">${escapeHtml(notice.title || '제목 없음')}</span>
                     <span class="admin-notice-row-meta">
                         ${escapeHtml(notice.host || '기타')} · ${escapeHtml(notice.target || '전체')}
                         · 마감 ${escapeHtml(notice.deadline || '상시')} · 조회 ${Number(notice.views) || 0}
+                        ${notice.isHidden ? ' · 숨김' : ''}
                     </span>
                 </div>
                 <div class="admin-notice-row-actions">
                     <button class="btn btn-outline btn-small" type="button" onclick="editAdminNotice('${id}')">수정</button>
+                    <button class="btn btn-outline btn-small" type="button"
+                            onclick="toggleAdminNoticeHidden('${id}', ${notice.isHidden ? 'false' : 'true'})">${notice.isHidden ? '공개' : '숨김'}</button>
                     <button class="btn btn-danger btn-small" type="button" onclick="deleteAdminNotice('${id}')">삭제</button>
                 </div>
             </div>`;
     }).join('');
+}
+
+async function toggleAdminNoticeHidden(id, hidden) {
+    try {
+        const result = await apiRequest(`/api/notices/${encodeURIComponent(id)}/visibility`, {
+            method: 'PATCH',
+            headers: getNoticeAdminHeaders(),
+            body: JSON.stringify({ hidden })
+        });
+        const index = notices.findIndex(notice => String(notice.id) === String(id));
+        if (index >= 0) notices[index] = { ...notices[index], ...result.notice };
+        renderAdminNoticeList();
+        setAdminNoticeStatus(hidden
+            ? '공개 목록에서 숨겼습니다. 관리자 목록에서는 계속 확인할 수 있습니다.'
+            : '공개 목록에 다시 노출했습니다.');
+    } catch (error) {
+        alert(`공개 상태 변경 실패: ${error.message}`);
+    }
 }
 
 async function editAdminNotice(id) {
@@ -984,6 +1076,7 @@ async function editAdminNotice(id) {
     pastedImages = [];
     composeAiSummary = [];
     composeAiCategoryIds = [];
+    composeSurveyReward = '';
     aiDeadlineCandidate = '';
     renderAiDeadlineCandidate();
     renderPastePreview();
@@ -1180,6 +1273,11 @@ function renderReviewEditor(notice) {
                 <label for="review-keywords">키워드 (쉼표로 구분)</label>
                 <input id="review-keywords" type="text" value="${escapeHtml(keywords.join(', '))}">
             </div>
+            <div class="form-group">
+                <label for="review-survey-reward">설문 참여 보상</label>
+                <input id="review-survey-reward" type="text" maxlength="120"
+                       value="${escapeHtml(notice.surveyReward || '')}" placeholder="예: 추첨 20명 스타벅스 기프티콘">
+            </div>
             <div class="form-group wide">
                 <label for="review-summary">AI 요약 (한 줄에 하나)</label>
                 <textarea id="review-summary">${escapeHtml(summaries.join('\n'))}</textarea>
@@ -1210,7 +1308,7 @@ function renderReviewEditor(notice) {
             </div>
         ` : ''}
         <div class="review-actions">
-            <button class="btn btn-outline btn-small review-action" type="button" onclick="reanalyzeReviewNotice()">재분석</button>
+            <button class="btn btn-outline btn-small review-action" type="button" onclick="reanalyzeReviewNotice()">AI 편집 적용</button>
             <button class="btn btn-danger btn-small review-action" type="button" onclick="rejectReviewNotice()">반려</button>
             <button class="btn btn-outline btn-small review-action" type="button" onclick="publishReviewNotice(false)">승인만</button>
             <button class="btn btn-small review-action" type="button" onclick="publishReviewNotice(true)">승인 및 알림</button>
@@ -1271,6 +1369,7 @@ function collectReviewEdits() {
         isPinned: document.getElementById('review-pinned').checked,
         targets: splitReviewValues(document.getElementById('review-targets').value),
         keywords: splitReviewValues(document.getElementById('review-keywords').value),
+        surveyReward: document.getElementById('review-survey-reward').value.trim(),
         categoryIds: Array.from(
             document.querySelectorAll('input[name="review-category"]:checked')
         ).map(input => Number(input.value)),
@@ -1280,8 +1379,7 @@ function collectReviewEdits() {
 }
 
 async function refreshPublishedNotices() {
-    await loadNoticePage(1, { replace: true });
-    renderAdminNoticeList();
+    await loadAdminNoticeList();
 }
 
 async function publishReviewNotice(notify) {
@@ -1343,8 +1441,11 @@ async function reanalyzeReviewNotice() {
             String(item.id) === String(selectedReviewNoticeId));
         if (index >= 0) reviewNotices[index] = result.notice;
         renderReviewEditor(result.notice);
+        if (result.deadlineCandidate && !result.notice.deadline) {
+            document.getElementById('review-deadline').value = result.deadlineCandidate;
+        }
         renderReviewNoticeList();
-        setReviewStatus('AI 재분석이 완료되었습니다.');
+        setReviewStatus('AI가 제목·본문 문단·요약·카테고리·설문 보상을 편집했습니다. 저장 전 내용을 확인해주세요.');
     } catch (error) {
         setReviewStatus(error.message, true);
     } finally {
@@ -1406,7 +1507,7 @@ async function verifyBannerPassword() {
 async function unlockBannerPanel() {
     document.getElementById('banner-lock').hidden = true;
     document.getElementById('banner-list-area').hidden = false;
-    await loadBannerSlides(true);
+    await Promise.all([loadBannerSlides(true), loadAdminFeedback()]);
     renderBannerList();
 }
 
@@ -1475,6 +1576,7 @@ function renderBannerSection(placement, title) {
         const safeImage = slide.src ? escapeHtml(slide.src) : '';
         const slideItem = document.createElement('div');
         slideItem.className = 'banner-item';
+        slideItem.id = `banner-slide-${safeId}`;
         slideItem.innerHTML = `
             <div class="banner-item-header">
                 <div>

@@ -242,10 +242,10 @@ test('notice blocks use six-dot handles and expose only left/right split targets
     assert.match(renderSource, /class="compare-col notion-block\$\{expanded/);
     assert.match(renderSource, /class="compare-col-controls"/);
     assert.doesNotMatch(renderSource, /class="compare-col-add"/);
-    assert.match(renderSource, /class="compare-col-drag-handle"[^>]*draggable="true"/s);
+    assert.match(renderSource, /class="compare-col-drag-handle"[^>]*draggable="false"/s);
     assert.doesNotMatch(renderSource, /<header|compare-col-head/);
     assert.doesNotMatch(renderSource, /<article[^>]*draggable=/);
-    assert.match(app, /class="card-drag-handle"[^>]*draggable="true"/s);
+    assert.match(app, /class="card-drag-handle"[^>]*draggable="false"/s);
     assert.doesNotMatch(app, /class="card-block-add"/);
     assert.match(app, /function addNoticeToCompareBlock/);
     assert.match(app, /function onNoticeSplitDragStart/);
@@ -331,22 +331,19 @@ test('compare blocks reorder before, after, and at the document end', async () =
 test('drag listeners and overlays are attached only through six-dot handles', async () => {
     const app = await readFile('js/core.js', 'utf8');
     const renderSource = readNamedFunction(app, 'renderCompareSpace');
-    const dragStartSource = readNamedFunction(app, 'onCompareBlockDragStart');
+    const dragStartSource = readNamedFunction(app, 'onNoticeHandlePointerDown');
 
-    assert.match(renderSource, /handle\.addEventListener\('dragstart'/);
+    assert.match(renderSource, /handle\.addEventListener\('pointerdown'/);
     assert.doesNotMatch(renderSource, /block\.setAttribute\(['"]draggable/);
-    assert.match(app, /splitHandle\.addEventListener\('dragstart'/);
-    assert.match(app, /splitHandle\.addEventListener\('pointerdown'[\s\S]*suspendNoticeHoverPreview/);
+    assert.match(app, /splitHandle\.addEventListener\('pointerdown', event => onNoticeHandlePointerDown/);
+    assert.match(app, /function activatePointerNoticeDrag[\s\S]*suspendNoticeHoverPreview/);
     assert.match(app, /body\.classList\.add\('notice-dragging'\)/);
     assert.match(app, /body\.classList\.remove\('notice-dragging'\)/);
-    assert.match(app, /noticeSplitOverlayTimer = window\.setTimeout/);
-    assert.match(app, /\}, 110\);/);
-    assert.match(app, /event\.dataTransfer\.setData\('text\/plain'/);
+    assert.match(app, /Math\.hypot\(/);
+    assert.match(app, /document\.elementFromPoint/);
     assert.match(app, /suppressNoticeClickUntil = Date\.now\(\) \+ 300/);
     assert.doesNotMatch(app, /card\.setAttribute\(['"]draggable/);
-    assert.match(dragStartSource, /event\.currentTarget\.closest\('\.compare-col'\)/);
-    assert.match(dragStartSource, /createCompareDragOverlay\(block\)/);
-    assert.match(dragStartSource, /setDragImage/);
+    assert.match(dragStartSource, /setPointerCapture/);
     assert.match(app, /function onCompareHandlePointerDown/);
     assert.match(app, /function onCompareHandlePointerMove/);
 });
@@ -470,7 +467,8 @@ test('the contact modal is an anonymous feedback box, not admin contact info', a
     assert.match(server, /app\.get\('\/api\/admin\/feedback'/);
     assert.match(server, /id:\s*crypto\.randomUUID\(\),\s*category,/s);
     assert.match(adminHtml, /data-feedback-filter="general"/);
-    assert.match(adminHtml, /data-feedback-filter="banner"/);
+    assert.doesNotMatch(adminHtml, /data-feedback-filter="banner"/);
+    assert.match(adminHtml, /id="banner-inquiry-admin-list"/);
     assert.match(admin, /function setAdminFeedbackFilter/);
     assert.match(admin, /item\.category === 'banner'/);
     // 익명성: 피드백 저장 객체에 IP·이름 등 식별자가 없어야 한다.
@@ -847,7 +845,7 @@ test('right-rail banners start randomly, auto-rotate, and keep manual arrows dir
     assert.match(app, /setInterval\([\s\S]*6500\)/);
     assert.match(app, /class="rail-ad-image-stage\$\{transitionClass\}"[\s\S]*\$\{imageContent\}[\s\S]*\$\{controls\}/);
     assert.doesNotMatch(app, /class="rail-ad-dot/);
-    assert.match(css, /\.rail-ad-image\s*\{[^}]*width:\s*100%[^}]*height:\s*min\(58vh,\s*560px\)[^}]*object-fit:\s*contain/s);
+    assert.match(css, /\.rail-ad-image\s*\{[^}]*width:\s*100%[^}]*height:\s*auto[^}]*object-fit:\s*cover/s);
     assert.match(css, /\.rail-ad-controls\s*\{[^}]*grid-template-columns:\s*34px 1fr 34px/s);
     assert.match(css, /\.rail-ad-image-stage\.is-leaving-left\s*\{[^}]*translateX\(-42px\)/s);
     assert.match(css, /\.rail-ad-image-stage\.is-entering-right\s*\{[^}]*rail-banner-enter-right/s);
@@ -1346,8 +1344,9 @@ test('column counts live in the per-view layers, not in core', async () => {
     assert.match(desktop, /@media \(max-width:\s*1500px\)[\s\S]*grid-template-columns:\s*repeat\(2/);
     assert.doesNotMatch(desktop, /grid-template-columns:\s*repeat\(3/);
     assert.match(mobile, /html\[data-view="mobile"\] \.grid\s*\{[^}]*grid-template-columns:\s*1fr/s);
-    assert.match(mobile, /html\[data-view="mobile"\] \.category-tabs\s*\{[^}]*overflow-x:\s*hidden/s);
-    assert.match(mobile, /@media \(max-width:\s*420px\)[\s\S]*\.category-tabs-inner\s*\{[^}]*width:\s*100%;[^}]*justify-content:\s*space-between/s);
+    assert.match(mobile, /html\[data-view="mobile"\] \.category-tabs\s*\{[^}]*overflow-x:\s*auto/s);
+    assert.match(mobile, /@media \(max-width:\s*420px\)[\s\S]*\.category-tabs-inner\s*\{[^}]*width:\s*max-content;[^}]*justify-content:\s*flex-start/s);
+    assert.match(desktop, /\.spatial-workspace\.is-split\[data-blocks="1"\] \.notice-base-block > \.grid\s*\{[^}]*repeat\(2,/s);
     assert.doesNotMatch(mobile, /\.notice-base-block \.grid,\s*\nhtml\[data-view="mobile"\] \.compare-space-stage/);
     assert.match(mobile, /\.image-viewer-action\s*\{[^}]*min-height:\s*38px/s);
     assert.match(mobile, /\.image-viewer \.nav-btn\.left\s*\{[^}]*left:\s*8px/s);

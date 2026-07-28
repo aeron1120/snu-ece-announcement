@@ -31,7 +31,7 @@ test('automation configuration accepts complete crawl and push settings', () => 
     assert.equal(config.categories.minimumConfidence, 0.75);
 });
 
-test('JSON automation store supplies the five canonical notice categories in order', async () => {
+test('JSON automation store supplies the six canonical notice categories in order', async () => {
     const directory = await mkdtemp(path.join(tmpdir(), 'ece-category-store-'));
     const store = createAutomationStore({
         useSupabase: false,
@@ -43,7 +43,7 @@ test('JSON automation store supplies the five canonical notice categories in ord
 
     assert.deepEqual(
         categories.map(category => category.name),
-        ['신청', '학사', '혜택/제휴', '캠퍼스', '자치']
+        ['신청', '학사', '혜택/제휴', '캠퍼스', '자치', '설문조사']
     );
     assert.ok(categories.every(category => category.definition));
 
@@ -240,6 +240,30 @@ test('JSON automation store atomically creates and manages manual notices with o
     assert.deepEqual(updated.targets, ['25학번']);
     assert.equal(await store.deleteManualNotice(created.id), true);
     assert.equal((await store.listPublishedNotices()).length, 0);
+});
+
+test('JSON automation store hides and restores published crawled notices without deleting them', async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), 'ece-hidden-store-'));
+    const store = createAutomationStore({
+        useSupabase: false,
+        filePath: path.join(directory, 'automation.json'),
+        canonicalCategories: CANONICAL_NOTICE_CATEGORIES
+    });
+    const pending = await store.createPendingNotice({
+        sourceType: 'ece_academics',
+        sourceExternalId: 'hidden-1',
+        title: '숨김 테스트',
+        content: '원문',
+        targets: ['전체']
+    });
+    await store.publishReviewNotice(pending.id, {}, { notify: false });
+
+    const hidden = await store.setPublishedNoticeHidden(pending.id, true);
+    assert.equal(hidden.isHidden, true);
+    assert.equal((await store.listPublishedNotices())[0].isHidden, true);
+
+    const restored = await store.setPublishedNoticeHidden(pending.id, false);
+    assert.equal(restored.isHidden, false);
 });
 
 test('JSON notification job renewals are fenced by a unique claim token', async () => {
