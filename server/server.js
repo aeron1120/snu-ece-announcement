@@ -290,6 +290,11 @@ app.use((req, res, next) => {
     const allowedOrigin = process.env.FRONTEND_ORIGIN;
     if (allowedOrigin) {
         res.header('Access-Control-Allow-Origin', allowedOrigin);
+        // 관리자 세션은 HttpOnly 쿠키로 오간다. 프런트가 다른 사이트에 있으면
+        // 이 헤더가 없는 응답은 브라우저가 통째로 버린다.
+        // 와일드카드 출처와는 함께 쓸 수 없으므로 이 분기에서만 켠다.
+        res.header('Access-Control-Allow-Credentials', 'true');
+        res.header('Vary', 'Origin');
     } else {
         res.header('Access-Control-Allow-Origin', '*');
     }
@@ -322,19 +327,27 @@ function getAdminSession(req) {
     return { id: sessionId, ...session };
 }
 
+/* 배포에서는 정적 프런트와 API가 서로 다른 사이트에 있어 SameSite=Strict
+   쿠키가 요청에 실리지 않는다. 교차 사이트로 보내려면 None이어야 하고,
+   None은 Secure를 함께 요구한다. 로컬은 API가 프런트를 같이 서빙하는
+   동일 출처라 Lax로 충분하고, http에서도 동작한다. */
+function adminSessionCookiePolicy() {
+    return process.env.NODE_ENV === 'production'
+        ? 'SameSite=None; Secure'
+        : 'SameSite=Lax';
+}
+
 function setAdminSessionCookie(res, sessionId) {
-    const secure = process.env.NODE_ENV === 'production' ? '; Secure' : '';
     res.setHeader(
         'Set-Cookie',
-        `${ADMIN_SESSION_COOKIE}=${encodeURIComponent(sessionId)}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${Math.floor(ADMIN_SESSION_TTL_MS / 1000)}${secure}`
+        `${ADMIN_SESSION_COOKIE}=${encodeURIComponent(sessionId)}; HttpOnly; ${adminSessionCookiePolicy()}; Path=/; Max-Age=${Math.floor(ADMIN_SESSION_TTL_MS / 1000)}`
     );
 }
 
 function clearAdminSessionCookie(res) {
-    const secure = process.env.NODE_ENV === 'production' ? '; Secure' : '';
     res.setHeader(
         'Set-Cookie',
-        `${ADMIN_SESSION_COOKIE}=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0${secure}`
+        `${ADMIN_SESSION_COOKIE}=; HttpOnly; ${adminSessionCookiePolicy()}; Path=/; Max-Age=0`
     );
 }
 
@@ -2810,6 +2823,63 @@ app.use(createNoticeThumbnailRouter({
     thumbnailService: noticeThumbnailService,
     defaultUrl: '/icons/default-notice-thumbnail.png'
 }));
+
+/* 크롤링한 공지의 첨부파일 내려받기.
+   ECE 홈페이지는 첨부 주소에 Referer가 없거나 자기 사이트가 아니면 404를 준다.
+   그래서 링크를 그대로 걸면 사용자 브라우저가 우리 도메인을 Referer로 보내
+   전부 실패한다. 서버가 원문 페이지를 Referer로 붙여 대신 받아 넘긴다. */
+const ATTACHMENT_ALLOWED_HOSTS = new Set(['ece.snu.ac.kr', 'www.ece.snu.ac.kr']);
+
+app.get('/api/notices/:id/attachments/:index', async (req, res) => {
+    try {
+        const id = Number.parseInt(req.params.id, 10);
+        const index = Number.parseInt(req.params.index, 10);
+        if (!Number.isSafeInteger(id) || !Number.isSafeInteger(index) || index < 0) {
+            return res.status(400).json({ error: '잘못된 첨부 요청입니다.' });
+        }
+
+        const notice = await getPublishedNoticeById(id);
+        const attachment = notice?.attachments?.[index];
+        if (!attachment?.url) {
+            return res.status(404).json({ error: '첨부파일을 찾을 수 없습니다.' });
+        }
+
+        // 공지에 실제로 적힌 주소만 받는다. 임의의 주소를 대신 받아주지 않는다.
+        let target;
+        try {
+            target = new URL(attachment.url);
+        } catch {
+            return res.status(400).json({ error: '첨부 주소가 올바르지 않습니다.' });
+        }
+        if (target.protocol !== 'https:' || !ATTACHMENT_ALLOWED_HOSTS.has(target.hostname)) {
+            return res.status(400).json({ error: '허용되지 않은 첨부 주소입니다.' });
+        }
+
+        const upstream = await fetch(target.toString(), {
+            headers: {
+                Referer: notice.sourceUrl || `${target.origin}/community/academics`,
+                'User-Agent': 'Mozilla/5.0 (compatible; SNU-ECE-Notice/1.0)'
+            }
+        });
+        if (!upstream.ok) {
+            return res.status(502).json({ error: `원문 서버에서 파일을 받지 못했습니다. (${upstream.status})` });
+        }
+
+        const fileName = String(attachment.name || 'attachment').replace(/[\r\n"]/g, '').slice(0, 120);
+        res.setHeader('Content-Type', upstream.headers.get('content-type') || 'application/octet-stream');
+        res.setHeader(
+            'Content-Disposition',
+            `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`
+        );
+        res.setHeader('Cache-Control', 'private, max-age=300');
+        const length = upstream.headers.get('content-length');
+        if (length) res.setHeader('Content-Length', length);
+
+        res.send(Buffer.from(await upstream.arrayBuffer()));
+    } catch (error) {
+        res.status(500).json({ error: error.message || '첨부파일 전달 실패' });
+    }
+});
 
 app.get('/api/notices/:id', async (req, res) => {
     try {

@@ -25,11 +25,16 @@ html[data-view="desktop"] .site-rail {
     top: 0;
     bottom: 0;
     width: var(--rail-width);
-    overflow-y: auto;
     overscroll-behavior: contain;
     z-index: 800;
 }
-html[data-view="desktop"] .rail-left { left: 0; border-right: 1px solid var(--rail-bg-deep); }
+/* 왼쪽 레일은 내용이 한 화면에 다 들어온다. 스크롤 막대가 뜨면 자리만
+   차지하고 눈에 거슬리므로 세로로 밀리지 않게 잠근다. */
+html[data-view="desktop"] .rail-left {
+    left: 0;
+    overflow: hidden;
+    border-right: 1px solid var(--rail-bg-deep);
+}
 html[data-view="desktop"] .rail-right {
     right: 0;
     overflow: hidden;

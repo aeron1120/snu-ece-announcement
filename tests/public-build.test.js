@@ -1,6 +1,6 @@
 ﻿import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, writeFile, mkdir } from 'node:fs/promises';
+import { mkdtemp, readFile, writeFile, mkdir, readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runInNewContext } from 'node:vm';
@@ -188,7 +188,9 @@ test('the public page drops the top banner, the saved-posts feature, and the ref
     assert.doesNotMatch(app, /savedPosts|toggleSave|toggleViewMode/);
 
     // 제목은 기능 없는 표제이며, 알림 받기만 종 토글로 유지한다.
-    assert.match(html, /<h1 class="site-title" id="site-title">SNU ECE 공지방<\/h1>/);
+    // 제목 자리는 워드마크 이미지가 차지하고, 글자는 이미지가 없을 때만 나온다.
+    assert.match(html, /<h1 class="site-title" id="site-title">[\s\S]*?id="site-title-mark"[\s\S]*?alt="SNU ECE 공지방"/);
+    assert.match(html, /<span class="site-title-text">SNU ECE 공지방<\/span>/);
     assert.doesNotMatch(html, /제목을 누르면 새로고침|site-title-hint|reloadNoticeBoard/);
     assert.match(html, /id="bell-toggle"[\s\S]*?aria-pressed="false"/);
     assert.match(html, /onclick="openNotificationPreferences\(\)"/);
@@ -758,7 +760,7 @@ test('Gemini quota errors show only a retry countdown and admin mode has one exi
     assert.doesNotMatch(html, /id="admin-logout"|>로그아웃<|공개 화면으로/);
     assert.match(admin, /getElementById\('admin-mode-exit'\)\.textContent = '관리자 모드 나가기'/);
     // 나가면 공개 화면이 아니라 들어왔던 로그인 화면으로 되돌아간다.
-    assert.match(admin, /async function exitAdminMode\(\)[\s\S]*fetch\('\/api\/admin\/session', \{ method: 'DELETE' \}\)[\s\S]*location\.replace\('\/admin'\)/);
+    assert.match(admin, /async function exitAdminMode\(\)[\s\S]*buildApiUrl\('\/api\/admin\/session'\)[\s\S]*method: 'DELETE'[\s\S]*location\.replace\('\/admin'\)/);
 });
 
 test('automatic ECE crawling feeds a live review inbox and original text is black', async () => {
@@ -1836,9 +1838,9 @@ test('the admin console is usable on a phone and keeps AI editing in reach', asy
     }
 
     // 역할별로 열리는 탭이 코드에 못박혀 있다.
-    assert.match(admin, /master: \['review', 'backfill', 'compose', 'notices', 'banner', 'feedback', 'settings'\]/);
+    assert.match(admin, /master: \['review', 'backfill', 'compose', 'notices', 'banner', 'banner-inquiry', 'feedback', 'settings'\]/);
     assert.match(admin, /notice: \['review', 'backfill', 'compose', 'notices'\]/);
-    assert.match(admin, /banner: \['banner'\]/);
+    assert.match(admin, /banner: \['banner', 'banner-inquiry'\]/);
     // 쓸 수 없는 탭은 감추는 게 아니라 지운다.
     assert.match(readNamedFunction(admin, 'applyAdminRoleToChrome'), /tab\.remove\(\)/);
     assert.match(readNamedFunction(admin, 'applyAdminRoleToChrome'), /panel\.remove\(\)/);
@@ -1846,4 +1848,113 @@ test('the admin console is usable on a phone and keeps AI editing in reach', asy
     // 운영진이 마스터에게 남기는 창.
     assert.match(html, /id="staff-report-modal"/);
     assert.match(admin, /\/api\/admin\/staff-report/);
+});
+
+test('crawled attachments are fetched through the server so the source Referer check passes', async () => {
+    const server = await readFile('server/server.js', 'utf8');
+    const app = await readFile('js/core.js', 'utf8');
+
+    // ECE 홈페이지는 Referer가 자기 사이트가 아니면 첨부에 404를 준다.
+    // 원문 주소를 그대로 걸면 브라우저가 우리 도메인을 보내 전부 실패한다.
+    assert.match(server, /app\.get\('\/api\/notices\/:id\/attachments\/:index'/);
+    assert.match(server, /Referer: notice\.sourceUrl/);
+    // 공지에 실제로 적힌 주소만, 그것도 허용된 호스트만 대신 받는다.
+    assert.match(server, /ATTACHMENT_ALLOWED_HOSTS = new Set\(\['ece\.snu\.ac\.kr'/);
+    assert.match(server, /!ATTACHMENT_ALLOWED_HOSTS\.has\(target\.hostname\)/);
+    assert.match(server, /target\.protocol !== 'https:'/);
+    assert.match(server, /Content-Disposition/);
+
+    // 상세 화면의 첨부 링크는 원문이 아니라 우리 경로를 가리킨다.
+    assert.match(app, /\/api\/notices\/\$\{encodeURIComponent\(notice\.id\)\}\/attachments\/\$\{index\}/);
+    assert.doesNotMatch(app, /attachments\.map\(file =>[\s\S]{0,120}safeHttpUrl\(file\.url\)/);
+});
+
+test('the left rail never scrolls and the hover preview follows its card', async () => {
+    const desktopCss = await readFile('css/desktop.css', 'utf8');
+    const app = await readFile('js/core.js', 'utf8');
+    const html = await readFile('index.html', 'utf8');
+    const mobileCss = await readFile('css/mobile.css', 'utf8');
+
+    // 왼쪽 레일은 한 화면에 들어오므로 스크롤 막대를 두지 않는다.
+    assert.match(desktopCss, /\.rail-left\s*\{[^}]*overflow:\s*hidden/s);
+    assert.doesNotMatch(desktopCss, /\.site-rail\s*\{[^}]*overflow-y:\s*auto/s);
+    // 서비스 안내가 관련 페이지 맨 위에 온다.
+    assert.match(html, /aria-label="서울대학교 관련 링크">\s*<a href="\.\/service-guide\.html">서비스 안내<\/a>/);
+
+    // 미리보기는 fixed라 스크롤하면 카드와 간격이 벌어진다. 기준 카드를 따라간다.
+    assert.match(app, /function followNoticeHoverPreview/);
+    assert.match(app, /hoverPreviewAnchorCard = card/);
+    assert.match(app, /addEventListener\('scroll', followNoticeHoverPreview/);
+
+    // 끌어온 공지를 버릴 표적이 있다.
+    assert.match(html, /data-split-side="trash"/);
+    assert.match(app, /placement === 'trash'/);
+
+    // 모바일 두 열이 나란히 끝나 생기는 아래 빈 띠를 벽돌 배치로 메운다.
+    assert.match(mobileCss, /\.grid > \.card:nth-child\(2n\+1\)\s*\{\s*margin-top:\s*-22px/);
+});
+
+test('banner slots show one at a time and the inbox toolbar acts on the selection', async () => {
+    const adminCss = await readFile('css/admin.css', 'utf8');
+    const adminHtml = await readFile('admin.html', 'utf8');
+    const admin = await readFile('js/admin.js', 'utf8');
+
+    // .banner-item에 display를 명시했으므로 [hidden]의 기본값이 밀린다.
+    // 눌러 주지 않으면 배너 1을 골라도 다섯 개가 전부 보인다.
+    assert.match(adminCss, /\.banner-slides-list \.banner-item\[hidden\]\s*\{\s*display:\s*none !important/);
+    assert.match(readNamedFunction(admin, 'applyBannerSlotVisibility'), /item\.hidden = index !== activeBannerSlot/);
+
+    // 배너 문의는 왼쪽 목록이 아니라 위 탭으로 옮겼다.
+    assert.match(adminHtml, /data-tab="banner-inquiry"/);
+    assert.match(adminHtml, /id="panel-banner-inquiry"/);
+    assert.doesNotMatch(admin, /selectBannerSlot\('inquiry'\)/);
+
+    // 문의함 도구 막대: 전체 선택 · 내보내기 · 삭제 모두 선택 기준으로 움직인다.
+    assert.match(adminHtml, />\.md 로 내보내기</);
+    assert.match(adminHtml, /id="feedback-delete-selected"/);
+    assert.match(adminHtml, /id="feedback-select-all"[\s\S]*?toggleAllFeedbackSelection\(\)/);
+    assert.match(readNamedFunction(admin, 'exportAdminFeedback'), /if \(!ids\.length\) return/);
+    assert.match(readNamedFunction(admin, 'deleteSelectedFeedback'), /window\.confirm/);
+    assert.match(readNamedFunction(admin, 'toggleAllFeedbackSelection'), /allPicked/);
+
+    // 버리는 표적은 담는 표적과 떨어져 화면 아래 가운데에 뜬다.
+    const html = await readFile('index.html', 'utf8');
+    const css = await readFile('css/core.css', 'utf8');
+    assert.match(html, /id="split-trash-overlay"/);
+    assert.match(css, /\.split-trash-overlay\s*\{[\s\S]*?bottom:\s*22px;[\s\S]*?justify-content:\s*center/);
+    // 위쪽 표적 줄에는 왼쪽·오른쪽 둘만 남는다.
+    const overlayBlock = html.slice(html.indexOf('id="split-drop-overlay"'), html.indexOf('id="split-trash-overlay"'));
+    assert.equal((overlayBlock.match(/class="split-drop-zone/g) || []).length, 2);
+});
+
+test('the frontend never reaches the API through a relative URL', async () => {
+    // 배포에서는 정적 호스트(Pages)와 API(Render)가 서로 다른 출처다.
+    // 상대 경로로 부르면 요청이 정적 호스트로 가서 405가 돌아오고,
+    // 화면에는 원인을 알 수 없는 "실패했습니다"만 남는다.
+    const scripts = (await readdir('js')).filter(name => name.endsWith('.js'));
+    assert.ok(scripts.length > 0, 'js 디렉터리에 스크립트가 있어야 한다');
+
+    for (const name of scripts) {
+        const source = await readFile(path.join('js', name), 'utf8');
+        const relativeCalls = source.match(/fetch\(\s*['"`]\/api\//g) || [];
+        assert.deepEqual(
+            relativeCalls,
+            [],
+            `js/${name}은 API_BASE_URL을 거쳐 절대 주소로 호출해야 한다`
+        );
+    }
+
+    // 로그인 화면은 core.js를 싣지 않으므로 config.js를 직접 실어야
+    // window.API_BASE_URL이 생긴다.
+    const loginHtml = await readFile('admin-login.html', 'utf8');
+    assert.match(loginHtml, /<script[^>]+src="[^"]*js\/config\.js"/);
+});
+
+test('admin requests carry the session cookie across sites', async () => {
+    // HttpOnly 세션 쿠키는 요청이 credentials를 실어야만 다른 출처로 오간다.
+    const core = await readFile('js/core.js', 'utf8');
+    assert.match(core, /fetch\(buildApiUrl\(path\), \{[\s\S]{0,240}credentials:\s*'include'/);
+
+    const login = await readFile('js/admin-login.js', 'utf8');
+    assert.match(login, /credentials:\s*'include'/);
 });

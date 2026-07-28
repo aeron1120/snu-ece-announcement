@@ -314,6 +314,8 @@ function getBannerManageHeaders(tokenOverride = '') {
 async function apiRequest(path, options = {}) {
     const response = await fetch(buildApiUrl(path), {
         ...options,
+        // 관리자 세션 쿠키는 API가 다른 사이트에 있어도 따라가야 한다.
+        credentials: 'include',
         headers: {
             'Content-Type': 'application/json',
             ...(options.headers || {})
@@ -1198,6 +1200,33 @@ function renderPosterTitle(value) {
         .join('');
 }
 
+/* 미리보기는 position: fixed라 한 번 자리를 잡으면 화면에 붙어 버린다.
+   그 상태로 페이지를 스크롤하면 카드만 움직여 둘 사이 간격이 계속 벌어진다.
+   그래서 스크롤 중에는 붙잡아 둔 카드를 기준으로 자리를 다시 잡는다. */
+let hoverPreviewAnchorCard = null;
+let hoverPreviewFollowFrame = 0;
+
+function followNoticeHoverPreview() {
+    if (hoverPreviewFollowFrame) return;
+    hoverPreviewFollowFrame = requestAnimationFrame(() => {
+        hoverPreviewFollowFrame = 0;
+        const preview = document.getElementById('notice-hover-preview');
+        if (!preview || preview.hidden || !hoverPreviewAnchorCard?.isConnected) return;
+        // 기준 카드가 화면 밖으로 나가면 미리보기도 따라 사라진다.
+        const rect = hoverPreviewAnchorCard.getBoundingClientRect();
+        if (rect.bottom < 0 || rect.top > window.innerHeight) {
+            suspendNoticeHoverPreview();
+            return;
+        }
+        positionNoticeHoverPreview(hoverPreviewAnchorCard);
+    });
+}
+
+function watchNoticeHoverPreviewScroll() {
+    window.addEventListener('scroll', followNoticeHoverPreview, { passive: true });
+    window.addEventListener('resize', followNoticeHoverPreview, { passive: true });
+}
+
 function positionNoticeHoverPreview(card) {
     const preview = document.getElementById('notice-hover-preview');
     if (!preview || !card) return;
@@ -1236,6 +1265,7 @@ function renderNoticeHoverPreview(notice, card) {
             </ul>
         </div>
     `;
+    hoverPreviewAnchorCard = card;
     preview.hidden = false;
     requestAnimationFrame(() => {
         positionNoticeHoverPreview(card);
@@ -1269,6 +1299,7 @@ function cancelNoticeHoverPreview(noticeId) {
     clearTimeout(noticeHoverPreviewTimer);
     noticeHoverPreviewTimer = null;
     activeHoverPreviewNoticeId = '';
+    hoverPreviewAnchorCard = null;
     const preview = document.getElementById('notice-hover-preview');
     if (!preview) return;
     preview.classList.remove('visible');
@@ -1281,6 +1312,7 @@ function suspendNoticeHoverPreview() {
     clearTimeout(noticeHoverPreviewTimer);
     noticeHoverPreviewTimer = null;
     activeHoverPreviewNoticeId = '';
+    hoverPreviewAnchorCard = null;
     const preview = document.getElementById('notice-hover-preview');
     if (!preview) return;
     preview.classList.remove('visible');
@@ -2369,8 +2401,11 @@ async function openDetail(idStr) {
     source.innerHTML = notice.sourceUrl
         ? `<a href="${escapeHtml(safeHttpUrl(notice.sourceUrl))}" target="_blank" rel="noopener noreferrer">ECE 원문 열기</a>`
         : '';
-    attachmentList.innerHTML = attachments.map(file =>
-        `<li><a href="${escapeHtml(safeHttpUrl(file.url))}" target="_blank" rel="noopener noreferrer">${escapeHtml(file.name || '첨부파일')}</a></li>`
+    // 첨부는 서버를 거쳐 받는다. ECE 홈페이지가 Referer를 보고 막기 때문에
+    // 원문 주소를 그대로 걸면 브라우저에서 전부 404가 난다.
+    attachmentList.innerHTML = attachments.map((file, index) =>
+        `<li><a href="${escapeHtml(buildApiUrl(`/api/notices/${encodeURIComponent(notice.id)}/attachments/${index}`))}"
+                rel="noopener">${escapeHtml(file.name || '첨부파일')}</a></li>`
     ).join('');
     sourceArea.hidden = !notice.sourceUrl && attachments.length === 0;
 
@@ -2471,19 +2506,27 @@ function showSplitDropOverlay({ ignoreLimit = false } = {}) {
     // 새로 담을 때만 개수를 따진다. 이미 담긴 블록을 옮기는 경우는 예외다.
     if (!ignoreLimit && compareBlocks.length >= maxCompareBlocks()) return;
     overlay.hidden = false;
-    requestAnimationFrame(() => overlay.classList.add('visible'));
+    const trash = document.getElementById('split-trash-overlay');
+    if (trash) trash.hidden = false;
+    requestAnimationFrame(() => {
+        overlay.classList.add('visible');
+        trash?.classList.add('visible');
+    });
 }
 
 function hideSplitDropOverlay() {
     const overlay = document.getElementById('split-drop-overlay');
+    const trash = document.getElementById('split-trash-overlay');
     overlay?.classList.remove('visible');
-    overlay?.querySelectorAll('.split-drop-zone.active').forEach(zone => zone.classList.remove('active'));
+    trash?.classList.remove('visible');
+    document.querySelectorAll('.split-drop-zone.active').forEach(zone => zone.classList.remove('active'));
     document.querySelectorAll('.compare-empty-slot.active')
         .forEach(zone => zone.classList.remove('active'));
     document.getElementById('compare-space')?.classList.remove('is-notice-drop-active');
     document.getElementById('spatial-workspace')?.classList.remove('is-notice-drop-active');
     window.setTimeout(() => {
         if (overlay && !overlay.classList.contains('visible')) overlay.hidden = true;
+        if (trash && !trash.classList.contains('visible')) trash.hidden = true;
     }, 120);
 }
 
@@ -2609,7 +2652,8 @@ function onNoticeHandlePointerMove(event) {
     const target = document.elementFromPoint?.(event.clientX, event.clientY)
         ?.closest?.('.split-drop-zone, .compare-empty-slot');
     pointerNoticeDrag.placement = target?.dataset?.splitSide || target?.dataset?.placement || '';
-    if (['left', 'right'].includes(pointerNoticeDrag.placement)) target.classList.add('active');
+    // 왼쪽·오른쪽·휴지통 셋 다 표적이다.
+    if (['left', 'right', 'trash'].includes(pointerNoticeDrag.placement)) target.classList.add('active');
 }
 
 function onNoticeHandlePointerEnd(event) {
@@ -2633,10 +2677,16 @@ function onNoticeHandlePointerEnd(event) {
     document.body.classList.remove('notice-dragging');
     noticeSplitDragOverlay?.remove();
     noticeSplitDragOverlay = null;
+    document.getElementById('compare-trash-zone')?.classList.remove('active');
     if (['left', 'right'].includes(drag.placement)) {
         activeNoticeSplitDragId = drag.id;
         applyPendingNoticeSplit(drag.placement);
     } else {
+        // 휴지통에 버렸거나 빈 곳에 놓았으면 담지 않는다.
+        // 이미 담겨 있던 공지를 휴지통에 버린 경우에는 빼 준다.
+        if (drag.placement === 'trash' && compareBlocks.includes(String(drag.id))) {
+            removeFromCompareBlock(String(drag.id));
+        }
         hideSplitDropOverlay();
         activeNoticeSplitDragId = '';
     }
@@ -2700,7 +2750,14 @@ async function finishNoticeBlockAddition(id) {
 
 async function applyPendingNoticeSplit(placement) {
     const id = String(activeNoticeSplitDragId || '');
-    if (!id || !['left', 'right'].includes(placement)) return;
+    if (!id) return;
+    if (placement === 'trash') {
+        hideSplitDropOverlay();
+        activeNoticeSplitDragId = '';
+        if (compareBlocks.includes(id)) removeFromCompareBlock(id);
+        return;
+    }
+    if (!['left', 'right'].includes(placement)) return;
     const hadWorkspace = compareWorkspaceOpen && compareBlocks.length > 0;
     hideSplitDropOverlay();
     activeNoticeSplitDragId = '';
@@ -2883,7 +2940,7 @@ function onCompareHandlePointerEnd(event) {
     const shouldRemove = document.getElementById('compare-trash-zone')?.classList.contains('active');
     const splitSide = pointerCompareSplitSide;
     cleanupComparePointerDrag();
-    if (sourceId && shouldRemove) {
+    if (sourceId && (shouldRemove || splitSide === 'trash')) {
         removeFromCompareBlock(sourceId);
     } else if (sourceId && ['left', 'right'].includes(splitSide)) {
         redockCompareBlock(sourceId, splitSide);
@@ -3358,6 +3415,7 @@ document.addEventListener('DOMContentLoaded', async function () {
     startRailClock();
     initializeFooter();
     watchNoticeSortThumb();
+    watchNoticeHoverPreviewScroll();
 
     await Promise.all([loadData(), loadCategories()]);
     const initialNoticePage = restoreNoticeListStateFromUrl();
