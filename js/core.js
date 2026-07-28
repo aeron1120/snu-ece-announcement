@@ -60,6 +60,8 @@ let noticeDragInProgress = false;
 let suppressNoticeClickUntil = 0;
 let pointerNoticeDrag = null;
 let pointerDraggedCompareId = '';
+// 놓인 블록을 다시 잡아 끌 때 지금 가리키고 있는 위쪽 표적('left'/'right').
+let pointerCompareSplitSide = '';
 let pointerDraggedComparePointerId = null;
 let pointerDragHandle = null;
 let compareDragOverlay = null;
@@ -175,6 +177,8 @@ function setLayoutMode(mode) {
     // 푸터는 뷰마다 관리자 버튼 노출과 동기화 문구가 다르다.
     syncFooterAdminLink();
     refreshFooterSyncStatus();
+    // 뷰가 바뀌면 정렬 버튼 폭도 바뀌므로 활성 알약을 다시 맞춘다.
+    syncNoticeSortChips();
     if (document.body?.dataset.page === 'public' && document.getElementById('notice-grid')) {
         renderNoticeCards();
     }
@@ -732,6 +736,9 @@ function restartBannerRotationIfIdle() {
 function startBannerSwipe(event) {
     if (event.isPrimary === false || event.button > 0) return;
     if (bannerRenderedCount < 2) return;
+    // 화살표나 점을 누른 것이라면 끌기를 시작하지 않는다. 여기서 포인터를
+    // 붙잡으면 이어지는 pointerup이 무대로 끌려가 버튼의 click이 사라진다.
+    if (event.target.closest?.('.rail-ad-controls, .rail-ad-status')) return;
     const stage = event.currentTarget;
     bannerSwipePointerId = event.pointerId;
     bannerSwipeStartX = event.clientX;
@@ -1722,11 +1729,41 @@ function syncNoticeListUrl(page = 1) {
 }
 
 function syncNoticeSortChips() {
+    let activeButton = null;
     document.querySelectorAll('#notice-sort-chips [data-sort]').forEach(button => {
         const active = button.dataset.sort === filterState.sort;
         button.classList.toggle('active', active);
         button.setAttribute('aria-pressed', active ? 'true' : 'false');
+        if (active) activeButton = button;
     });
+    moveNoticeSortThumb(activeButton);
+}
+
+/* 활성 알약을 고른 버튼 위로 옮긴다. 폭과 위치만 인라인으로 주고 실제
+   움직임은 CSS transition이 맡으므로 매 프레임 계산이 없다. */
+function moveNoticeSortThumb(activeButton) {
+    const thumb = document.getElementById('notice-sort-thumb');
+    const group = document.getElementById('notice-sort-chips');
+    if (!thumb || !group || !activeButton) return;
+    // 화면에 없으면 폭이 0이라 엉뚱한 자리에 붙는다. 보일 때 다시 맞춘다.
+    if (!activeButton.offsetWidth) {
+        thumb.classList.remove('is-ready');
+        return;
+    }
+    thumb.style.width = `${activeButton.offsetWidth}px`;
+    thumb.style.transform = `translateX(${activeButton.offsetLeft - group.clientLeft}px)`;
+    // 첫 배치는 미끄러지지 않게 한 프레임 뒤에 전환을 켠다.
+    if (!thumb.classList.contains('is-ready')) {
+        requestAnimationFrame(() => thumb.classList.add('is-ready'));
+    }
+}
+
+// 글꼴이 늦게 오거나 창 크기가 바뀌면 버튼 폭이 달라지므로 알약을 다시 맞춘다.
+function watchNoticeSortThumb() {
+    if (!document.getElementById('notice-sort-chips')) return;
+    const resync = () => syncNoticeSortChips();
+    window.addEventListener('resize', resync);
+    document.fonts?.ready?.then(resync);
 }
 
 function setNoticeSort(sort) {
@@ -2428,9 +2465,11 @@ function maxCompareBlocks() {
         : DESKTOP_MAX_COMPARE_BLOCKS;
 }
 
-function showSplitDropOverlay() {
+function showSplitDropOverlay({ ignoreLimit = false } = {}) {
     const overlay = document.getElementById('split-drop-overlay');
-    if (!overlay || maxCompareBlocks() === 0 || compareBlocks.length >= maxCompareBlocks()) return;
+    if (!overlay || maxCompareBlocks() === 0) return;
+    // 새로 담을 때만 개수를 따진다. 이미 담긴 블록을 옮기는 경우는 예외다.
+    if (!ignoreLimit && compareBlocks.length >= maxCompareBlocks()) return;
     overlay.hidden = false;
     requestAnimationFrame(() => overlay.classList.add('visible'));
 }
@@ -2516,14 +2555,38 @@ function activatePointerNoticeDrag(event) {
     noticeDragInProgress = true;
     activeNoticeSplitDragId = pointerNoticeDrag.id;
     document.body.classList.add('notice-dragging');
-    const notice = notices.find(item => String(item.id) === pointerNoticeDrag.id);
     noticeSplitDragOverlay?.remove();
-    noticeSplitDragOverlay = document.createElement('div');
-    noticeSplitDragOverlay.className = 'notice-split-drag-overlay is-pointer-overlay';
-    noticeSplitDragOverlay.textContent = notice?.title || '공지';
+    noticeSplitDragOverlay = createNoticeDragGhost(pointerNoticeDrag.id, pointerNoticeDrag.handle);
+    noticeSplitDragOverlay.classList.add('is-pointer-overlay');
     document.body.appendChild(noticeSplitDragOverlay);
     showSplitDropOverlay();
     positionNoticePointerOverlay(event.clientX, event.clientY);
+}
+
+/* 끌고 다니는 분신. 제목만 떠다니면 무엇을 집었는지 알기 어려우므로
+   포스터와 본문까지 그대로 복제해 카드를 든 느낌을 준다.
+   복제는 집는 순간 한 번만 하고, 이후에는 transform만 바꾸므로
+   매 프레임 레이아웃을 다시 계산하지 않는다. */
+function createNoticeDragGhost(id, handle) {
+    const ghost = document.createElement('div');
+    ghost.className = 'notice-split-drag-overlay';
+
+    const card = handle?.closest?.('.card')
+        || document.querySelector(`#notice-grid .card[data-notice-id="${CSS.escape(String(id))}"]`);
+    const poster = card?.querySelector('.card-poster')?.cloneNode(true);
+    const body = card?.querySelector('.card-body')?.cloneNode(true);
+
+    if (poster || body) {
+        // 지연 로드가 끝나지 않은 포스터는 빈 칸으로 복제되므로 원본 주소를 옮겨 준다.
+        poster?.querySelectorAll('img[data-thumbnail-src]').forEach(image => {
+            if (!image.getAttribute('src')) image.src = image.dataset.thumbnailSrc;
+        });
+        if (poster) ghost.appendChild(poster);
+        if (body) ghost.appendChild(body);
+    } else {
+        ghost.textContent = notices.find(item => String(item.id) === String(id))?.title || '공지';
+    }
+    return ghost;
 }
 
 function positionNoticePointerOverlay(clientX, clientY) {
@@ -2770,6 +2833,9 @@ function onCompareHandlePointerDown(event, id) {
     createCompareDragOverlay(block).classList.add('is-pointer-overlay');
     block?.classList.add('is-dragging');
     document.body.classList.add('reordering-compare-block');
+    // 이미 놓은 블록도 다시 잡아 왼쪽·오른쪽으로 옮길 수 있어야 한다.
+    // 자리를 새로 만드는 게 아니라 옮기는 것이므로 개수 제한은 보지 않는다.
+    showSplitDropOverlay({ ignoreLimit: true });
     positionComparePointerOverlay(event.clientX, event.clientY);
     document.addEventListener('pointermove', onCompareHandlePointerMove, { passive: false });
     document.addEventListener('pointerup', onCompareHandlePointerEnd);
@@ -2784,6 +2850,18 @@ function onCompareHandlePointerMove(event) {
     const trash = hoveredElement?.closest?.('#compare-trash-zone');
     const trashZone = document.getElementById('compare-trash-zone');
     trashZone?.classList.toggle('active', Boolean(trash));
+
+    // 위쪽 표적 위에 있으면 그 자리로 옮긴다는 뜻이다.
+    document.querySelectorAll('.split-drop-zone.active')
+        .forEach(zone => zone.classList.remove('active'));
+    const splitZone = trash ? null : hoveredElement?.closest?.('.split-drop-zone');
+    pointerCompareSplitSide = splitZone?.dataset?.splitSide || '';
+    if (splitZone) {
+        splitZone.classList.add('active');
+        clearCompareDropIndicator();
+        return;
+    }
+
     if (trash) {
         clearCompareDropIndicator();
         return;
@@ -2803,12 +2881,33 @@ function onCompareHandlePointerEnd(event) {
     const targetId = activeCompareDropTargetId;
     const position = activeCompareDropPosition;
     const shouldRemove = document.getElementById('compare-trash-zone')?.classList.contains('active');
+    const splitSide = pointerCompareSplitSide;
     cleanupComparePointerDrag();
     if (sourceId && shouldRemove) {
         removeFromCompareBlock(sourceId);
+    } else if (sourceId && ['left', 'right'].includes(splitSide)) {
+        redockCompareBlock(sourceId, splitSide);
     } else if (sourceId && targetId && sourceId !== targetId) {
         moveCompareBlock(sourceId, targetId, compareBlocks.length === 2 ? 'swap' : position);
     }
+}
+
+/* 이미 놓인 블록을 다시 잡아 왼쪽·오른쪽으로 옮긴다.
+   블록이 하나면 화면에서 서는 쪽이 바뀌고, 여럿이면 순서의 맨 앞·맨 뒤로 간다. */
+function redockCompareBlock(id, side) {
+    const target = String(id);
+    if (!compareBlocks.includes(target)) return;
+
+    if (compareBlocks.length === 1) {
+        if (compareDockSide === side) return;
+        compareDockSide = side;
+    } else {
+        compareBlocks = compareBlocks.filter(blockId => blockId !== target);
+        if (side === 'left') compareBlocks.unshift(target);
+        else compareBlocks.push(target);
+        compareLayoutMode = 'columns';
+    }
+    renderCompareChange();
 }
 
 function cleanupComparePointerDrag(event) {
@@ -2826,8 +2925,10 @@ function cleanupComparePointerDrag(event) {
     pointerDraggedCompareId = '';
     pointerDraggedComparePointerId = null;
     pointerDragHandle = null;
+    pointerCompareSplitSide = '';
     document.body.classList.remove('reordering-compare-block');
     document.getElementById('compare-trash-zone')?.classList.remove('active');
+    hideSplitDropOverlay();
     document.querySelector('.compare-col.is-dragging')?.classList.remove('is-dragging');
     clearCompareDropIndicator();
     compareDragOverlay?.remove();
@@ -3256,6 +3357,7 @@ document.addEventListener('DOMContentLoaded', async function () {
     updateBellState();
     startRailClock();
     initializeFooter();
+    watchNoticeSortThumb();
 
     await Promise.all([loadData(), loadCategories()]);
     const initialNoticePage = restoreNoticeListStateFromUrl();

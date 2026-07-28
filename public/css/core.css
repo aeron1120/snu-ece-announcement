@@ -226,7 +226,27 @@ body {
     letter-spacing: 0.08em;
     text-align: center;
 }
-.brand-site-name { margin: 0; font-family: var(--serif); font-weight: 700; line-height: 1.6; text-align: center; }
+/* 서비스 워드마크. 레일 폭에 맞춰 줄고 위아래 여백만 갖는다. */
+.brand-wordmark {
+    display: block;
+    width: 100%;
+    max-width: 176px;
+    height: auto;
+    margin: -4px auto 2px;
+    -webkit-user-drag: none;
+}
+.brand-site-name[hidden] { display: none; }
+/* 한 줄로 둔다. 레일 폭이 좁아도 줄이 접히지 않게 글자 크기를 조인다. */
+.brand-site-name {
+    margin: 0;
+    font-family: var(--serif);
+    font-size: 17px;
+    font-weight: 700;
+    line-height: 1.6;
+    letter-spacing: -0.01em;
+    text-align: center;
+    white-space: nowrap;
+}
 .brand-links { display: flex; flex-direction: column; align-items: stretch; gap: 10px; }
 .brand-links a,
 .brand-links button {
@@ -378,7 +398,8 @@ body {
 .rail-ad-controls {
     position: absolute;
     inset: 0;
-    z-index: 3;
+    /* 배너 링크(.rail-ad-link)보다 위에 있어야 클릭이 버튼에 닿는다. */
+    z-index: 5;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -422,7 +443,7 @@ body {
     right: 0;
     bottom: 10px;
     left: 0;
-    z-index: 3;
+    z-index: 5;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -842,6 +863,7 @@ body {
     margin: 14px 0 18px;
 }
 .notice-sort-chips {
+    position: relative;
     display: flex;
     align-items: center;
     gap: 2px;
@@ -863,11 +885,29 @@ body {
     transition: color 140ms ease, background-color 140ms ease,
         box-shadow 140ms ease, transform 120ms ease;
 }
-.notice-sort-chips button:hover { color: var(--primary); background: rgba(255, 255, 255, 0.72); }
-.notice-sort-chips button.active {
-    color: var(--primary-deep);
-    background: white;
+/* 미끄러지는 활성 알약. 버튼 배경 대신 이 하나가 자리를 옮긴다. */
+.notice-sort-thumb {
+    position: absolute;
+    top: 2px;
+    left: 0;
+    z-index: 0;
+    height: calc(100% - 4px);
+    background: #fff;
+    border-radius: 6px;
     box-shadow: 0 1px 5px rgba(20, 43, 88, 0.12);
+    pointer-events: none;
+    will-change: transform;
+}
+/* 첫 배치에서는 미끄러지지 않고, 그 다음 전환부터 움직인다. */
+.notice-sort-thumb.is-ready {
+    transition: transform 260ms cubic-bezier(0.32, 0.72, 0.24, 1),
+        width 260ms cubic-bezier(0.32, 0.72, 0.24, 1);
+}
+.notice-sort-chips button { position: relative; z-index: 1; }
+.notice-sort-chips button:hover { color: var(--primary); }
+.notice-sort-chips button.active { color: var(--primary-deep); }
+@media (prefers-reduced-motion: reduce) {
+    .notice-sort-thumb.is-ready { transition: none; }
 }
 .notice-sort-chips button:active { transform: scale(0.97); }
 .notice-sort-chips button:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
@@ -1094,15 +1134,15 @@ body {
     -webkit-line-clamp: 2;
 }
 .card-meta {
-    display: flex; align-items: center; justify-content: flex-end; gap: 8px;
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
     min-width: 0;
     font-size: 11.5px; color: var(--text-sub);
     margin-top: auto; padding-top: 8px;
     font-variant-numeric: tabular-nums;
 }
-/* 조회수는 오른쪽 끝에 붙고 줄어들지 않는다. 리워드 칩은 그 바로 왼쪽에
-   맞붙어 서고, 자리가 모자라면 조회수 대신 칩이 줄어든다. */
-.view-count { flex: 0 0 auto; white-space: nowrap; }
+/* 리워드 칩은 줄 왼쪽 끝에서 시작하고, 조회수는 오른쪽 끝에 붙어 줄어들지
+   않는다. 자리가 모자라면 조회수 대신 칩이 줄어든다. */
+.view-count { flex: 0 0 auto; margin-left: auto; white-space: nowrap; }
 
 /* 데스크톱 마우스 사용 환경에서만 잠시 머문 공지를 가볍게 펼쳐 보여준다. */
 .notice-hover-preview {
@@ -1456,29 +1496,48 @@ body.notice-dragging .notice-hover-preview { display: none !important; }
     background: #e4eaf5;
     border-color: var(--primary);
 }
+/* 카드를 통째로 든 분신. 복제는 한 번뿐이고 움직임은 transform만 쓴다. */
 .notice-split-drag-overlay {
     position: fixed;
     top: -10000px;
     left: -10000px;
     z-index: 2400;
-    width: min(320px, 70vw);
-    padding: 13px 15px;
+    width: min(232px, 62vw);
+    max-height: 320px;
+    padding: 0;
     overflow: hidden;
     color: var(--primary-deep);
-    background: rgba(255,255,255,0.97);
+    background: rgba(255,255,255,0.98);
     border: 1px solid rgba(30, 64, 137, 0.22);
     border-radius: 5px;
-    box-shadow: 0 12px 30px rgba(15, 23, 42, 0.18);
+    box-shadow: 0 14px 34px rgba(15, 23, 42, 0.22);
     font-size: 14px;
     font-weight: 750;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-    opacity: 0.92;
+    will-change: transform;
+    /* 분신 안에서는 잘라내기만 하고 다시 배치하지 않는다. */
+    contain: layout paint;
+    opacity: 0.94;
     pointer-events: none;
 }
 .notice-split-drag-overlay.is-pointer-overlay {
     top: 0;
     left: 0;
+}
+/* 분신 안의 포스터와 본문은 카드보다 작게 눌러 담는다. */
+.notice-split-drag-overlay .card-poster { height: 132px; margin: 0; }
+.notice-split-drag-overlay .card-poster img { width: 100%; height: 100%; object-fit: cover; }
+.notice-split-drag-overlay .card-body {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    padding: 11px 13px 13px;
+}
+.notice-split-drag-overlay .card-excerpt,
+.notice-split-drag-overlay .card-meta,
+.notice-split-drag-overlay .card-block-controls { display: none; }
+.notice-split-drag-overlay .card-title {
+    font-size: 13.5px;
+    -webkit-line-clamp: 2;
 }
 
 .spatial-workspace.is-split {

@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="ko">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#163f91">
+    <title>업데이트 내역 | SNU ECE 공지방</title>
+    <link rel="stylesheet" href="./css/service-guide.css">
+    <link rel="stylesheet" href="./css/changelog.css">
+</head>
+<body>
+    <main class="guide-shell">
+        <a class="guide-back" href="./index.html"><span aria-hidden="true">‹</span>공지 목록</a>
+        <p class="guide-kicker">CHANGELOG</p>
+        <h1>업데이트 내역</h1>
+        <p class="guide-lead">서비스에 무엇이 바뀌었는지 최근 것부터 정리합니다. 약관과 개인정보처리방침이 바뀌면 이곳에도 남깁니다.</p>
+
+        <!-- 항목을 추가할 때는 이 목록 맨 위에 <li class="changelog-entry">를 넣는다.
+             태그는 added(추가) / changed(개선) / fixed(수정) / policy(정책) 넷을 쓴다. -->
+        <ol class="changelog-list" id="changelog-list">
+            <li class="changelog-entry">
+                <div class="changelog-date"><time datetime="2026-07-29">2026.07.29</time></div>
+                <div class="changelog-body">
+                    <h2>관리자 역할 분리와 문서 페이지 추가</h2>
+                    <ul>
+                        <li><span class="changelog-tag is-added">추가</span>이용약관·개인정보처리방침·업데이트 내역 페이지를 열었습니다.</li>
+                        <li><span class="changelog-tag is-changed">개선</span>관리자를 공지·배너·마스터 세 역할로 나누고 역할에 맞는 화면만 보이도록 했습니다.</li>
+                        <li><span class="changelog-tag is-changed">개선</span>공지 목록에서 리워드를 조회수와 같은 줄로 옮기고, 문구가 길면 흐르게 했습니다.</li>
+                        <li><span class="changelog-tag is-changed">개선</span>&ldquo;결과 N건&rdquo;은 검색하거나 필터를 걸었을 때만 나타납니다.</li>
+                    </ul>
+                </div>
+            </li>
+            <li class="changelog-entry">
+                <div class="changelog-date"><time datetime="2026-07-28">2026.07.28</time></div>
+                <div class="changelog-body">
+                    <h2>배너와 하단 정보 개편</h2>
+                    <ul>
+                        <li><span class="changelog-tag is-fixed">수정</span>오른쪽 홍보 배너가 레일을 끝까지 채우지 못하던 문제를 고쳤습니다.</li>
+                        <li><span class="changelog-tag is-changed">개선</span>배너를 손가락으로 끌어 넘길 수 있고, 마지막에서 처음으로 이어집니다.</li>
+                        <li><span class="changelog-tag is-added">추가</span>하단에 마지막 수집 시각과 수집한 공지 건수를 표시합니다.</li>
+                        <li><span class="changelog-tag is-fixed">수정</span>공지 상세에서 사진이 의도치 않게 확대되던 동작을 &lsquo;크게 보기&rsquo; 버튼으로 바꿨습니다.</li>
+                    </ul>
+                </div>
+            </li>
+            <li class="changelog-entry">
+                <div class="changelog-date"><time datetime="2026-07-27">2026.07.27</time></div>
+                <div class="changelog-body">
+                    <h2>공지 자동 수집 시작</h2>
+                    <ul>
+                        <li><span class="changelog-tag is-added">추가</span>전기·정보공학부 학사 공지를 자동으로 모아 검수 후 게시합니다.</li>
+                        <li><span class="changelog-tag is-added">추가</span>AI 3줄 요약과 마감 임박 표시를 제공합니다.</li>
+                        <li><span class="changelog-tag is-policy">정책</span>학내 홍보는 무료이며 검토를 거쳐 게재합니다.</li>
+                    </ul>
+                </div>
+            </li>
+        </ol>
+    </main>
+</body>
+</html>

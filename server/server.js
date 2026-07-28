@@ -204,8 +204,32 @@ const defaultSecuritySettings = {
     adminInfo: { ...defaultAdminInfo },
     bannerInfo: { ...defaultBannerInfo },
     bannerPassword: process.env.BANNER_ADMIN_PASSWORD || '',
-    adminTokenHash: hashToken(initialNoticeAdminToken)
+    adminTokenHash: hashToken(initialNoticeAdminToken),
+    // 배너·마스터 관리자도 공지 관리자와 같은 방식으로 해시만 보관한다.
+    bannerTokenHash: hashToken(process.env.BANNER_ADMIN_PASSWORD || ''),
+    masterTokenHash: hashToken(process.env.SUPER_ADMIN_TOKEN || process.env.ADMIN_TOKEN || '')
 };
+
+/* 관리자 역할.
+   master  — 모든 화면. 배너를 보려고 비밀번호를 또 넣지 않는다.
+   notice  — 검수 대기 · 공지 추가하기 · 공지 목록.
+   banner  — 배너 관리(배너 문의 포함). */
+const ADMIN_ROLES = Object.freeze(['master', 'notice', 'banner']);
+
+function roleCredentialHash(settings, role) {
+    const safe = settings || defaultSecuritySettings;
+    if (role === 'notice') return safe.adminTokenHash || defaultSecuritySettings.adminTokenHash;
+    if (role === 'banner') return safe.bannerTokenHash || defaultSecuritySettings.bannerTokenHash;
+    if (role === 'master') return safe.masterTokenHash || defaultSecuritySettings.masterTokenHash;
+    return '';
+}
+
+// 마스터는 다른 두 역할의 권한을 모두 품는다.
+function roleSatisfies(role, required) {
+    if (!role) return false;
+    if (role === 'master') return true;
+    return role === required;
+}
 
 app.disable('x-powered-by');
 app.set('trust proxy', 1);
@@ -314,34 +338,52 @@ function clearAdminSessionCookie(res) {
     );
 }
 
-async function hasValidAdminSession(req) {
+/* 세션이 살아 있고, 그 세션이 들고 있는 자격 증명이 지금 저장된 값과
+   같은지 본다. 비밀번호를 바꾸면 이전 세션은 자동으로 끊긴다. */
+async function resolveAdminSession(req) {
     const session = getAdminSession(req);
-    if (!session) return false;
+    if (!session) return null;
     const settings = await getSecuritySettings();
-    const expectedHash = settings?.adminTokenHash || defaultSecuritySettings.adminTokenHash;
-    if (session.credentialHash !== expectedHash) {
+    const expectedHash = roleCredentialHash(settings, session.role);
+    if (!expectedHash || session.credentialHash !== expectedHash) {
         adminSessions.delete(session.id);
-        return false;
+        return null;
     }
-    return true;
+    return session;
+}
+
+async function hasValidAdminSession(req) {
+    return Boolean(await resolveAdminSession(req));
 }
 
 app.post('/api/admin/session', authenticationLimiter, async (req, res) => {
     try {
         const password = String(req.body?.password || '').trim();
+        const requestedRole = String(req.body?.role || '').trim();
         const settings = await getSecuritySettings();
-        const expectedHash = settings?.adminTokenHash || defaultSecuritySettings.adminTokenHash;
-        if (!password || hashToken(password) !== expectedHash) {
+
+        // 역할을 지정하지 않으면 비밀번호가 맞는 역할을 찾아준다.
+        // 마스터를 먼저 보므로 같은 비밀번호를 쓰면 가장 높은 권한을 받는다.
+        const candidates = ADMIN_ROLES.includes(requestedRole) ? [requestedRole] : ADMIN_ROLES;
+        const matched = password
+            ? candidates.find(role => {
+                const expected = roleCredentialHash(settings, role);
+                return expected && hashToken(password) === expected;
+            })
+            : null;
+
+        if (!matched) {
             return res.status(401).json({ error: '관리자 인증 실패' });
         }
 
         const sessionId = crypto.randomBytes(32).toString('base64url');
         adminSessions.set(sessionId, {
-            credentialHash: expectedHash,
+            role: matched,
+            credentialHash: roleCredentialHash(settings, matched),
             expiresAt: Date.now() + ADMIN_SESSION_TTL_MS
         });
         setAdminSessionCookie(res, sessionId);
-        res.status(201).json({ ok: true, expiresIn: ADMIN_SESSION_TTL_MS / 1000 });
+        res.status(201).json({ ok: true, role: matched, expiresIn: ADMIN_SESSION_TTL_MS / 1000 });
     } catch (error) {
         res.status(500).json({ error: error.message || '관리자 세션 생성 실패' });
     }
@@ -349,10 +391,11 @@ app.post('/api/admin/session', authenticationLimiter, async (req, res) => {
 
 app.get('/api/admin/session', async (req, res) => {
     try {
-        if (!await hasValidAdminSession(req)) {
+        const session = await resolveAdminSession(req);
+        if (!session) {
             return res.status(401).json({ authenticated: false });
         }
-        res.json({ authenticated: true });
+        res.json({ authenticated: true, role: session.role });
     } catch (error) {
         res.status(500).json({ error: error.message || '관리자 세션 확인 실패' });
     }
@@ -447,7 +490,15 @@ async function readSettingsFile() {
                 kakao: String(parsed?.bannerInfo?.kakao || defaultBannerInfo.kakao)
             },
             bannerPassword: String(parsed?.bannerPassword || defaultSecuritySettings.bannerPassword),
-            adminTokenHash: String(parsed?.adminTokenHash || defaultSecuritySettings.adminTokenHash)
+            adminTokenHash: String(parsed?.adminTokenHash || defaultSecuritySettings.adminTokenHash),
+            // 예전 설정 파일에는 배너 비밀번호가 평문으로만 있다. 처음 읽을 때
+            // 그 값을 해시로 옮겨 두 방식이 같은 결과를 내게 한다.
+            bannerTokenHash: String(
+                parsed?.bannerTokenHash
+                || (parsed?.bannerPassword ? hashToken(parsed.bannerPassword) : '')
+                || defaultSecuritySettings.bannerTokenHash
+            ),
+            masterTokenHash: String(parsed?.masterTokenHash || defaultSecuritySettings.masterTokenHash)
         };
     } catch {
         return { ...defaultSecuritySettings, adminInfo: { ...defaultAdminInfo } };
@@ -825,7 +876,9 @@ async function saveSecuritySettings(settings) {
         adminInfo: normalizeAdminInfo(settings?.adminInfo || {}),
         bannerInfo: normalizeBannerInfo(settings?.bannerInfo || {}),
         bannerPassword: String(settings?.bannerPassword || defaultSecuritySettings.bannerPassword),
-        adminTokenHash: String(settings?.adminTokenHash || defaultSecuritySettings.adminTokenHash)
+        adminTokenHash: String(settings?.adminTokenHash || defaultSecuritySettings.adminTokenHash),
+        bannerTokenHash: String(settings?.bannerTokenHash || defaultSecuritySettings.bannerTokenHash),
+        masterTokenHash: String(settings?.masterTokenHash || defaultSecuritySettings.masterTokenHash)
     };
 
     if (!useSupabase) {
@@ -853,56 +906,90 @@ async function saveSecuritySettings(settings) {
     return normalized;
 }
 
-async function requireNoticeAdmin(req, res, next) {
-    try {
-        const token = getHeaderToken(req, 'x-admin-token');
-        const settings = await getSecuritySettings();
-        const expectedHash = settings?.adminTokenHash || defaultSecuritySettings.adminTokenHash;
-        const session = getAdminSession(req);
-        const validHeader = Boolean(token) && hashToken(token) === expectedHash;
-        const validSession = Boolean(session) && session.credentialHash === expectedHash;
-        if (!validHeader && !validSession) {
-            if (session) adminSessions.delete(session.id);
-            return res.status(401).json({ error: '관리자 인증 실패' });
-        }
+/* 필요한 역할을 가진 사람만 통과시킨다. 판단 근거는 로그인 세션이고,
+   헤더 토큰은 세션 없이 도는 스크립트를 위해 남겨 둔 보조 경로다.
+   마스터 세션은 어떤 역할을 요구하든 통과하므로, 배너를 보려고
+   비밀번호를 다시 넣을 일이 없다. */
+function requireAdminRole(requiredRole, failureMessage) {
+    return async function guard(req, res, next) {
+        try {
+            const settings = await getSecuritySettings();
+            const session = getAdminSession(req);
 
-        next();
+            if (session) {
+                const expected = roleCredentialHash(settings, session.role);
+                if (expected && session.credentialHash === expected
+                    && roleSatisfies(session.role, requiredRole)) {
+                    req.adminRole = session.role;
+                    return next();
+                }
+                if (!expected || session.credentialHash !== expected) {
+                    adminSessions.delete(session.id);
+                }
+            }
+
+            // 헤더 토큰은 자기 역할 또는 마스터 비밀번호만 인정한다.
+            const headerName = requiredRole === 'banner'
+                ? 'x-banner-token'
+                : (requiredRole === 'master' ? 'x-super-admin-token' : 'x-admin-token');
+            const token = getHeaderToken(req, headerName);
+            if (token) {
+                const tokenHash = hashToken(token);
+                if (tokenHash === roleCredentialHash(settings, requiredRole)
+                    || tokenHash === roleCredentialHash(settings, 'master')) {
+                    req.adminRole = requiredRole;
+                    return next();
+                }
+            }
+
+            return res.status(401).json({ error: failureMessage });
+        } catch (error) {
+            res.status(500).json({ error: error.message || '관리자 인증 처리 실패' });
+        }
+    };
+}
+
+const requireNoticeAdmin = requireAdminRole('notice', '관리자 인증 실패');
+const requireBannerAdmin = requireAdminRole('banner', '배너 관리자 인증 실패');
+const requireSuperAdmin = requireAdminRole('master', '마스터 관리자 인증 실패');
+
+/* 로그인만 되어 있으면 통과시키고 역할은 req에 실어 보낸다.
+   무엇을 보여줄지는 각 엔드포인트가 역할을 보고 다시 거른다. */
+async function requireAnyAdmin(req, res, next) {
+    try {
+        const session = await resolveAdminSession(req);
+        if (session) {
+            req.adminRole = session.role;
+            return next();
+        }
+        const settings = await getSecuritySettings();
+        for (const role of ADMIN_ROLES) {
+            const headerName = role === 'banner'
+                ? 'x-banner-token'
+                : (role === 'master' ? 'x-super-admin-token' : 'x-admin-token');
+            const token = getHeaderToken(req, headerName);
+            if (token && hashToken(token) === roleCredentialHash(settings, role)) {
+                req.adminRole = role;
+                return next();
+            }
+        }
+        return res.status(401).json({ error: '관리자 인증 실패' });
     } catch (error) {
         res.status(500).json({ error: error.message || '관리자 인증 처리 실패' });
     }
 }
 
-async function requireBannerAdmin(req, res, next) {
-    try {
-        const token = getHeaderToken(req, 'x-banner-token');
-        if (!token) {
-            return res.status(401).json({ error: '배너 관리자 인증 실패' });
-        }
-
-        const settings = await getSecuritySettings();
-        const expected = String(settings?.bannerPassword || defaultSecuritySettings.bannerPassword);
-
-        if (token !== expected) {
-            return res.status(401).json({ error: '배너 관리자 인증 실패' });
-        }
-
-        next();
-    } catch (error) {
-        res.status(500).json({ error: error.message || '배너 관리자 인증 처리 실패' });
-    }
+// 문의함은 마스터만 전부 본다. 배너 관리자에게는 배너 문의만 보인다.
+function visibleFeedbackForRole(items, role) {
+    if (role === 'master') return items;
+    if (role === 'banner') return items.filter(item => item.category === 'banner');
+    return [];
 }
 
-function requireSuperAdmin(req, res, next) {
-    if (!SUPER_ADMIN_TOKEN) {
-        return res.status(500).json({ error: 'SUPER_ADMIN_TOKEN이 설정되지 않았습니다.' });
-    }
-
-    const token = getHeaderToken(req, 'x-super-admin-token');
-    if (!token || token !== SUPER_ADMIN_TOKEN) {
-        return res.status(401).json({ error: '절대 관리자 인증 실패' });
-    }
-
-    next();
+function feedbackKindLabelForStaff(item) {
+    const roles = { notice: '공지 관리자', banner: '배너 관리자', master: '마스터' };
+    const kinds = { bug: '오류 제보', question: '문의', request: '요청' };
+    return `${roles[item.staffRole] || '관리자'} ${kinds[item.staffKind] || '문의'}`;
 }
 
 async function ensureDefaultData() {
@@ -2421,10 +2508,11 @@ app.post('/api/banner-inquiries', bannerInquiryJson, async (req, res) => {
     }
 });
 
-app.get('/api/admin/feedback', requireNoticeAdmin, async (req, res) => {
+app.get('/api/admin/feedback', requireAnyAdmin, async (req, res) => {
     try {
-        const items = await readFeedback();
+        const items = visibleFeedbackForRole(await readFeedback(), req.adminRole);
         res.json({
+            role: req.adminRole,
             feedback: items.map(({ imageDataUrl, ...item }) => ({
                 ...item,
                 hasImage: Boolean(
@@ -2442,9 +2530,9 @@ app.get('/api/admin/feedback', requireNoticeAdmin, async (req, res) => {
     }
 });
 
-app.get('/api/admin/feedback/:id/image', requireNoticeAdmin, async (req, res) => {
+app.get('/api/admin/feedback/:id/image', requireAnyAdmin, async (req, res) => {
     try {
-        const items = await readFeedback();
+        const items = visibleFeedbackForRole(await readFeedback(), req.adminRole);
         const item = items.find(candidate => String(candidate.id) === String(req.params.id));
         if (item?.imageDataUrl) {
             const legacyBuffer = Buffer.from(item.imageDataUrl.slice(item.imageDataUrl.indexOf(',') + 1), 'base64');
@@ -2469,11 +2557,15 @@ app.get('/api/admin/feedback/:id/image', requireNoticeAdmin, async (req, res) =>
     }
 });
 
-app.delete('/api/admin/feedback/:id', requireNoticeAdmin, async (req, res) => {
+app.delete('/api/admin/feedback/:id', requireAnyAdmin, async (req, res) => {
     try {
         const id = String(req.params.id || '');
         const items = await readFeedback();
         const removed = items.find(item => String(item.id) === id);
+        // 자기 역할에 보이지 않는 문의는 지울 수도 없다.
+        if (!removed || !visibleFeedbackForRole([removed], req.adminRole).length) {
+            return res.status(404).json({ error: '문의를 찾을 수 없습니다.' });
+        }
         const next = items.filter(item => String(item.id) !== id);
         await writeFeedback(next);
         const removableImages = [
@@ -2487,6 +2579,113 @@ app.delete('/api/admin/feedback/:id', requireNoticeAdmin, async (req, res) => {
         res.status(204).send();
     } catch (error) {
         res.status(500).json({ error: error.message || '피드백 삭제 실패' });
+    }
+});
+
+/* 문의함을 노션에 붙여 넣을 수 있는 마크다운으로 내보낸다.
+   ids를 주면 그 문의만, 주지 않으면 보이는 문의 전부를 담는다.
+   노션은 표 붙여넣기를 잘 받으므로 목차 표 + 항목별 본문 구조로 만든다. */
+function escapeMarkdownCell(value) {
+    return String(value ?? '').replace(/\|/g, '\\|').replace(/\r?\n/g, ' ');
+}
+
+function feedbackKindLabel(category) {
+    if (category === 'banner') return '홍보 신청';
+    if (category === 'summary_mismatch') return '요약 오류';
+    if (category === 'staff') return '운영진 제보';
+    return '일반 문의';
+}
+
+function buildFeedbackMarkdown(items) {
+    const stamp = new Date().toISOString().slice(0, 16).replace('T', ' ');
+    const lines = [
+        '# SNU ECE 공지방 문의함',
+        '',
+        `> 내보낸 시각: ${stamp} · 총 ${items.length}건`,
+        '',
+        '| # | 종류 | 접수 시각 | 요약 |',
+        '| --- | --- | --- | --- |'
+    ];
+
+    items.forEach((item, index) => {
+        const when = item.createdAt ? String(item.createdAt).slice(0, 16).replace('T', ' ') : '-';
+        const digest = escapeMarkdownCell(String(item.message || '').slice(0, 60));
+        const kind = item.category === 'staff' ? feedbackKindLabelForStaff(item) : feedbackKindLabel(item.category);
+        lines.push(`| ${index + 1} | ${kind} | ${when} | ${digest} |`);
+    });
+
+    lines.push('', '---', '');
+
+    items.forEach((item, index) => {
+        const when = item.createdAt ? String(item.createdAt).replace('T', ' ').slice(0, 19) : '-';
+        lines.push(`## ${index + 1}. ${feedbackKindLabel(item.category)} — ${when}`, '');
+        if (item.inquiry) {
+            const inquiry = item.inquiry;
+            lines.push('| 항목 | 내용 |', '| --- | --- |');
+            lines.push(`| 신청자 | ${escapeMarkdownCell(inquiry.name)} |`);
+            lines.push(`| 소속 | ${escapeMarkdownCell(inquiry.organization)} |`);
+            lines.push(`| 연락처 | ${escapeMarkdownCell(inquiry.phone || inquiry.email)} |`);
+            lines.push(`| 제목 | ${escapeMarkdownCell(inquiry.title)} |`);
+            lines.push(`| 게재 희망 | ${escapeMarkdownCell(`${inquiry.startDate || '-'} ~ ${inquiry.endDate || '-'}`)} |`);
+            if (inquiry.linkUrl) lines.push(`| 링크 | ${escapeMarkdownCell(inquiry.linkUrl)} |`);
+            lines.push('');
+        }
+        if (item.noticeId) lines.push(`- 관련 공지 ID: \`${item.noticeId}\``, '');
+        lines.push(String(item.message || '(내용 없음)').trim(), '');
+    });
+
+    return lines.join('\n');
+}
+
+app.post('/api/admin/feedback/export', requireAnyAdmin, async (req, res) => {
+    try {
+        const visible = visibleFeedbackForRole(await readFeedback(), req.adminRole);
+        const requestedIds = Array.isArray(req.body?.ids)
+            ? req.body.ids.map(String)
+            : null;
+        const selected = requestedIds?.length
+            ? visible.filter(item => requestedIds.includes(String(item.id)))
+            : visible;
+
+        if (!selected.length) {
+            return res.status(400).json({ error: '내보낼 문의가 없습니다.' });
+        }
+
+        res.json({
+            filename: `snu-ece-문의함-${new Date().toISOString().slice(0, 10)}.md`,
+            count: selected.length,
+            markdown: buildFeedbackMarkdown(selected)
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message || '문의 내보내기 실패' });
+    }
+});
+
+/* 공지·배너 관리자가 마스터에게 남기는 내부 제보.
+   문의함에 'staff' 종류로 쌓이고 마스터만 읽는다. */
+app.post('/api/admin/staff-report', requireAnyAdmin, async (req, res) => {
+    try {
+        const message = String(req.body?.message || '').trim();
+        const kind = ['bug', 'question', 'request'].includes(req.body?.kind)
+            ? req.body.kind
+            : 'question';
+        if (message.length < 5) {
+            return res.status(400).json({ error: '내용을 5자 이상 적어주세요.' });
+        }
+
+        const items = await readFeedback();
+        items.unshift({
+            id: `staff-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`,
+            category: 'staff',
+            staffRole: req.adminRole,
+            staffKind: kind,
+            message: message.slice(0, 2000),
+            createdAt: new Date().toISOString()
+        });
+        await writeFeedback(items.slice(0, 1000));
+        res.status(201).json({ ok: true });
+    } catch (error) {
+        res.status(500).json({ error: error.message || '제보 저장 실패' });
     }
 });
 
@@ -2533,8 +2732,9 @@ app.put('/api/settings/passwords', requireSuperAdmin, async (req, res) => {
     try {
         const newNoticeAdminToken = String(req.body?.newNoticeAdminToken || req.body?.newAdminToken || '').trim();
         const newBannerPassword = String(req.body?.newBannerPassword || '').trim();
+        const newMasterPassword = String(req.body?.newMasterPassword || '').trim();
 
-        if (!newNoticeAdminToken && !newBannerPassword) {
+        if (!newNoticeAdminToken && !newBannerPassword && !newMasterPassword) {
             return res.status(400).json({ error: '변경할 비밀번호가 없습니다.' });
         }
 
@@ -2542,14 +2742,19 @@ app.put('/api/settings/passwords', requireSuperAdmin, async (req, res) => {
         const next = {
             ...current,
             adminTokenHash: newNoticeAdminToken ? hashToken(newNoticeAdminToken) : current.adminTokenHash,
-            bannerPassword: newBannerPassword || current.bannerPassword
+            // 평문 bannerPassword는 옛 클라이언트 호환용으로만 남기고
+            // 실제 판단은 해시로 한다.
+            bannerPassword: newBannerPassword || current.bannerPassword,
+            bannerTokenHash: newBannerPassword ? hashToken(newBannerPassword) : current.bannerTokenHash,
+            masterTokenHash: newMasterPassword ? hashToken(newMasterPassword) : current.masterTokenHash
         };
 
         await saveSecuritySettings(next);
         res.json({
             ok: true,
             noticeAdminTokenChanged: Boolean(newNoticeAdminToken),
-            bannerPasswordChanged: Boolean(newBannerPassword)
+            bannerPasswordChanged: Boolean(newBannerPassword),
+            masterPasswordChanged: Boolean(newMasterPassword)
         });
     } catch (error) {
         res.status(500).json({ error: error.message || '비밀번호 변경 실패' });

@@ -89,8 +89,7 @@ test('administrator surfaces live on admin.html, not the public page', async () 
         'review-editor',
         'review-pending-count',
         'panel-compose',
-        'right-rail-slides-list',
-        'category-candidate-list'
+        'right-rail-slides-list'
     ]) {
         assert.match(html, new RegExp(`id="${id}"`));
     }
@@ -288,7 +287,8 @@ test('mobile cards stay compact, keep paging, and disable notice comparison drag
     // 리워드는 뷰별로 마크업을 나누지 않고 한 벌로 조회수 바로 왼쪽에 선다.
     assert.doesNotMatch(mobileCss, /card-mobile-reward|card-desktop-reward/);
     assert.match(await readFile('css/core.css', 'utf8'), /\.card-reward\s*\{[^}]*display:\s*inline-flex/s);
-    assert.match(mobileCss, /\.card-meta\s*\{[^}]*justify-content:\s*flex-end/s);
+    // 리워드는 줄 왼쪽에서 시작하고 조회수는 오른쪽 끝에 붙는다.
+    assert.match(mobileCss, /\.card-meta\s*\{[^}]*justify-content:\s*space-between/s);
     assert.match(renderCards, /class="card-meta"[\s\S]*\$\{rewardHtml\}[\s\S]*class="view-count"/);
     assert.match(mobileCss, /\.notice-pagination\s*\{[^}]*display:\s*flex/s);
     assert.match(mobileCss, /\.card-block-controls,[\s\S]*\.compare-space,[\s\S]*display:\s*none !important/s);
@@ -657,7 +657,9 @@ test('banner inquiries use a dedicated identified submission page and protected 
     assert.match(server, /status: 'pending'/);
     assert.match(server, /exposureDays > 14/);
     assert.match(server, /await createBannerSlide\(normalizeBannerPayload/);
-    assert.match(server, /app\.get\('\/api\/admin\/feedback\/:id\/image', requireNoticeAdmin/);
+    // 배너 관리자도 자기 문의의 첨부는 봐야 하므로 역할로 거른다.
+    assert.match(server, /app\.get\('\/api\/admin\/feedback\/:id\/image', requireAnyAdmin/);
+    assert.match(server, /const items = visibleFeedbackForRole\(await readFeedback\(\), req\.adminRole\)/);
     assert.match(admin, /function openBannerInquiryImage/);
     assert.match(admin, /variant = 'desktop'/);
     assert.match(admin, /class="banner-inquiry-details"/);
@@ -755,7 +757,8 @@ test('Gemini quota errors show only a retry countdown and admin mode has one exi
     assert.match(html, />관리자 모드 나가기<\/button>/);
     assert.doesNotMatch(html, /id="admin-logout"|>로그아웃<|공개 화면으로/);
     assert.match(admin, /getElementById\('admin-mode-exit'\)\.textContent = '관리자 모드 나가기'/);
-    assert.match(admin, /async function exitAdminMode\(\)[\s\S]*fetch\('\/api\/admin\/session', \{ method: 'DELETE' \}\)[\s\S]*location\.replace\('\.\/index\.html'\)/);
+    // 나가면 공개 화면이 아니라 들어왔던 로그인 화면으로 되돌아간다.
+    assert.match(admin, /async function exitAdminMode\(\)[\s\S]*fetch\('\/api\/admin\/session', \{ method: 'DELETE' \}\)[\s\S]*location\.replace\('\/admin'\)/);
 });
 
 test('automatic ECE crawling feeds a live review inbox and original text is black', async () => {
@@ -911,9 +914,13 @@ test('the notice title is assembled from a fixed template instead of free text',
 
     // 저장되는 제목은 hidden 필드이고, 사람이 채우는 건 양식 세 칸이다.
     assert.match(html, /<input type="hidden" id="post-title">/);
-    for (const id of ['title-host', 'title-subject', 'title-kind', 'title-preview', 'title-manual']) {
+    for (const id of ['title-host', 'title-subject', 'title-kind', 'post-title-manual', 'title-manual']) {
         assert.match(html, new RegExp(`id="${id}"`));
     }
+    // 만들어진 제목이 보이는 상자가 곧 고치는 상자다. 별도 입력칸을 두지 않는다.
+    assert.match(html, /class="title-preview is-empty" id="post-title-manual"[\s\S]*readonly/);
+    assert.doesNotMatch(html, /id="title-preview"/);
+    assert.match(readNamedFunction(admin, 'onTitleManualToggle'), /box\.readOnly = !manual/);
 
     const composeSource = readNamedFunction(admin, 'composeNoticeTitle');
     const values = {
@@ -1107,7 +1114,9 @@ test('one fixed block keeps the complete base notice flow in the right half', as
     const css = await readFile('css/core.css', 'utf8');
     const queueSource = readNamedFunction(app, 'queueNoticeHoverPreview');
     const dragSource = readNamedFunction(app, 'onNoticeSplitDragStart');
-    const showDropSource = readNamedFunction(app, 'showSplitDropOverlay');
+    // readNamedFunction은 구조 분해 매개변수의 중괄호에서 멈추므로 직접 잘라 쓴다.
+    const showDropStart = app.indexOf('function showSplitDropOverlay(');
+    const showDropSource = app.slice(showDropStart, app.indexOf('\nfunction ', showDropStart + 1));
     const filterSource = readNamedFunction(app, 'renderNoticeCards');
 
     assert.doesNotMatch(html, /id="split-notice-more"|showMoreSplitNotices/);
@@ -1120,6 +1129,10 @@ test('one fixed block keeps the complete base notice flow in the right half', as
     assert.match(css, /body\.notice-dragging \.notice-hover-preview\s*\{[^}]*display:\s*none !important;/s);
     assert.doesNotMatch(css, /\.split-notice-more/);
     assert.match(showDropSource, /compareBlocks\.length >= maxCompareBlocks\(\)/);
+    // 이미 놓인 블록을 다시 잡아 옮길 때는 개수 제한을 보지 않는다.
+    assert.match(showDropSource, /!ignoreLimit &&/);
+    assert.match(app, /showSplitDropOverlay\(\{ ignoreLimit: true \}\)/);
+    assert.match(readNamedFunction(app, 'redockCompareBlock'), /compareDockSide = side/);
     assert.match(showDropSource, /overlay\.hidden = false/);
     assert.match(css, /\.split-drop-overlay\s*\{[^}]*position:\s*fixed;[^}]*top:\s*16px/s);
 });
@@ -1790,4 +1803,47 @@ test('Cloudflare scheduled worker triggers the protected crawl endpoint', async 
     );
     assert.equal(calls[0].options.method, 'POST');
     assert.equal(calls[0].options.headers['x-crawl-secret'], 'secret');
+});
+
+test('the admin console is usable on a phone and keeps AI editing in reach', async () => {
+    const adminCss = await readFile('css/admin.css', 'utf8');
+    const loginCss = await readFile('css/admin-login.css', 'utf8');
+    const html = await readFile('admin.html', 'utf8');
+    const admin = await readFile('js/admin.js', 'utf8');
+
+    // 폰 폭에서 여러 열 배치를 한 열로 푼다.
+    assert.match(adminCss, /@media \(max-width: 760px\)/);
+    const phoneLayer = adminCss.slice(adminCss.indexOf('@media (max-width: 760px)'));
+    assert.match(phoneLayer, /\.review-layout\s*\{\s*grid-template-columns:\s*minmax\(0, 1fr\)/);
+    assert.match(phoneLayer, /\.review-editor-grid\s*\{\s*grid-template-columns:\s*minmax\(0, 1fr\)/);
+    assert.match(phoneLayer, /\.title-builder-grid,[\s\S]*grid-template-columns:\s*minmax\(0, 1fr\)/);
+    // 탭은 줄바꿈으로 쌓이지 않고 가로로 밀린다.
+    assert.match(phoneLayer, /\.admin-tabs\s*\{[\s\S]*?overflow-x:\s*auto/);
+    // AI 자동 편집은 스크롤과 무관하게 늘 보여야 한다.
+    assert.match(phoneLayer, /\.analyze-bar\s*\{[\s\S]*?position:\s*sticky;[\s\S]*?bottom:\s*8px/);
+    assert.match(phoneLayer, /\.analyze-bar \.btn\s*\{[\s\S]*?min-height:\s*50px/);
+    // 손가락으로 누를 수 있는 크기.
+    assert.match(phoneLayer, /\.admin-tab\s*\{[\s\S]*?min-height:\s*44px/);
+
+    // 로그인 화면도 폰에서 그대로 쓸 수 있어야 한다.
+    assert.match(loginCss, /@media \(max-width: 520px\)/);
+    assert.match(loginCss, /input:not\(\[type="radio"\]\)\s*\{[^}]*font-size:\s*16px/);
+
+    // 직책을 고르는 자리가 로그인 화면에 있다.
+    const loginHtml = await readFile('admin-login.html', 'utf8');
+    for (const role of ['notice', 'banner', 'master']) {
+        assert.match(loginHtml, new RegExp(`name="admin-role" value="${role}"`));
+    }
+
+    // 역할별로 열리는 탭이 코드에 못박혀 있다.
+    assert.match(admin, /master: \['review', 'backfill', 'compose', 'notices', 'banner', 'feedback', 'settings'\]/);
+    assert.match(admin, /notice: \['review', 'backfill', 'compose', 'notices'\]/);
+    assert.match(admin, /banner: \['banner'\]/);
+    // 쓸 수 없는 탭은 감추는 게 아니라 지운다.
+    assert.match(readNamedFunction(admin, 'applyAdminRoleToChrome'), /tab\.remove\(\)/);
+    assert.match(readNamedFunction(admin, 'applyAdminRoleToChrome'), /panel\.remove\(\)/);
+
+    // 운영진이 마스터에게 남기는 창.
+    assert.match(html, /id="staff-report-modal"/);
+    assert.match(admin, /\/api\/admin\/staff-report/);
 });

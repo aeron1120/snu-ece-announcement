@@ -210,7 +210,8 @@ test('admin pages require a short-lived HttpOnly server session', async t => {
         headers: { Cookie: cookie }
     });
     assert.equal(session.status, 200);
-    assert.deepEqual(await session.json(), { authenticated: true });
+    // 세션은 어떤 역할로 들어왔는지도 함께 알려준다.
+    assert.deepEqual(await session.json(), { authenticated: true, role: 'notice' });
 
     const protectedApi = await fetch(`${baseUrl}/api/admin/feedback`, {
         headers: { Cookie: cookie }
@@ -242,4 +243,68 @@ test('admin pages require a short-lived HttpOnly server session', async t => {
         headers: { Cookie: cookie }
     });
     assert.equal(logout.status, 204);
+});
+
+test('admin roles gate their own screens and master needs no second password', async t => {
+    const settingsPath = path.join(process.cwd(), 'server', 'data', 'settings.json');
+    const originalSettings = await readFile(settingsPath, 'utf8');
+    const settings = JSON.parse(originalSettings);
+    const sha = value => crypto.createHash('sha256').update(value).digest('hex');
+    settings.adminTokenHash = sha('notice-role-password');
+    settings.bannerTokenHash = sha('banner-role-password');
+    settings.masterTokenHash = sha('master-role-password');
+    await writeFile(settingsPath, JSON.stringify(settings, null, 2), 'utf8');
+    t.after(() => writeFile(settingsPath, originalSettings, 'utf8'));
+
+    const server = await new Promise(resolve => {
+        const listening = app.listen(0, () => resolve(listening));
+    });
+    t.after(() => server.close());
+    const baseUrl = `http://127.0.0.1:${server.address().port}`;
+
+    async function loginAs(password) {
+        const response = await fetch(`${baseUrl}/api/admin/session`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password })
+        });
+        assert.equal(response.status, 201);
+        const body = await response.json();
+        return { role: body.role, cookie: (response.headers.get('set-cookie') || '').split(';')[0] };
+    }
+
+    // 비밀번호만으로 역할이 정해진다.
+    const notice = await loginAs('notice-role-password');
+    const banner = await loginAs('banner-role-password');
+    const master = await loginAs('master-role-password');
+    assert.equal(notice.role, 'notice');
+    assert.equal(banner.role, 'banner');
+    assert.equal(master.role, 'master');
+
+    const call = (path, cookie) => fetch(`${baseUrl}${path}`, { headers: { Cookie: cookie } });
+
+    // 배너 관리자는 공지 화면에 들어가지 못한다.
+    assert.equal((await call('/api/admin/notices', banner.cookie)).status, 401);
+    // 공지 관리자는 배너 화면에 들어가지 못한다.
+    assert.equal((await call('/api/banner-slides/manage', notice.cookie)).status, 401);
+    // 마스터는 배너 비밀번호를 따로 넣지 않고도 배너를 연다.
+    assert.equal((await call('/api/banner-slides/manage', master.cookie)).status, 200);
+    assert.equal((await call('/api/admin/notices', master.cookie)).status, 200);
+
+    // 문의함은 마스터만 전부 본다. 배너 관리자에게는 배너 문의만 보인다.
+    const masterInbox = await (await call('/api/admin/feedback', master.cookie)).json();
+    const bannerInbox = await (await call('/api/admin/feedback', banner.cookie)).json();
+    const noticeInbox = await (await call('/api/admin/feedback', notice.cookie)).json();
+    assert.equal(masterInbox.role, 'master');
+    assert.ok(bannerInbox.feedback.every(item => item.category === 'banner'));
+    assert.equal(noticeInbox.feedback.length, 0);
+
+    // 마스터 전용 설정은 다른 역할이 건드리지 못한다.
+    assert.equal((await call('/api/admin/feedback', notice.cookie)).status, 200);
+    const blockedSettings = await fetch(`${baseUrl}/api/settings/passwords`, {
+        method: 'PUT',
+        headers: { Cookie: notice.cookie, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ newNoticeAdminToken: 'nope' })
+    });
+    assert.equal(blockedSettings.status, 401);
 });

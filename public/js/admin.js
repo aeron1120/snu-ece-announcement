@@ -11,7 +11,6 @@ const GEMINI_MODEL = "gemini-flash-latest";
 let reviewNotices = [];
 let selectedReviewNoticeId = null;
 let reviewMutationInFlight = false;
-let categoryCandidates = [];
 let editingNoticeId = null;
 let pendingEditNoticeId = null;
 // 클립보드에서 붙여넣은 이미지들(base64 data URL). 파일 첨부와 함께 저장된다.
@@ -127,18 +126,69 @@ async function showGeminiRetryCountdown(error) {
     await new Promise(resolve => setTimeout(resolve, 700));
 }
 
+/* 역할별로 열리는 탭.
+   마스터는 전부, 공지 관리자는 공지 관련 셋, 배너 관리자는 배너만 본다. */
+const ADMIN_TABS_BY_ROLE = Object.freeze({
+    master: ['review', 'backfill', 'compose', 'notices', 'banner', 'feedback', 'settings'],
+    notice: ['review', 'backfill', 'compose', 'notices'],
+    banner: ['banner']
+});
+
+const ADMIN_ROLE_LABELS = Object.freeze({
+    master: '마스터 관리자',
+    notice: '공지 관리자',
+    banner: '배너 관리자'
+});
+
+let currentAdminRole = 'notice';
+
+function allowedAdminTabs() {
+    return ADMIN_TABS_BY_ROLE[currentAdminRole] || ADMIN_TABS_BY_ROLE.notice;
+}
+
+function canUseAdminTab(name) {
+    return allowedAdminTabs().includes(name);
+}
+
+/* 쓸 수 없는 탭은 감추는 게 아니라 아예 지운다. 화면에 남겨 두면
+   눌러지지 않는 버튼이 무엇을 뜻하는지 알 수 없어 더 헷갈린다. */
+function applyAdminRoleToChrome() {
+    const allowed = allowedAdminTabs();
+    document.querySelectorAll('.admin-tab').forEach(tab => {
+        if (!allowed.includes(tab.dataset.tab)) tab.remove();
+    });
+    document.querySelectorAll('.admin-panel').forEach(panel => {
+        const name = panel.id.replace(/^panel-/, '');
+        if (!allowed.includes(name)) panel.remove();
+    });
+
+    const reportButton = document.getElementById('staff-report-open');
+    if (reportButton && currentAdminRole === 'master') reportButton.remove();
+
+    const badge = document.querySelector('.admin-badge');
+    if (badge) badge.textContent = ADMIN_ROLE_LABELS[currentAdminRole] || 'ADMIN';
+    document.body.dataset.adminRole = currentAdminRole;
+}
+
 async function enterAdminWorkspace() {
     const workspace = document.getElementById('admin-workspace');
     if (workspace) workspace.hidden = false;
     document.getElementById('admin-mode-exit').textContent = '관리자 모드 나가기';
 
-    await loadCategories();
-    await loadReviewNotices();
-    startReviewInboxPolling();
-    loadAdminFeedback();   // 탭 배지에 피드백 수를 채운다(백그라운드)
+    applyAdminRoleToChrome();
+    // 첫 화면은 그 역할이 실제로 쓸 수 있는 탭이어야 한다.
+    selectAdminTab(allowedAdminTabs()[0]);
+
+    if (canUseAdminTab('review')) {
+        await loadCategories();
+        await loadReviewNotices();
+        startReviewInboxPolling();
+    }
+    // 탭 배지에 문의 수를 채운다(백그라운드). 배너 관리자는 배너 문의만 받는다.
+    if (canUseAdminTab('feedback') || canUseAdminTab('banner')) loadAdminFeedback();
 
     // 공개 화면의 "관리자 페이지에서 수정" 링크로 들어온 경우 바로 편집 폼을 연다.
-    if (pendingEditNoticeId) {
+    if (pendingEditNoticeId && canUseAdminTab('notices')) {
         const target = pendingEditNoticeId;
         pendingEditNoticeId = null;
         selectAdminTab('notices');
@@ -158,7 +208,8 @@ async function exitAdminMode() {
     try {
         await fetch('/api/admin/session', { method: 'DELETE' });
     } finally {
-        location.replace('./index.html');
+        // 나가면 공개 화면이 아니라 들어왔던 로그인 화면으로 돌아간다.
+        location.replace('/admin');
     }
 }
 
@@ -167,6 +218,7 @@ async function exitAdminMode() {
 // ========================================
 
 function selectAdminTab(name) {
+    if (!canUseAdminTab(name)) return;
     document.querySelectorAll('.admin-tab').forEach(tab => {
         tab.classList.toggle('active', tab.dataset.tab === name);
     });
@@ -175,10 +227,10 @@ function selectAdminTab(name) {
     });
 
     if (name === 'notices') loadAdminNoticeList();
-    if (name === 'category') loadCategoryCandidates();
     if (name === 'feedback') loadAdminFeedback();
-    if (name === 'banner' && bannerManageAuthToken) unlockBannerPanel();
-    if (name === 'settings' && superAdminAuthToken) unlockSettingsPanel();
+    // 로그인할 때 이미 신분을 확인했으므로 배너·설정에서 비밀번호를 다시 묻지 않는다.
+    if (name === 'banner') unlockBannerPanel();
+    if (name === 'settings') unlockSettingsPanel();
 }
 
 function setKakaoBackfillStatus(message, isError = false) {
@@ -352,12 +404,13 @@ function composeNoticeTitle() {
 
 function refreshTitlePreview() {
     const title = composeNoticeTitle();
-    const preview = document.getElementById('title-preview');
+    const box = document.getElementById('post-title-manual');
     const hidden = document.getElementById('post-title');
 
     hidden.value = title;
-    preview.textContent = title || '핵심 내용을 입력하면 제목이 만들어집니다.';
-    preview.classList.toggle('is-empty', !title);
+    // 직접 수정 중에는 사용자가 치고 있는 글자를 덮어쓰지 않는다.
+    if (!isTitleManual()) box.value = title;
+    box.classList.toggle('is-empty', !title);
 }
 
 function onTitleHostChange() {
@@ -370,12 +423,17 @@ function onTitleHostChange() {
 
 function onTitleManualToggle() {
     const manual = isTitleManual();
-    const manualInput = document.getElementById('post-title-manual');
-    manualInput.hidden = !manual;
+    const box = document.getElementById('post-title-manual');
+    // 상자는 늘 같은 자리에 있고 잠금만 풀린다.
+    box.readOnly = !manual;
+    box.classList.toggle('is-editable', manual);
 
-    // 직접 수정으로 넘어갈 때는 지금까지 만들어진 제목을 그대로 물려준다.
-    if (manual && !manualInput.value) manualInput.value = document.getElementById('post-title').value;
-    if (manual) manualInput.focus();
+    if (manual) {
+        // 지금까지 만들어진 제목을 그대로 물려받아 이어서 고친다.
+        if (!box.value) box.value = document.getElementById('post-title').value;
+        box.focus();
+        box.setSelectionRange(box.value.length, box.value.length);
+    }
     refreshTitlePreview();
 }
 
@@ -401,7 +459,8 @@ function applyTitleToBuilder(rawTitle) {
         subject.value = match[2].slice(0, match[2].length - kind.length - 1).trim();
         kindSelect.value = kind;
         manualCheck.checked = false;
-        manualInput.hidden = true;
+        manualInput.readOnly = true;
+        manualInput.classList.remove('is-editable');
         manualInput.value = '';
     } else {
         manualCheck.checked = true;
@@ -431,8 +490,10 @@ function resetComposeForm() {
     document.getElementById('title-subject').value = '';
     document.getElementById('title-kind').value = '모집';
     document.getElementById('title-manual').checked = false;
-    document.getElementById('post-title-manual').value = '';
-    document.getElementById('post-title-manual').hidden = true;
+    const titleBox = document.getElementById('post-title-manual');
+    titleBox.value = '';
+    titleBox.readOnly = true;
+    titleBox.classList.remove('is-editable');
     document.getElementById('post-target').value = '전체';
     document.getElementById('post-deadline').value = '';
     document.getElementById('post-always-open').checked = false;
@@ -688,7 +749,8 @@ async function analyzeNotice() {
 
         // 분석 결과는 양식 조합으로 흐르므로 직접수정 모드를 끈다.
         document.getElementById('title-manual').checked = false;
-        document.getElementById('post-title-manual').hidden = true;
+        document.getElementById('post-title-manual').readOnly = true;
+        document.getElementById('post-title-manual').classList.remove('is-editable');
         refreshTitlePreview();
 
         const gotSomething = parsed.subject || parsed.type || parsed.deadline;
@@ -721,8 +783,9 @@ async function analyzeNotice() {
 async function loadAdminFeedback() {
     const list = document.getElementById('admin-feedback-list');
     const status = document.getElementById('feedback-admin-status');
-    if (!list) return;
-    list.innerHTML = '<div class="review-empty">불러오는 중입니다.</div>';
+    // 배너 관리자에게는 문의함 판이 아예 없다. 그래도 배너 문의는 받아와야
+    // 하므로 여기서 멈추지 않는다.
+    if (list) list.innerHTML = '<div class="review-empty">불러오는 중입니다.</div>';
     try {
         const result = await apiRequest('/api/admin/feedback', {
             method: 'GET',
@@ -731,7 +794,7 @@ async function loadAdminFeedback() {
         const items = Array.isArray(result?.feedback) ? result.feedback : [];
         adminFeedbackItems = items.map(item => ({
             ...item,
-            category: ['banner', 'summary_mismatch'].includes(item.category) ? item.category : 'general'
+            category: ['banner', 'summary_mismatch', 'staff'].includes(item.category) ? item.category : 'general'
         }));
         const badge = document.getElementById('feedback-count');
         const generalItems = adminFeedbackItems.filter(item => item.category !== 'banner');
@@ -745,9 +808,11 @@ async function loadAdminFeedback() {
         }
         renderAdminFeedback();
         renderBannerInquiryAdmin();
+        // 왼쪽 목록의 "N건 접수"도 같이 갱신한다.
+        if (document.getElementById('banner-subnav')) renderBannerSubnav();
     } catch (error) {
         if (status) { status.textContent = error.message; status.style.color = 'var(--danger)'; }
-        list.innerHTML = '<div class="review-empty">피드백을 불러오지 못했습니다.</div>';
+        if (list) list.innerHTML = '<div class="review-empty">피드백을 불러오지 못했습니다.</div>';
     }
 }
 
@@ -770,6 +835,9 @@ function renderAdminFeedback() {
         ? visibleItems.map(item => {
             const isBanner = item.category === 'banner';
             const isSummaryMismatch = item.category === 'summary_mismatch';
+            const isStaff = item.category === 'staff';
+            const staffRoles = { notice: '공지 관리자', banner: '배너 관리자', master: '마스터' };
+            const staffKinds = { bug: '오류 제보', question: '문의', request: '기능 요청' };
             const inquiry = isBanner && item.inquiry ? item.inquiry : null;
             const contact = inquiry
                 ? [inquiry.phone, inquiry.email].filter(Boolean).map(value => escapeHtml(value)).join(' · ')
@@ -779,7 +847,17 @@ function renderAdminFeedback() {
                 : '';
             return `
                 <div class="admin-feedback-item ${isBanner ? 'is-banner' : ''}${isSummaryMismatch ? ' is-summary-mismatch' : ''}">
-                    <span class="feedback-kind ${isBanner ? 'banner' : (isSummaryMismatch ? 'summary' : 'general')}">${isBanner ? '배너 문의' : (isSummaryMismatch ? '요약 오류' : '일반 문의')}</span>
+                    <label class="feedback-pick">
+                        <input type="checkbox" class="feedback-pick-box" value="${escapeHtml(item.id)}"
+                               ${selectedFeedbackIds.has(String(item.id)) ? 'checked' : ''}
+                               onchange="toggleFeedbackSelection('${escapeHtml(item.id)}', this.checked)">
+                        <span class="sr-only">이 문의 선택</span>
+                    </label>
+                    <span class="feedback-kind ${isBanner ? 'banner' : (isSummaryMismatch ? 'summary' : (isStaff ? 'staff' : 'general'))}">${
+                        isBanner ? '배너 문의'
+                        : isSummaryMismatch ? '요약 오류'
+                        : isStaff ? `${staffRoles[item.staffRole] || '관리자'} · ${staffKinds[item.staffKind] || '문의'}`
+                        : '일반 문의'}</span>
                     ${isSummaryMismatch ? `<p class="admin-feedback-notice"><strong>${escapeHtml(item.noticeTitle || '제목 없음')}</strong><br><span>공지 ID ${escapeHtml(item.noticeId || '')}</span></p>` : ''}
                     <p class="admin-feedback-msg">${escapeHtml(item.message)}</p>
                     ${inquiry ? `
@@ -801,6 +879,148 @@ function renderAdminFeedback() {
                 </div>`;
         }).join('')
         : '<div class="review-empty">이 종류의 피드백이 없습니다.</div>';
+
+    syncFeedbackSelectionUi();
+}
+
+// ========================================
+// 🛟 운영진 → 마스터 내부 제보
+// ========================================
+
+function openStaffReport() {
+    const status = document.getElementById('staff-report-status');
+    if (status) status.textContent = '';
+    openModal('staff-report-modal');
+    document.getElementById('staff-report-message')?.focus();
+}
+
+function closeStaffReport() {
+    closeModal('staff-report-modal');
+}
+
+async function submitStaffReport() {
+    const kind = document.getElementById('staff-report-kind')?.value || 'question';
+    const box = document.getElementById('staff-report-message');
+    const status = document.getElementById('staff-report-status');
+    const button = document.getElementById('staff-report-submit');
+    const message = (box?.value || '').trim();
+
+    if (message.length < 5) {
+        if (status) {
+            status.textContent = '내용을 5자 이상 적어주세요.';
+            status.style.color = 'var(--danger)';
+        }
+        box?.focus();
+        return;
+    }
+
+    if (button) button.disabled = true;
+    try {
+        await apiRequest('/api/admin/staff-report', {
+            method: 'POST',
+            headers: getNoticeAdminHeaders(),
+            body: JSON.stringify({ kind, message })
+        });
+        if (box) box.value = '';
+        if (status) {
+            status.textContent = '마스터 관리자에게 전달했습니다.';
+            status.style.color = 'var(--ok)';
+        }
+        window.setTimeout(closeStaffReport, 900);
+    } catch (error) {
+        if (status) {
+            status.textContent = `전달 실패: ${error.message}`;
+            status.style.color = 'var(--danger)';
+        }
+    } finally {
+        if (button) button.disabled = false;
+    }
+}
+
+// ========================================
+// 📤 문의함 → 노션 마크다운
+// ========================================
+
+const selectedFeedbackIds = new Set();
+
+// 지금 필터에서 실제로 보이는 문의만 선택 대상으로 삼는다.
+function visibleFeedbackIds() {
+    return Array.from(document.querySelectorAll('.feedback-pick-box')).map(box => box.value);
+}
+
+function toggleFeedbackSelection(id, checked) {
+    if (checked) selectedFeedbackIds.add(String(id));
+    else selectedFeedbackIds.delete(String(id));
+    syncFeedbackSelectionUi();
+}
+
+function toggleAllFeedbackSelection(checked) {
+    visibleFeedbackIds().forEach(id => {
+        if (checked) selectedFeedbackIds.add(id);
+        else selectedFeedbackIds.delete(id);
+    });
+    document.querySelectorAll('.feedback-pick-box').forEach(box => { box.checked = checked; });
+    syncFeedbackSelectionUi();
+}
+
+function syncFeedbackSelectionUi() {
+    const visible = visibleFeedbackIds();
+    // 화면에서 사라진 항목이 선택된 채 남아 있으면 개수가 어긋난다.
+    Array.from(selectedFeedbackIds).forEach(id => {
+        if (!visible.includes(id)) selectedFeedbackIds.delete(id);
+    });
+
+    const count = selectedFeedbackIds.size;
+    const countEl = document.getElementById('feedback-selection-count');
+    const exportButton = document.getElementById('feedback-export-selected');
+    const selectAll = document.getElementById('feedback-select-all');
+    if (countEl) countEl.textContent = `${count}개 선택`;
+    if (exportButton) exportButton.disabled = count === 0;
+    if (selectAll) {
+        selectAll.checked = visible.length > 0 && count === visible.length;
+        selectAll.indeterminate = count > 0 && count < visible.length;
+    }
+}
+
+// 브라우저에서 바로 .md 파일로 떨어뜨린다. 노션에 그대로 끌어다 놓으면 된다.
+function downloadTextFile(filename, text) {
+    const blob = new Blob([text], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+}
+
+async function exportAdminFeedback(scope) {
+    const status = document.getElementById('feedback-export-status');
+    const ids = scope === 'selected' ? Array.from(selectedFeedbackIds) : [];
+    if (scope === 'selected' && ids.length === 0) return;
+
+    if (status) {
+        status.textContent = '내보내는 중입니다.';
+        status.style.color = 'var(--text-sub)';
+    }
+    try {
+        const result = await apiRequest('/api/admin/feedback/export', {
+            method: 'POST',
+            headers: getNoticeAdminHeaders(),
+            body: JSON.stringify({ ids })
+        });
+        downloadTextFile(result.filename, result.markdown);
+        if (status) {
+            status.textContent = `${result.count}건을 ${result.filename} 파일로 내려받았습니다.`;
+            status.style.color = 'var(--ok)';
+        }
+    } catch (error) {
+        if (status) {
+            status.textContent = `내보내기 실패: ${error.message}`;
+            status.style.color = 'var(--danger)';
+        }
+    }
 }
 
 function renderBannerInquiryAdmin() {
@@ -1107,7 +1327,9 @@ function renderAdminNoticeList() {
                     <span class="admin-notice-row-title">${escapeHtml(notice.title || '제목 없음')}</span>
                     <span class="admin-notice-row-meta">
                         ${escapeHtml(notice.host || '기타')} · ${escapeHtml(notice.target || '전체')}
-                        · 마감 ${escapeHtml(notice.deadline || '상시')} · 조회 ${Number(notice.views) || 0}
+                        · 등록 ${escapeHtml(formatAdminDateTime(notice.createdAt))}
+                        <span class="admin-notice-ago">${escapeHtml(formatRelativeFromNow(notice.createdAt))}</span>
+                        · 조회 ${Number(notice.views) || 0}
                         ${notice.isHidden ? ' · 숨김' : ''}
                     </span>
                 </div>
@@ -1119,6 +1341,33 @@ function renderAdminNoticeList() {
                 </div>
             </div>`;
     }).join('');
+}
+
+/* 등록된 공지는 마감일이 아니라 언제 올렸는지가 궁금하다.
+   절대 시각과 "몇 분 전"을 함께 보여 준다. */
+function formatAdminDateTime(value) {
+    const date = new Date(value);
+    if (!value || Number.isNaN(date.getTime())) return '기록 없음';
+    const pad = number => String(number).padStart(2, '0');
+    return `${date.getFullYear()}.${pad(date.getMonth() + 1)}.${pad(date.getDate())}`
+        + ` ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function formatRelativeFromNow(value) {
+    const date = new Date(value);
+    if (!value || Number.isNaN(date.getTime())) return '';
+    const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
+    if (seconds < 0) return '방금';
+    if (seconds < 60) return '방금';
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `${minutes}분 전`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}시간 전`;
+    const days = Math.floor(hours / 24);
+    if (days < 30) return `${days}일 전`;
+    const months = Math.floor(days / 30);
+    if (months < 12) return `${months}개월 전`;
+    return `${Math.floor(months / 12)}년 전`;
 }
 
 async function toggleAdminNoticeHidden(id, hidden) {
@@ -1640,38 +1889,7 @@ async function runManualCrawl() {
 // 🖼 배너 관리
 // ========================================
 
-async function verifyBannerPassword() {
-    const input = document.getElementById('banner-mode-pwd');
-    const error = document.getElementById('banner-pwd-error');
-    const password = input.value;
-    error.textContent = '';
-
-    if (!password) {
-        error.textContent = '배너 비밀번호를 입력해주세요.';
-        input.focus();
-        return;
-    }
-
-    try {
-        await apiRequest('/api/banner/verify', {
-            method: 'POST',
-            body: JSON.stringify({ password })
-        });
-    } catch (requestError) {
-        error.textContent = `인증 실패: ${requestError.message}`;
-        input.focus();
-        return;
-    }
-
-    bannerManageAuthToken = password;
-    sessionStorage.setItem('eceBannerManageToken', bannerManageAuthToken);
-    input.value = '';
-    unlockBannerPanel();
-}
-
 async function unlockBannerPanel() {
-    document.getElementById('banner-lock').hidden = true;
-    document.getElementById('banner-list-area').hidden = false;
     await Promise.all([loadBannerSlides(true), loadAdminFeedback()]);
     renderBannerList();
 }
@@ -1691,9 +1909,76 @@ function resolveUpdateExpiresAt(input) {
     return value ? new Date(value).toISOString() : '';
 }
 
+/* 왼쪽 목록에서 고른 항목. 배너 자리는 0부터 시작하는 번호,
+   문의 접수는 'inquiry'로 둔다. */
+let activeBannerSlot = 0;
+
 function renderBannerList() {
     renderBannerSection('right_rail', '오른쪽 학내 홍보');
     renderLegacyBannerSection();
+    renderBannerSubnav();
+}
+
+function renderBannerSubnav() {
+    const nav = document.getElementById('banner-subnav');
+    if (!nav) return;
+    const slides = getBannerSlidesByPlacement('right_rail');
+    const maxBanners = 5;
+
+    const slotItems = Array.from({ length: maxBanners }, (_, index) => {
+        const slide = slides[index];
+        const name = slide ? (slide.name || slide.text || '이름 없는 배너') : '비어 있음';
+        const active = activeBannerSlot === index;
+        return `
+            <button type="button" class="banner-subnav-item${active ? ' is-active' : ''}${slide ? '' : ' is-empty'}"
+                    aria-current="${active ? 'true' : 'false'}"
+                    onclick="selectBannerSlot(${index})">
+                <span class="banner-subnav-label">배너 ${index + 1}</span>
+                <span class="banner-subnav-sub">${escapeHtml(name)}</span>
+            </button>`;
+    }).join('');
+
+    const pendingCount = adminFeedbackItems.filter(item => item.category === 'banner').length;
+    const inquiryActive = activeBannerSlot === 'inquiry';
+    nav.innerHTML = `
+        <p class="banner-subnav-heading">배너 자리</p>
+        ${slotItems}
+        <p class="banner-subnav-heading">접수</p>
+        <button type="button" class="banner-subnav-item${inquiryActive ? ' is-active' : ''}"
+                aria-current="${inquiryActive ? 'true' : 'false'}"
+                onclick="selectBannerSlot('inquiry')">
+            <span class="banner-subnav-label">배너 문의</span>
+            <span class="banner-subnav-sub">${pendingCount}건 접수</span>
+        </button>`;
+
+    applyBannerSlotVisibility();
+}
+
+function selectBannerSlot(slot) {
+    activeBannerSlot = slot;
+    renderBannerSubnav();
+}
+
+// 고른 항목만 남기고 나머지는 접는다. 편집 중 입력값이 날아가지 않도록
+// 지우지 않고 감추기만 한다.
+function applyBannerSlotVisibility() {
+    const showInquiry = activeBannerSlot === 'inquiry';
+    const slotsSection = document.getElementById('banner-slots-section');
+    const inquirySection = document.getElementById('banner-inquiry-section');
+    if (slotsSection) slotsSection.hidden = showInquiry;
+    if (inquirySection) inquirySection.hidden = !showInquiry;
+
+    document.querySelectorAll('#right-rail-slides-list .banner-item')
+        .forEach((item, index) => {
+            item.hidden = showInquiry || index !== activeBannerSlot;
+        });
+
+    // 아직 등록되지 않은 자리를 고르면 새로 만들라고 안내한다.
+    const emptyNote = document.getElementById('banner-empty-slot-note');
+    const slideCount = getBannerSlidesByPlacement('right_rail').length;
+    if (emptyNote) {
+        emptyNote.hidden = showInquiry || activeBannerSlot < slideCount;
+    }
 }
 
 // 상단 가로 배너가 사라져 갈 곳이 없어진 슬라이드들. 관리 화면에서 아예 안 보이면
@@ -2185,148 +2470,10 @@ async function moveBanner(placement, idx, dir) {
 }
 
 // ========================================
-// 🏷 고정 주제 분류 키워드
+// ⚙️ 관리자 설정 (마스터 관리자 전용)
 // ========================================
-
-function setCategoryManagerStatus(message, isError = false) {
-    const element = document.getElementById('category-manager-status');
-    if (!element) return;
-    element.textContent = message || '';
-    element.style.color = isError ? 'var(--danger)' : 'var(--text-sub)';
-}
-
-async function loadCategoryCandidates() {
-    const list = document.getElementById('category-candidate-list');
-    if (!list) return;
-    list.innerHTML = '<div class="review-empty">분류 키워드 후보를 계산하고 있습니다.</div>';
-    setCategoryManagerStatus('최근 공지의 키워드와 신뢰도를 확인하고 있습니다.');
-    try {
-        await loadCategories();
-        const result = await apiRequest('/api/admin/category-candidates', {
-            method: 'GET',
-            headers: getNoticeAdminHeaders()
-        });
-        categoryCandidates = Array.isArray(result?.candidates) ? result.candidates : [];
-        renderCategoryCandidates();
-        setCategoryManagerStatus(categoryCandidates.length > 0
-            ? `관리자 결정이 필요한 후보 ${categoryCandidates.length}건`
-            : '현재 기존 주제에 병합할 키워드 후보가 없습니다.');
-    } catch (error) {
-        list.innerHTML = '<div class="review-empty">분류 키워드 후보를 불러오지 못했습니다.</div>';
-        setCategoryManagerStatus(error.message, true);
-    }
-}
-
-function renderCategoryCandidates() {
-    const list = document.getElementById('category-candidate-list');
-    if (categoryCandidates.length === 0) {
-        list.innerHTML = '<div class="review-empty">현재 분류 키워드 후보가 없습니다.</div>';
-        return;
-    }
-    const categoryOptions = activeCategories.map(category =>
-        `<option value="${Number(category.id)}">${escapeHtml(category.name)}</option>`
-    ).join('');
-    list.innerHTML = categoryCandidates.map(candidate => {
-        const evidence = (candidate.supportingNotices || []).slice(0, 5);
-        return `
-            <article class="category-candidate">
-                <div class="category-candidate-header">
-                    <h3>${escapeHtml(candidate.displayName)}</h3>
-                    <span class="category-candidate-metrics">
-                        ${Number(candidate.occurrenceCount)}개 공지 · 신뢰도 ${Math.round(Number(candidate.averageConfidence) * 100)}%
-                    </span>
-                </div>
-                <p class="review-list-meta">
-                    ${escapeHtml(String(candidate.firstSeenAt || '').slice(0, 10))}
-                    ~ ${escapeHtml(String(candidate.lastSeenAt || '').slice(0, 10))}
-                </p>
-                <ul class="category-evidence">${evidence.map(notice =>
-                    `<li>${escapeHtml(notice.title || `공지 ${notice.id}`)}</li>`
-                ).join('')}</ul>
-                <div class="category-candidate-actions">
-                    <select id="category-merge-${Number(candidate.id)}" aria-label="${escapeHtml(candidate.displayName)} 병합 대상">
-                        <option value="">기존 카테고리 선택</option>${categoryOptions}
-                    </select>
-                    <button class="btn btn-outline btn-small" type="button" onclick="mergeCategoryCandidate(${Number(candidate.id)})">병합</button>
-                    <button class="btn btn-outline btn-small" type="button" onclick="deferCategoryCandidate(${Number(candidate.id)})">30일 보류</button>
-                    <button class="btn btn-danger btn-small" type="button" onclick="rejectCategoryCandidate(${Number(candidate.id)})">다시 추천 안 함</button>
-                </div>
-            </article>`;
-    }).join('');
-}
-
-async function decideCategoryCandidate(id, action, body = {}) {
-    setCategoryManagerStatus('카테고리 결정을 저장하고 있습니다.');
-    try {
-        await apiRequest(`/api/admin/category-candidates/${encodeURIComponent(id)}/${action}`, {
-            method: 'POST',
-            headers: getNoticeAdminHeaders(),
-            body: JSON.stringify(body)
-        });
-        await Promise.all([
-            loadCategoryCandidates(),
-            refreshPublishedNotices()
-        ]);
-    } catch (error) {
-        setCategoryManagerStatus(error.message, true);
-    }
-}
-
-async function mergeCategoryCandidate(id) {
-    const select = document.getElementById(`category-merge-${id}`);
-    const categoryId = Number(select?.value);
-    if (!categoryId) {
-        setCategoryManagerStatus('병합할 기존 카테고리를 선택해주세요.', true);
-        return;
-    }
-    await decideCategoryCandidate(id, 'merge', { categoryId });
-}
-
-async function deferCategoryCandidate(id) {
-    await decideCategoryCandidate(id, 'defer');
-}
-
-async function rejectCategoryCandidate(id) {
-    if (!window.confirm('이 키워드를 앞으로 다시 추천하지 않도록 반려할까요?')) return;
-    await decideCategoryCandidate(id, 'reject');
-}
-
-// ========================================
-// ⚙️ 관리자 설정 (절대 관리자 전용)
-// ========================================
-
-async function verifySuperAdminPassword() {
-    const input = document.getElementById('super-admin-pwd');
-    const error = document.getElementById('super-admin-error');
-    const password = input.value;
-    error.textContent = '';
-
-    if (!password) {
-        error.textContent = '절대 관리자 비밀번호를 입력해주세요.';
-        input.focus();
-        return;
-    }
-
-    try {
-        await apiRequest('/api/super-admin/verify', {
-            method: 'POST',
-            headers: getSuperAdminHeaders(password)
-        });
-    } catch (requestError) {
-        error.textContent = `인증 실패: ${requestError.message}`;
-        input.focus();
-        return;
-    }
-
-    superAdminAuthToken = password;
-    sessionStorage.setItem('eceSuperAdminToken', superAdminAuthToken);
-    input.value = '';
-    unlockSettingsPanel();
-}
 
 function unlockSettingsPanel() {
-    document.getElementById('settings-lock').hidden = true;
-    document.getElementById('settings-area').hidden = false;
     document.getElementById('edit-admin-name').value = adminInfo.name;
     document.getElementById('edit-admin-phone').value = adminInfo.phone;
     document.getElementById('edit-admin-kakao').value = adminInfo.kakao;
@@ -2411,7 +2558,8 @@ document.addEventListener('DOMContentLoaded', async function () {
     pendingEditNoticeId = new URLSearchParams(location.search).get('edit');
 
     try {
-        await apiRequest('/api/admin/session', { method: 'GET' });
+        const session = await apiRequest('/api/admin/session', { method: 'GET' });
+        currentAdminRole = ADMIN_TABS_BY_ROLE[session?.role] ? session.role : 'notice';
     } catch {
         const next = pendingEditNoticeId ? `?edit=${encodeURIComponent(pendingEditNoticeId)}` : '';
         location.replace(`/admin${next}`);

@@ -9,9 +9,14 @@ function getAdminWorkspaceUrl() {
         : '/admin/workspace';
 }
 
+function getSelectedAdminRole() {
+    return document.querySelector('input[name="admin-role"]:checked')?.value || '';
+}
+
 adminLoginForm.addEventListener('submit', async event => {
     event.preventDefault();
     const password = adminLoginPassword.value;
+    const role = getSelectedAdminRole();
     const button = adminLoginForm.querySelector('button[type="submit"]');
     adminLoginError.textContent = '';
     if (!password) {
@@ -25,7 +30,7 @@ adminLoginForm.addEventListener('submit', async event => {
         const response = await fetch('/api/admin/session', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ password })
+            body: JSON.stringify({ password, role })
         });
         const result = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(result.error || '로그인에 실패했습니다.');

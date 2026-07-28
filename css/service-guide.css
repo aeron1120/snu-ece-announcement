@@ -21,15 +21,32 @@ body {
     box-shadow: 0 18px 54px rgba(24, 43, 83, 0.08);
 }
 
+/* 글자 링크가 아니라 눌러야 할 버튼임이 드러나게 테두리를 준다.
+   화살표와 글자 사이 간격은 넉넉히 벌린다. */
 .guide-back {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 40px;
+    padding: 0 18px 0 14px;
     color: #526078;
+    background: #fff;
+    border: 1px solid #dde2ea;
+    border-radius: 10px;
     font-size: 14px;
     font-weight: 700;
     text-decoration: none;
+    transition: color .15s ease, border-color .15s ease, background-color .15s ease;
 }
 
 .guide-back:hover,
-.guide-back:focus-visible { color: #163f91; }
+.guide-back:focus-visible {
+    color: #163f91;
+    background: #f3f6fc;
+    border-color: #b9c8e4;
+}
+.guide-back:focus-visible { outline: 2px solid #163f91; outline-offset: 2px; }
+.guide-back:active { transform: translateY(1px); }
 
 .guide-kicker {
     margin: 52px 0 10px;

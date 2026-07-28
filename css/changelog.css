@@ -1,0 +1,74 @@
+/* 업데이트 내역 — service-guide.css 위에 얹는 목록 전용 레이어. */
+
+.changelog-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.changelog-entry {
+    display: grid;
+    grid-template-columns: 116px minmax(0, 1fr);
+    gap: 0 24px;
+    padding: 28px 0;
+    border-top: 1px solid #e3e7ef;
+}
+
+.changelog-date {
+    color: #6b7688;
+    font-size: 13px;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.02em;
+}
+
+.changelog-body h2 {
+    margin: 0 0 14px;
+    color: #172c57;
+    font-size: 17px;
+}
+
+.changelog-body ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.changelog-body li {
+    display: flex;
+    align-items: flex-start;
+    gap: 9px;
+    padding: 5px 0;
+    color: #303744;
+    font-size: 14.5px;
+    line-height: 1.75;
+    word-break: keep-all;
+}
+
+/* 태그는 색뿐 아니라 글자로도 종류를 알린다. */
+.changelog-tag {
+    flex-shrink: 0;
+    min-width: 38px;
+    margin-top: 4px;
+    padding: 2px 7px;
+    border-radius: 5px;
+    font-size: 11px;
+    font-weight: 800;
+    text-align: center;
+    white-space: nowrap;
+}
+
+.changelog-tag.is-added { color: #1c5b38; background: #e7f3ec; }
+.changelog-tag.is-changed { color: #1f3f8f; background: #e9eefb; }
+.changelog-tag.is-fixed { color: #8a4b16; background: #fbeee1; }
+.changelog-tag.is-policy { color: #5c3b7a; background: #f0e9f7; }
+
+@media (max-width: 560px) {
+    .changelog-entry {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 8px;
+        padding: 22px 0;
+    }
+    .changelog-body h2 { font-size: 16px; }
+    .changelog-body li { font-size: 13.5px; }
+}

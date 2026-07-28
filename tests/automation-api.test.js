@@ -160,7 +160,7 @@ test('admin review routes require auth and publish or reject pending notices', a
     assert.equal((await fixture.store.listNotificationJobs()).length, 1);
 });
 
-test('topic-only taxonomy rejects adding a fifth public category', async t => {
+test('topic taxonomy stays fixed at four and keyword candidate screens are gone', async t => {
     const fixture = await createTestServer();
     t.after(() => fixture.server.close());
     for (let index = 1; index <= 5; index += 1) {
@@ -176,27 +176,20 @@ test('topic-only taxonomy rejects adding a fifth public category', async t => {
         await fixture.store.publishReviewNotice(pending.id, {}, { notify: false });
     }
 
-    const candidateResponse = await fetch(
-        `${fixture.baseUrl}/api/admin/category-candidates`,
-        { headers: { 'x-admin-token': 'test-admin' } }
-    );
-    assert.equal(candidateResponse.status, 200);
-    const candidates = (await candidateResponse.json()).candidates;
-    assert.equal(candidates.length, 1);
+    // 분류 키워드 관리 화면을 없앴으므로 그 경로도 남아 있지 않다.
+    for (const path of [
+        '/api/admin/category-candidates',
+        '/api/admin/category-candidates/1/approve',
+        '/api/admin/category-candidates/1/merge'
+    ]) {
+        const response = await fetch(`${fixture.baseUrl}${path}`, {
+            method: path.endsWith('candidates') ? 'GET' : 'POST',
+            headers: { 'x-admin-token': 'test-admin' }
+        });
+        assert.equal(response.status, 404);
+    }
 
-    const approveResponse = await fetch(
-        `${fixture.baseUrl}/api/admin/category-candidates/${candidates[0].id}/approve`,
-        {
-            method: 'POST',
-            headers: {
-                'content-type': 'application/json',
-                'x-admin-token': 'test-admin'
-            },
-            body: JSON.stringify({ name: '장학 제도', slug: 'scholarships' })
-        }
-    );
-    assert.equal(approveResponse.status, 409);
-
+    // 키워드가 아무리 쌓여도 공개 분류는 넷으로 고정이다.
     const categoriesResponse = await fetch(`${fixture.baseUrl}/api/categories`);
     assert.equal(categoriesResponse.status, 200);
     const categories = (await categoriesResponse.json()).categories;
