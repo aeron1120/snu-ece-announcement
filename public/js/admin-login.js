@@ -15,8 +15,10 @@ function buildAdminLoginUrl(path) {
 function getAdminWorkspaceUrl() {
     const edit = new URLSearchParams(location.search).get('edit');
     return edit
-        ? `/admin/workspace?edit=${encodeURIComponent(edit)}`
-        : '/admin/workspace';
+        // 서버가 라우팅하는 깔끔한 경로는 정적 호스트에 파일이 없어 공개 화면으로
+        // 떨어진다. 실제 파일 이름은 양쪽 호스트에서 모두 워크스페이스로 간다.
+        ? `/admin.html?edit=${encodeURIComponent(edit)}`
+        : '/admin.html';
 }
 
 function getSelectedAdminRole() {
