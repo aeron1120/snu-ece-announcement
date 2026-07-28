@@ -1726,10 +1726,6 @@ async function openDetail(idStr) {
     document.getElementById('detail-summary').innerHTML = (notice.aiSummary || []).map(item => `<li>${escapeHtml(item)}</li>`).join('');
     document.getElementById('detail-content').innerHTML = linkify(notice.content || "");
 
-    // 수정·삭제는 관리자 페이지로 넘긴다. 공개 화면에는 인증 UI를 두지 않는다.
-    const adminLink = document.getElementById('detail-admin-edit-link');
-    if (adminLink) adminLink.href = `./admin.html?edit=${encodeURIComponent(currentViewId)}`;
-
     const sourceArea = document.getElementById('detail-source-area');
     const source = document.getElementById('detail-source');
     const attachmentList = document.getElementById('detail-attachments');

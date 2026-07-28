@@ -119,41 +119,9 @@ async function showGeminiRetryCountdown(error) {
     await new Promise(resolve => setTimeout(resolve, 700));
 }
 
-// ========================================
-// 🔐 인증 게이트
-// ========================================
-
-async function submitAdminGate() {
-    const input = document.getElementById('admin-gate-password');
-    const error = document.getElementById('admin-gate-error');
-    const password = input.value;
-    error.textContent = '';
-
-    if (!password) {
-        error.textContent = '비밀번호를 입력해주세요.';
-        input.focus();
-        return;
-    }
-
-    try {
-        await apiRequest('/api/admin/verify', {
-            method: 'POST',
-            headers: getNoticeAdminHeaders(password)
-        });
-    } catch (requestError) {
-        error.textContent = `인증 실패: ${requestError.message}`;
-        input.focus();
-        return;
-    }
-
-    noticeAdminAuthToken = password;
-    input.value = '';
-    await enterAdminWorkspace();
-}
-
 async function enterAdminWorkspace() {
-    document.getElementById('admin-gate').hidden = true;
-    document.getElementById('admin-workspace').hidden = false;
+    const workspace = document.getElementById('admin-workspace');
+    if (workspace) workspace.hidden = false;
     document.getElementById('admin-mode-exit').textContent = '관리자 모드 나가기';
 
     await loadCategories();
@@ -171,7 +139,7 @@ async function enterAdminWorkspace() {
     }
 }
 
-function exitAdminMode() {
+async function exitAdminMode() {
     noticeAdminAuthToken = '';
     superAdminAuthToken = '';
     bannerManageAuthToken = '';
@@ -179,7 +147,11 @@ function exitAdminMode() {
     sessionStorage.removeItem('eceAdminToken');
     sessionStorage.removeItem('eceSuperAdminToken');
     sessionStorage.removeItem('eceBannerManageToken');
-    location.href = './index.html';
+    try {
+        await fetch('/api/admin/session', { method: 'DELETE' });
+    } finally {
+        location.replace('./index.html');
+    }
 }
 
 // ========================================
@@ -1944,6 +1916,15 @@ document.addEventListener('DOMContentLoaded', async function () {
     sessionStorage.removeItem('eceBannerManageToken');
 
     pendingEditNoticeId = new URLSearchParams(location.search).get('edit');
+
+    try {
+        await apiRequest('/api/admin/session', { method: 'GET' });
+    } catch {
+        const next = pendingEditNoticeId ? `?edit=${encodeURIComponent(pendingEditNoticeId)}` : '';
+        location.replace(`/admin${next}`);
+        return;
+    }
+
     resetComposeForm();
     initImagePaste();
 
@@ -1955,7 +1936,5 @@ document.addEventListener('DOMContentLoaded', async function () {
         console.error('관리자 설정 불러오기 실패:', error);
     }
 
-    const gatePassword = document.getElementById('admin-gate-password');
-    gatePassword.value = '';
-    gatePassword.focus();
+    await enterAdminWorkspace();
 });

@@ -1,5 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
+import { readFile, writeFile } from 'node:fs/promises';
+import path from 'node:path';
 import { app, toNoticeSummary } from '../server/server.js';
 
 test('notice summaries expose card metadata without heavy detail fields', () => {
@@ -96,4 +99,64 @@ test('public notice API is paginated, has detail lookup, and hides Express signa
 
     const missing = await fetch(`${baseUrl}/api/notices/9007199254740991`);
     assert.equal(missing.status, 404);
+});
+
+test('admin pages require a short-lived HttpOnly server session', async t => {
+    const settingsPath = path.join(process.cwd(), 'server', 'data', 'settings.json');
+    const originalSettings = await readFile(settingsPath, 'utf8');
+    const settings = JSON.parse(originalSettings);
+    const password = 'test-admin-session-password';
+    settings.adminTokenHash = crypto.createHash('sha256').update(password).digest('hex');
+    await writeFile(settingsPath, JSON.stringify(settings, null, 2), 'utf8');
+    t.after(() => writeFile(settingsPath, originalSettings, 'utf8'));
+
+    const server = await new Promise(resolve => {
+        const listening = app.listen(0, () => resolve(listening));
+    });
+    t.after(() => server.close());
+    const baseUrl = `http://127.0.0.1:${server.address().port}`;
+
+    const loginPage = await fetch(`${baseUrl}/admin`);
+    assert.equal(loginPage.status, 200);
+    assert.match(await loginPage.text(), /id="admin-login-form"/);
+
+    const blockedWorkspace = await fetch(`${baseUrl}/admin.html`, { redirect: 'manual' });
+    assert.equal(blockedWorkspace.status, 302);
+    assert.equal(blockedWorkspace.headers.get('location'), '/admin');
+
+    const login = await fetch(`${baseUrl}/api/admin/session`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password })
+    });
+    assert.equal(login.status, 201);
+    const setCookie = login.headers.get('set-cookie') || '';
+    assert.match(setCookie, /ece_admin_session=/);
+    assert.match(setCookie, /HttpOnly/i);
+    assert.match(setCookie, /SameSite=Strict/i);
+    const cookie = setCookie.split(';')[0];
+
+    const workspace = await fetch(`${baseUrl}/admin/workspace`, {
+        headers: { Cookie: cookie },
+        redirect: 'manual'
+    });
+    assert.equal(workspace.status, 200);
+    assert.match(await workspace.text(), /data-page="admin"/);
+
+    const session = await fetch(`${baseUrl}/api/admin/session`, {
+        headers: { Cookie: cookie }
+    });
+    assert.equal(session.status, 200);
+    assert.deepEqual(await session.json(), { authenticated: true });
+
+    const protectedApi = await fetch(`${baseUrl}/api/admin/feedback`, {
+        headers: { Cookie: cookie }
+    });
+    assert.equal(protectedApi.status, 200);
+
+    const logout = await fetch(`${baseUrl}/api/admin/session`, {
+        method: 'DELETE',
+        headers: { Cookie: cookie }
+    });
+    assert.equal(logout.status, 204);
 });

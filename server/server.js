@@ -107,6 +107,9 @@ const defaultNotices = [];
 const MAX_RIGHT_RAIL_BANNERS = 5;
 const PROMO_TYPES = new Set(['club', 'project', 'council']);
 const PROMO_STATUSES = new Set(['pending', 'approved', 'rejected']);
+const ADMIN_SESSION_COOKIE = 'ece_admin_session';
+const ADMIN_SESSION_TTL_MS = 8 * 60 * 60 * 1000;
+const adminSessions = new Map();
 // 실제 학내 홍보가 등록되기 전 순환·관리 흐름을 확인할 수 있는 임시 항목이다.
 // 관리 화면에서 언제든 수정하거나 삭제할 수 있으며, 오른쪽 레일에만 노출된다.
 const defaultBannerSlides = [
@@ -245,6 +248,120 @@ app.use((req, res, next) => {
         return res.sendStatus(204);
     }
     next();
+});
+
+function readCookie(req, name) {
+    const cookieHeader = String(req.headers.cookie || '');
+    for (const pair of cookieHeader.split(';')) {
+        const [rawName, ...rawValue] = pair.trim().split('=');
+        if (rawName === name) return decodeURIComponent(rawValue.join('='));
+    }
+    return '';
+}
+
+function getAdminSession(req) {
+    const sessionId = readCookie(req, ADMIN_SESSION_COOKIE);
+    if (!sessionId) return null;
+    const session = adminSessions.get(sessionId);
+    if (!session || session.expiresAt <= Date.now()) {
+        adminSessions.delete(sessionId);
+        return null;
+    }
+    return { id: sessionId, ...session };
+}
+
+function setAdminSessionCookie(res, sessionId) {
+    const secure = process.env.NODE_ENV === 'production' ? '; Secure' : '';
+    res.setHeader(
+        'Set-Cookie',
+        `${ADMIN_SESSION_COOKIE}=${encodeURIComponent(sessionId)}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${Math.floor(ADMIN_SESSION_TTL_MS / 1000)}${secure}`
+    );
+}
+
+function clearAdminSessionCookie(res) {
+    const secure = process.env.NODE_ENV === 'production' ? '; Secure' : '';
+    res.setHeader(
+        'Set-Cookie',
+        `${ADMIN_SESSION_COOKIE}=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0${secure}`
+    );
+}
+
+async function hasValidAdminSession(req) {
+    const session = getAdminSession(req);
+    if (!session) return false;
+    const settings = await getSecuritySettings();
+    const expectedHash = settings?.adminTokenHash || defaultSecuritySettings.adminTokenHash;
+    if (session.credentialHash !== expectedHash) {
+        adminSessions.delete(session.id);
+        return false;
+    }
+    return true;
+}
+
+app.post('/api/admin/session', authenticationLimiter, async (req, res) => {
+    try {
+        const password = String(req.body?.password || '').trim();
+        const settings = await getSecuritySettings();
+        const expectedHash = settings?.adminTokenHash || defaultSecuritySettings.adminTokenHash;
+        if (!password || hashToken(password) !== expectedHash) {
+            return res.status(401).json({ error: '관리자 인증 실패' });
+        }
+
+        const sessionId = crypto.randomBytes(32).toString('base64url');
+        adminSessions.set(sessionId, {
+            credentialHash: expectedHash,
+            expiresAt: Date.now() + ADMIN_SESSION_TTL_MS
+        });
+        setAdminSessionCookie(res, sessionId);
+        res.status(201).json({ ok: true, expiresIn: ADMIN_SESSION_TTL_MS / 1000 });
+    } catch (error) {
+        res.status(500).json({ error: error.message || '관리자 세션 생성 실패' });
+    }
+});
+
+app.get('/api/admin/session', async (req, res) => {
+    try {
+        if (!await hasValidAdminSession(req)) {
+            return res.status(401).json({ authenticated: false });
+        }
+        res.json({ authenticated: true });
+    } catch (error) {
+        res.status(500).json({ error: error.message || '관리자 세션 확인 실패' });
+    }
+});
+
+app.delete('/api/admin/session', (req, res) => {
+    const sessionId = readCookie(req, ADMIN_SESSION_COOKIE);
+    if (sessionId) adminSessions.delete(sessionId);
+    clearAdminSessionCookie(res);
+    res.status(204).send();
+});
+
+app.get(['/admin', '/admin/'], async (req, res) => {
+    try {
+        if (await hasValidAdminSession(req)) {
+            const query = req.originalUrl.includes('?') ? req.originalUrl.slice(req.originalUrl.indexOf('?')) : '';
+            return res.redirect(302, `/admin/workspace${query}`);
+        }
+        res.setHeader('Cache-Control', 'no-store');
+        return res.sendFile(path.join(__dirname, '..', 'public', 'admin-login.html'));
+    } catch (error) {
+        return res.status(500).send('관리자 로그인 화면을 불러오지 못했습니다.');
+    }
+});
+
+app.get(['/admin/workspace', '/admin.html'], async (req, res) => {
+    try {
+        if (!await hasValidAdminSession(req)) {
+            const edit = String(req.query?.edit || '').trim();
+            const next = edit ? `?edit=${encodeURIComponent(edit)}` : '';
+            return res.redirect(302, `/admin${next}`);
+        }
+        res.setHeader('Cache-Control', 'no-store');
+        return res.sendFile(path.join(__dirname, '..', 'public', 'admin.html'));
+    } catch (error) {
+        return res.status(500).send('관리자 화면을 불러오지 못했습니다.');
+    }
 });
 
 app.use(express.static(path.join(__dirname, '..', 'public')));
@@ -680,14 +797,13 @@ async function saveSecuritySettings(settings) {
 async function requireNoticeAdmin(req, res, next) {
     try {
         const token = getHeaderToken(req, 'x-admin-token');
-        if (!token) {
-            return res.status(401).json({ error: '관리자 인증 실패' });
-        }
-
         const settings = await getSecuritySettings();
         const expectedHash = settings?.adminTokenHash || defaultSecuritySettings.adminTokenHash;
-
-        if (hashToken(token) !== expectedHash) {
+        const session = getAdminSession(req);
+        const validHeader = Boolean(token) && hashToken(token) === expectedHash;
+        const validSession = Boolean(session) && session.credentialHash === expectedHash;
+        if (!validHeader && !validSession) {
+            if (session) adminSessions.delete(session.id);
             return res.status(401).json({ error: '관리자 인증 실패' });
         }
 

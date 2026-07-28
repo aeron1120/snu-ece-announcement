@@ -20,26 +20,13 @@
     <h1>SNU ECE 공지방</h1>
     <span class="admin-badge">ADMIN</span>
     <div class="admin-topbar-actions">
-        <button type="button" id="admin-mode-exit" onclick="exitAdminMode()">공개 모드로 돌아가기</button>
+        <button type="button" id="admin-mode-exit" onclick="exitAdminMode()">관리자 모드 나가기</button>
     </div>
 </header>
 
 <div class="admin-shell">
 
-    <!-- 인증 게이트. 통과 전에는 어떤 관리 화면도 그리지 않는다. -->
-    <section class="admin-gate" id="admin-gate">
-        <h2>공지 관리자 인증</h2>
-        <p>공지 검수·등록·수정을 하려면 공지 관리자 비밀번호를 입력하세요.<br>
-           배너 관리와 관리자 설정은 인증 후 각 탭에서 따로 확인합니다.</p>
-        <input type="password" id="admin-gate-password" value="" autocomplete="off"
-               data-1p-ignore data-lpignore="true" data-form-type="other"
-               onkeyup="if(event.key==='Enter') submitAdminGate()">
-        <button class="btn" type="button" onclick="submitAdminGate()">인증하기</button>
-        <p class="admin-gate-error" id="admin-gate-error" aria-live="polite"></p>
-    </section>
-
-    <!-- 인증 후 본문 -->
-    <div id="admin-workspace" hidden>
+    <div id="admin-workspace">
         <nav class="admin-tabs" aria-label="관리 메뉴">
             <button type="button" class="admin-tab active" data-tab="review" onclick="selectAdminTab('review')">
                 검수 대기 <span class="tab-count" id="review-pending-count">—</span>

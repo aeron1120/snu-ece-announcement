@@ -28,6 +28,7 @@ test('preparePublic copies canonical frontend files', async () => {
     await mkdir(path.join(rootDir, 'js'));
     await writeFile(path.join(rootDir, 'index.html'), '<main>ok</main>');
     await writeFile(path.join(rootDir, 'admin.html'), '<main>admin</main>');
+    await writeFile(path.join(rootDir, 'admin-login.html'), '<main>admin login</main>');
     await writeFile(path.join(rootDir, 'banner-inquiry.html'), '<main>banner inquiry</main>');
     await writeFile(path.join(rootDir, 'css/core.css'), 'body{}');
     await writeFile(path.join(rootDir, 'css/mobile.css'), '.grid{}');
@@ -44,6 +45,10 @@ test('preparePublic copies canonical frontend files', async () => {
     assert.equal(
         await readFile(path.join(rootDir, 'public/admin.html'), 'utf8'),
         '<main>admin</main>'
+    );
+    assert.equal(
+        await readFile(path.join(rootDir, 'public/admin-login.html'), 'utf8'),
+        '<main>admin login</main>'
     );
     assert.equal(
         await readFile(path.join(rootDir, 'public/banner-inquiry.html'), 'utf8'),
@@ -85,8 +90,7 @@ test('administrator surfaces live on admin.html, not the public page', async () 
         'review-pending-count',
         'panel-compose',
         'right-rail-slides-list',
-        'category-candidate-list',
-        'admin-gate'
+        'category-candidate-list'
     ]) {
         assert.match(html, new RegExp(`id="${id}"`));
     }
@@ -102,7 +106,7 @@ test('administrator surfaces live on admin.html, not the public page', async () 
     ]) {
         assert.doesNotMatch(publicHtml, new RegExp(leaked.replace('.', '\\.')));
     }
-    assert.match(publicHtml, /href="\.\/admin\.html"/);
+    assert.doesNotMatch(publicHtml, /admin(?:\.html|\/workspace)|관리자 페이지/);
 });
 
 test('public shell exposes brand and managed advertising rails', async () => {
@@ -552,8 +556,10 @@ test('manual Gemini analysis saves canonical category ids with the notice', asyn
     assert.match(schema, /notice_payload \? 'categoryIds'[\s\S]*insert into public\.notice_categories/);
 });
 
-test('admin AI work shows progress and the gate never restores a saved password', async () => {
+test('admin AI work shows progress while login is isolated in a server-session page', async () => {
     const html = await readFile('admin.html', 'utf8');
+    const loginHtml = await readFile('admin-login.html', 'utf8');
+    const loginApp = await readFile('js/admin-login.js', 'utf8');
     const admin = await readFile('js/admin.js', 'utf8');
 
     assert.match(html, /id="ai-progress-bar"/);
@@ -565,15 +571,13 @@ test('admin AI work shows progress and the gate never restores a saved password'
     assert.match(admin, /updateAiProgress\(18, 'Gemini가 원문을 분석하고 있습니다\.'/);
     assert.match(admin, /finishAiProgress\('Gemini 분석이 완료되었습니다\.'/);
 
-    const gateInput = html.match(/<input type="password" id="admin-gate-password"[^>]*>/)?.[0] || '';
-    assert.match(gateInput, /value=""/);
-    assert.match(gateInput, /autocomplete="off"/);
+    assert.doesNotMatch(html, /id="admin-gate"|id="admin-gate-password"/);
+    assert.match(loginHtml, /id="admin-login-password"[^>]*value=""/);
+    assert.match(loginHtml, /autocomplete="current-password"/);
+    assert.match(loginApp, /\/api\/admin\/session/);
+    assert.match(loginApp, /location\.replace\(getAdminWorkspaceUrl\(\)\)/);
     assert.doesNotMatch(admin, /sessionStorage\.getItem\('eceNoticeAdminToken'\)/);
-    const gateSource = admin.slice(
-        admin.indexOf('async function submitAdminGate'),
-        admin.indexOf('async function enterAdminWorkspace')
-    );
-    assert.doesNotMatch(gateSource, /sessionStorage\.setItem/);
+    assert.doesNotMatch(admin, /function submitAdminGate/);
 });
 
 test('Gemini quota errors show only a retry countdown and admin mode has one exit control', async () => {
@@ -587,10 +591,10 @@ test('Gemini quota errors show only a retry countdown and admin mode has one exi
     assert.match(admin, /분당 호출 초과로 \$\{remaining\}초 뒤에 다시 실행 부탁드립니다\./);
     assert.match(admin, /isGeminiRateLimitError\(error\)/);
     assert.match(html, /id="admin-mode-exit"[^>]*onclick="exitAdminMode\(\)"/);
-    assert.match(html, />공개 모드로 돌아가기<\/button>/);
+    assert.match(html, />관리자 모드 나가기<\/button>/);
     assert.doesNotMatch(html, /id="admin-logout"|>로그아웃<|공개 화면으로/);
     assert.match(admin, /getElementById\('admin-mode-exit'\)\.textContent = '관리자 모드 나가기'/);
-    assert.match(admin, /function exitAdminMode\(\)[\s\S]*location\.href = '\.\/index\.html'/);
+    assert.match(admin, /async function exitAdminMode\(\)[\s\S]*fetch\('\/api\/admin\/session', \{ method: 'DELETE' \}\)[\s\S]*location\.replace\('\.\/index\.html'\)/);
 });
 
 test('automatic ECE crawling feeds a live review inbox and original text is black', async () => {
