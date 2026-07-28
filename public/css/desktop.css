@@ -106,5 +106,10 @@ html[data-view="desktop"] .spatial-workspace.is-split[data-blocks="1"] .notice-b
         width: var(--compact-ad-rail-width);
     }
 
+    html[data-view="desktop"] .split-drop-overlay {
+        left: 14px;
+        right: calc(var(--compact-ad-rail-width) + 14px);
+    }
+
     html[data-view="desktop"] .rail-ad-image { width: 100%; height: 100%; object-fit: cover; }
 }

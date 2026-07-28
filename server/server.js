@@ -30,6 +30,7 @@ import {
     createKakaoBotWebhookService
 } from './services/kakao-bot-webhook.js';
 import { rateLimit } from 'express-rate-limit';
+import compression from 'compression';
 
 dotenv.config();
 
@@ -245,6 +246,9 @@ const feedbackLimiter = rateLimit({
     message: { error: '피드백 전송이 너무 많습니다. 잠시 후 다시 시도해주세요.' }
 });
 
+// 소비자 화면의 JS·CSS와 공지 JSON을 전송 단계에서 압축한다.
+// 1KB 이하는 압축 비용이 이득보다 커서 그대로 보낸다.
+app.use(compression({ threshold: 1024 }));
 app.use(
     ['/api/notices', '/api/banner-slides', '/api/admin/review-notices'],
     express.json({ limit: '20mb' })

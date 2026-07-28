@@ -52,6 +52,7 @@ let noticeDragInProgress = false;
 let suppressNoticeClickUntil = 0;
 let pointerNoticeDrag = null;
 let pointerDraggedCompareId = '';
+let pointerDraggedComparePointerId = null;
 let pointerDragHandle = null;
 let compareDragOverlay = null;
 let activeCompareDropTargetId = '';
@@ -525,37 +526,26 @@ async function loadData() {
     superAdminAuthToken = sessionStorage.getItem('eceSuperAdminToken') || '';
     bannerManageAuthToken = sessionStorage.getItem('eceBannerManageToken') || '';
 
-    try {
-        const settings = await apiRequest('/api/settings', { method: 'GET' });
-        if (settings?.adminInfo) {
-            adminInfo = {
-                name: settings.adminInfo.name || adminInfo.name,
-                phone: settings.adminInfo.phone || adminInfo.phone,
-                kakao: settings.adminInfo.kakao || adminInfo.kakao
-            };
-        }
+    const settingsTask = apiRequest('/api/settings', { method: 'GET' })
+        .then(settings => {
+            if (settings?.adminInfo) {
+                adminInfo = {
+                    name: settings.adminInfo.name || adminInfo.name,
+                    phone: settings.adminInfo.phone || adminInfo.phone,
+                    kakao: settings.adminInfo.kakao || adminInfo.kakao
+                };
+            }
+            if (settings?.bannerInfo) {
+                bannerAdminInfo = {
+                    name: settings.bannerInfo.name || bannerAdminInfo.name,
+                    phone: settings.bannerInfo.phone || bannerAdminInfo.phone,
+                    kakao: settings.bannerInfo.kakao || bannerAdminInfo.kakao
+                };
+            }
+        })
+        .catch(error => console.error('관리자 설정 불러오기 실패:', error));
 
-        if (settings?.bannerInfo) {
-            bannerAdminInfo = {
-                name: settings.bannerInfo.name || bannerAdminInfo.name,
-                phone: settings.bannerInfo.phone || bannerAdminInfo.phone,
-                kakao: settings.bannerInfo.kakao || bannerAdminInfo.kakao
-            };
-        }
-    } catch (error) {
-        console.error('관리자 설정 불러오기 실패:', error);
-    }
-
-    try {
-        await loadNoticePage(1, { replace: true });
-    } catch (error) {
-        console.error('공지 목록 불러오기 실패:', error);
-        // 가짜 공지를 대신 보여주면 안 되므로 빈 목록으로 두고 실패 사실만 알린다.
-        notices = [];
-        alert('공지 목록을 불러오지 못했습니다. 잠시 후 새로고침해주세요.');
-    }
-
-    await loadBannerSlides();
+    await Promise.all([settingsTask, loadBannerSlides()]);
     startBannerPolling();
 }
 
@@ -675,7 +665,8 @@ function stepRightRailBanner(direction, event) {
 }
 
 function startBannerSwipe(event) {
-    if (getLayoutMode() !== 'mobile' || event.button > 0) return;
+    if (event.isPrimary === false || event.button > 0) return;
+    if (getBannerSlidesByPlacement('right_rail').length < 2) return;
     const stage = event.currentTarget;
     bannerSwipePointerId = event.pointerId;
     bannerSwipeStartX = event.clientX;
@@ -710,8 +701,12 @@ function finishBannerSwipe(event, cancelled = false) {
     const shouldMove = !cancelled
         && Math.abs(bannerSwipeDeltaX) >= 44
         && Math.abs(bannerSwipeDeltaX) > Math.abs(deltaY) * 1.15;
-    if (stage.hasPointerCapture?.(event.pointerId)) {
-        stage.releasePointerCapture(event.pointerId);
+    try {
+        if (stage.hasPointerCapture?.(event.pointerId)) {
+            stage.releasePointerCapture(event.pointerId);
+        }
+    } catch {
+        // 포인터가 브라우저에서 먼저 취소된 경우에도 정리 흐름은 계속한다.
     }
     stage.classList.remove('is-swiping');
     stage.style.removeProperty('transform');
@@ -764,7 +759,8 @@ function renderRightRailAd({ restartRotation = true, transitionDirection = 0 } =
         return;
     }
     const image = bannerImageSrc
-        ? `<img class="rail-ad-image" src="${escapeHtml(bannerImageSrc)}" alt="${escapeHtml(slide.altText || slide.name || '학내 홍보 이미지')}" onerror="renderRightRailInquiryFallback()">`
+        ? `<img class="rail-ad-image" src="${escapeHtml(bannerImageSrc)}" alt="${escapeHtml(slide.altText || slide.name || '학내 홍보 이미지')}"
+                draggable="false" onerror="renderRightRailInquiryFallback()">`
         : '';
     const controls = slides.length > 1 ? `
         <div class="rail-ad-controls" role="group" aria-label="배너 넘기기">
@@ -777,7 +773,8 @@ function renderRightRailAd({ restartRotation = true, transitionDirection = 0 } =
     ` : '';
     const imageContent = slide.linkUrl
         ? `<a class="rail-ad-link rail-ad-image-link" href="${escapeHtml(slide.linkUrl)}" target="_blank"
-                rel="noopener noreferrer" onclick="return allowBannerLinkClick(event)">${image}</a>`
+                rel="noopener noreferrer" draggable="false"
+                onclick="return allowBannerLinkClick(event)">${image}</a>`
         : image;
     const transitionClass = transitionDirection < 0
         ? ' is-entering-left'
@@ -1098,7 +1095,7 @@ function openContactFromRail() {
     const help = document.getElementById('feedback-help');
     const message = document.getElementById('feedback-message');
     if (title) title.textContent = '익명 피드백';
-    if (help) help.textContent = '이름·연락처·IP를 저장하지 않습니다. 개선 의견이나 오류를 편하게 남겨주세요.';
+    if (help) help.textContent = '이름·연락처·IP를 저장하지 않습니다.\n개선 의견이나 오류를 편하게 남겨주세요.';
     if (message) message.placeholder = '개선 의견이나 오류 제보를 적어주세요. (5자 이상)';
     openModal('contact-modal');
     message?.focus();
@@ -1125,7 +1122,7 @@ function setFeedbackCategory(category) {
         if (message) message.placeholder = '배너 게재 기간, 내용, 연락 방법을 적어주세요. (5자 이상)';
     } else {
         if (title) title.textContent = '익명 피드백';
-        if (help) help.textContent = '이름·연락처·IP를 저장하지 않습니다. 개선 의견이나 오류를 편하게 남겨주세요.';
+        if (help) help.textContent = '이름·연락처·IP를 저장하지 않습니다.\n개선 의견이나 오류를 편하게 남겨주세요.';
         if (message) message.placeholder = '개선 의견이나 오류 제보를 적어주세요. (5자 이상)';
     }
 }
@@ -1737,8 +1734,12 @@ function renderNoticeCards(animate = false) {
         const excerpt = Array.isArray(notice.aiSummary) ? notice.aiSummary.join(' ') : '';
         // 이미지 카드만 본문 위에 제목을 다시 보여준다(텍스트 카드는 포스터가 곧 제목).
         const titleHtml = hasImg ? `<h3 class="card-title">${safeTitle}</h3>` : '';
-        const surveyRewardHtml = notice.rewardNote || notice.surveyReward
-            ? `<div class="survey-reward" aria-label="리워드">🎁 ${escapeHtml(notice.rewardNote || notice.surveyReward)}</div>`
+        const rewardText = notice.rewardNote || notice.surveyReward || '';
+        const surveyRewardHtml = rewardText
+            ? `<div class="survey-reward card-desktop-reward" aria-label="리워드">🎁 ${escapeHtml(rewardText)}</div>`
+            : '';
+        const mobileRewardHtml = rewardText
+            ? `<span class="card-mobile-reward" aria-label="리워드">🎁 ${escapeHtml(rewardText)}</span>`
             : '';
 
         const card = document.createElement('div');
@@ -1779,6 +1780,7 @@ function renderNoticeCards(animate = false) {
                 <div class="card-date">${escapeHtml(datePresentation.dateLabel)}</div>
                 ${excerpt ? `<p class="card-excerpt">${escapeHtml(excerpt)}</p>` : ''}
                 <div class="card-meta">
+                    ${mobileRewardHtml}
                     <span class="view-count">조회 ${Number(notice.views) || 0}</span>
                 </div>
             </div>
@@ -1796,11 +1798,12 @@ function renderNoticeCards(animate = false) {
         ?.forEach(image => noticeViewportLoader.observeThumbnail(image));
 
     if (animate && grid.childElementCount > 0) {
-        void grid.offsetWidth;
         requestAnimationFrame(() => {
-            grid.querySelectorAll('.card.is-filter-entering').forEach(card => {
-                card.classList.remove('is-filter-entering');
-                window.setTimeout(() => card.style.removeProperty('--notice-enter-delay'), 260);
+            requestAnimationFrame(() => {
+                grid.querySelectorAll('.card.is-filter-entering').forEach(card => {
+                    card.classList.remove('is-filter-entering');
+                    window.setTimeout(() => card.style.removeProperty('--notice-enter-delay'), 260);
+                });
             });
         });
     }
@@ -2134,16 +2137,7 @@ function maxCompareBlocks() {
 
 function showSplitDropOverlay() {
     const overlay = document.getElementById('split-drop-overlay');
-    if (compareWorkspaceOpen && compareBlocks.length > 0) {
-        if (overlay) {
-            overlay.classList.remove('visible');
-            overlay.hidden = true;
-        }
-        document.getElementById('compare-space')?.classList.add('is-notice-drop-active');
-        document.getElementById('spatial-workspace')?.classList.add('is-notice-drop-active');
-        return;
-    }
-    if (!overlay) return;
+    if (!overlay || maxCompareBlocks() === 0 || compareBlocks.length >= maxCompareBlocks()) return;
     overlay.hidden = false;
     requestAnimationFrame(() => overlay.classList.add('visible'));
 }
@@ -2200,7 +2194,7 @@ function onNoticeSplitDragEnd() {
 }
 
 function onNoticeHandlePointerDown(event, id) {
-    if (event.button !== undefined && event.button !== 0) return;
+    if (event.isPrimary === false || (event.button !== undefined && event.button !== 0)) return;
     event.preventDefault();
     event.stopPropagation();
     pointerNoticeDrag = {
@@ -2212,10 +2206,14 @@ function onNoticeHandlePointerDown(event, id) {
         active: false,
         placement: ''
     };
-    event.currentTarget.setPointerCapture?.(event.pointerId);
+    try {
+        event.currentTarget.setPointerCapture?.(event.pointerId);
+    } catch {
+        // 캡처가 거절되어도 document 단계의 포인터 추적은 계속 동작한다.
+    }
     document.addEventListener('pointermove', onNoticeHandlePointerMove, { passive: false });
-    document.addEventListener('pointerup', onNoticeHandlePointerEnd, { once: true });
-    document.addEventListener('pointercancel', onNoticeHandlePointerEnd, { once: true });
+    document.addEventListener('pointerup', onNoticeHandlePointerEnd);
+    document.addEventListener('pointercancel', onNoticeHandlePointerEnd);
 }
 
 function activatePointerNoticeDrag(event) {
@@ -2265,7 +2263,13 @@ function onNoticeHandlePointerEnd(event) {
     document.removeEventListener('pointermove', onNoticeHandlePointerMove);
     document.removeEventListener('pointerup', onNoticeHandlePointerEnd);
     document.removeEventListener('pointercancel', onNoticeHandlePointerEnd);
-    drag.handle?.releasePointerCapture?.(event.pointerId);
+    try {
+        if (drag.handle?.hasPointerCapture?.(event.pointerId)) {
+            drag.handle.releasePointerCapture(event.pointerId);
+        }
+    } catch {
+        // 이미 취소된 포인터는 별도 해제가 필요 없다.
+    }
     if (!drag.active) return;
     event.preventDefault();
     suppressNoticeClickUntil = Date.now() + 300;
@@ -2458,23 +2462,29 @@ function positionComparePointerOverlay(clientX, clientY) {
 }
 
 function onCompareHandlePointerDown(event, id) {
+    if (event.isPrimary === false || (event.button !== undefined && event.button !== 0)) return;
     event.preventDefault();
     event.stopPropagation();
     pointerDraggedCompareId = String(id);
+    pointerDraggedComparePointerId = event.pointerId;
     pointerDragHandle = event.currentTarget;
-    pointerDragHandle.setPointerCapture?.(event.pointerId);
+    try {
+        pointerDragHandle.setPointerCapture?.(event.pointerId);
+    } catch {
+        // 포인터 캡처 없이도 handle의 move/up 이벤트로 기본 조작은 유지한다.
+    }
     const block = pointerDragHandle.closest('.compare-col');
     createCompareDragOverlay(block).classList.add('is-pointer-overlay');
     block?.classList.add('is-dragging');
     document.body.classList.add('reordering-compare-block');
     positionComparePointerOverlay(event.clientX, event.clientY);
-    pointerDragHandle.addEventListener('pointermove', onCompareHandlePointerMove);
-    pointerDragHandle.addEventListener('pointerup', onCompareHandlePointerEnd, { once: true });
-    pointerDragHandle.addEventListener('pointercancel', cleanupComparePointerDrag, { once: true });
+    document.addEventListener('pointermove', onCompareHandlePointerMove, { passive: false });
+    document.addEventListener('pointerup', onCompareHandlePointerEnd);
+    document.addEventListener('pointercancel', cleanupComparePointerDrag);
 }
 
 function onCompareHandlePointerMove(event) {
-    if (!pointerDraggedCompareId) return;
+    if (!pointerDraggedCompareId || event.pointerId !== pointerDraggedComparePointerId) return;
     event.preventDefault();
     positionComparePointerOverlay(event.clientX, event.clientY);
     const hoveredElement = document.elementFromPoint?.(event.clientX, event.clientY);
@@ -2494,6 +2504,7 @@ function onCompareHandlePointerMove(event) {
 }
 
 function onCompareHandlePointerEnd(event) {
+    if (event.pointerId !== pointerDraggedComparePointerId) return;
     event.preventDefault();
     const sourceId = pointerDraggedCompareId;
     const targetId = activeCompareDropTargetId;
@@ -2507,11 +2518,20 @@ function onCompareHandlePointerEnd(event) {
     }
 }
 
-function cleanupComparePointerDrag() {
-    pointerDragHandle?.removeEventListener('pointermove', onCompareHandlePointerMove);
-    pointerDragHandle?.removeEventListener('pointerup', onCompareHandlePointerEnd);
-    pointerDragHandle?.removeEventListener('pointercancel', cleanupComparePointerDrag);
+function cleanupComparePointerDrag(event) {
+    if (event?.pointerId !== undefined && event.pointerId !== pointerDraggedComparePointerId) return;
+    document.removeEventListener('pointermove', onCompareHandlePointerMove);
+    document.removeEventListener('pointerup', onCompareHandlePointerEnd);
+    document.removeEventListener('pointercancel', cleanupComparePointerDrag);
+    try {
+        if (pointerDragHandle?.hasPointerCapture?.(pointerDraggedComparePointerId)) {
+            pointerDragHandle.releasePointerCapture(pointerDraggedComparePointerId);
+        }
+    } catch {
+        // 이미 사라진 포인터는 해제할 필요가 없다.
+    }
     pointerDraggedCompareId = '';
+    pointerDraggedComparePointerId = null;
     pointerDragHandle = null;
     document.body.classList.remove('reordering-compare-block');
     document.getElementById('compare-trash-zone')?.classList.remove('active');
@@ -2943,14 +2963,10 @@ document.addEventListener('DOMContentLoaded', async function () {
     updateBellState();
     startRailClock();
 
-    await loadData();
-    await loadCategories();
+    await Promise.all([loadData(), loadCategories()]);
     const initialNoticePage = restoreNoticeListStateFromUrl();
-    buildCategoryTabs();
     syncNoticeSortChips();
     updateFilterChips();
-    renderRightRailAd();
-    buildHostButtons();
     await filterCards(false, initialNoticePage);
     openNoticeFromUrl();   // 카톡 링크로 들어온 경우 해당 공지를 바로 연다
 });

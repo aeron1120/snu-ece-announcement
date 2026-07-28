@@ -249,11 +249,14 @@ test('mobile cards stay compact, keep paging, and disable notice comparison drag
     const renderCards = readNamedFunction(app, 'renderNoticeCards');
 
     assert.doesNotMatch(html, /class="search-brand"/);
-    assert.match(html, /class="detail-back"[^>]*>← 이전</);
+    assert.match(html, /class="detail-back"[^>]*aria-label="이전 화면"[\s\S]*<svg[\s\S]*<\/button>/);
     assert.match(mobileCss, /\.card\s*\{[^}]*height:\s*auto;[^}]*aspect-ratio:\s*0\.72/s);
     assert.match(mobileCss, /\.card\s*\{[^}]*border-radius:\s*0;[^}]*box-shadow:/s);
     assert.match(mobileCss, /\.card\.card-urgent\s*\{[^}]*border:\s*2px solid #c0392b/s);
     assert.match(mobileCss, /\.card-img-preview\s*\{[^}]*object-fit:\s*cover/s);
+    assert.match(mobileCss, /\.card-img-preview\s*\{[^}]*object-position:\s*top center/s);
+    assert.match(mobileCss, /\.card-mobile-reward\s*\{[^}]*display:\s*inline-flex/s);
+    assert.match(mobileCss, /\.card-meta\s*\{[^}]*justify-content:\s*space-between/s);
     assert.match(mobileCss, /\.notice-pagination\s*\{[^}]*display:\s*flex/s);
     assert.match(mobileCss, /\.card-block-controls,[\s\S]*\.compare-space,[\s\S]*display:\s*none !important/s);
     assert.match(html, /id="mobile-special-filter-toggle"[\s\S]*toggleMobileQuickFilters/);
@@ -303,7 +306,8 @@ test('notice blocks use six-dot handles and expose only left/right split targets
     assert.doesNotMatch(css, /split-drop-dash|\.split-drop-border/);
     assert.doesNotMatch(css, /\.compare-add-zone\.is-bottom\s*\{/);
     assert.doesNotMatch(css, /\.compare-col\.is-notice-split-left::after/);
-    assert.match(css, /\.split-drop-overlay\s*\{[^}]*position:\s*relative;[^}]*grid-template-columns:\s*repeat\(2,/s);
+    assert.match(css, /\.split-drop-overlay\s*\{[^}]*position:\s*fixed;[^}]*grid-template-columns:\s*92px minmax\(160px, 1fr\) 92px/s);
+    assert.match(css, /\.split-drop-zone\.is-right\s*\{\s*grid-column:\s*3;/s);
     assert.match(css, /\.spatial-workspace\.is-split\s*\{[^}]*display:\s*block;/s);
     assert.match(css, /\.spatial-workspace\.is-split \.compare-space-stage\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*repeat\(2,/s);
     assert.match(css, /\.spatial-workspace\.is-split\[data-blocks="1"\]\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*repeat\(2,/s);
@@ -411,6 +415,8 @@ test('drag listeners and overlays are attached only through six-dot handles', as
     assert.match(dragStartSource, /setPointerCapture/);
     assert.match(app, /function onCompareHandlePointerDown/);
     assert.match(app, /function onCompareHandlePointerMove/);
+    assert.match(app, /document\.addEventListener\('pointermove', onCompareHandlePointerMove/);
+    assert.match(app, /document\.removeEventListener\('pointermove', onCompareHandlePointerMove/);
 });
 
 test('the notice board opens a full-page detail instead of a modal', async () => {
@@ -422,6 +428,8 @@ test('the notice board opens a full-page detail instead of a modal', async () =>
     assert.doesNotMatch(html, /id="detail-modal"/);
     assert.match(app, /function showDetailView/);
     assert.match(app, /function closeDetail/);
+    assert.match(html, /class="detail-back"[^>]*aria-label="이전 화면"[\s\S]*<svg/);
+    assert.doesNotMatch(html, /class="detail-back"[^>]*>[^<]*공지 목록/);
     // 상세를 열면 목록을 숨기고 주소창을 공유 링크로 바꾼다.
     const openDetail = app.slice(app.indexOf('async function openDetail'), app.indexOf('function showDetailView'));
     assert.match(openDetail, /showDetailView\(\)/);
@@ -444,6 +452,7 @@ test('detail and board use a lightweight transition and restore scroll', async (
     assert.match(css, /\.surface-entering\s*\{[^}]*animation:\s*notice-surface-in 0\.16s ease-out/s);
     assert.match(css, /\.btn:active\s*\{[^}]*scale\(0\.985\)/s);
     assert.match(css, /\.filter-btn:active,[\s\S]*\.gallery-thumb:active\s*\{[\s\S]*scale\(0\.97\)/);
+    assert.match(css, /\.detail-back\s*\{[^}]*border-radius:\s*50%;[^}]*box-shadow:/s);
 });
 
 test('a category tab bar sits above the filters like the SNU newsroom', async () => {
@@ -490,7 +499,7 @@ test('sort chips are exposed beside result count and category tabs restore their
     const html = await readFile('index.html', 'utf8');
     const app = await readFile('js/core.js', 'utf8');
     assert.match(html, /class="notice-results-toolbar"/);
-    assert.match(html, /data-sort="마감임박순"[\s\S]*data-sort="최신순"[\s\S]*data-sort="조회순"/);
+    assert.match(html, /data-sort="최신순"[\s\S]*data-sort="마감임박순"[\s\S]*data-sort="조회순"/);
     assert.doesNotMatch(html, /id="fg-sort"/);
     const defaults = readNamedFunction(app, 'getDefaultSortForCategory');
     assert.match(defaults, /opportunity[\s\S]*benefit[\s\S]*마감임박순/);
@@ -522,6 +531,8 @@ test('the contact modal is an anonymous feedback box, not admin contact info', a
     assert.doesNotMatch(html, /01040953346/);
     // 대신 익명 피드백 입력 상자가 있다.
     assert.match(html, /id="feedback-message"/);
+    assert.match(html, /이름·연락처·IP를 저장하지 않습니다\.\s*\n개선 의견이나 오류를 편하게 남겨주세요\./);
+    assert.match(app, /이름·연락처·IP를 저장하지 않습니다\.\\n개선 의견이나 오류를 편하게 남겨주세요\./);
     assert.doesNotMatch(html, /data-feedback-category="banner"/);
     assert.match(html, /onclick="submitFeedback\(\)"/);
     assert.match(app, /function submitFeedback/);
@@ -932,6 +943,8 @@ test('right-rail banners start randomly, auto-rotate, overlay manual arrows, and
     assert.match(app, /function moveBannerSwipe/);
     assert.match(app, /function finishBannerSwipe/);
     assert.match(app, /Math\.abs\(bannerSwipeDeltaX\) >= 44/);
+    assert.doesNotMatch(readNamedFunction(app, 'startBannerSwipe'), /getLayoutMode\(\) !== 'mobile'/);
+    assert.match(app, /class="rail-ad-image"[\s\S]*draggable="false"/);
     assert.doesNotMatch(app, /class="rail-ad-dot/);
     assert.match(css, /\.rail-ad-image-stage\s*\{[^}]*width:\s*100%;[^}]*aspect-ratio:\s*4\s*\/\s*5;[^}]*touch-action:\s*pan-y/s);
     assert.match(css, /\.rail-ad-image\s*\{[^}]*width:\s*100%;[^}]*height:\s*100%;[^}]*object-fit:\s*cover[^}]*border:\s*0/s);
@@ -1043,7 +1056,9 @@ test('one fixed block keeps the complete base notice flow in the right half', as
     assert.doesNotMatch(app, /SPLIT_NOTICE_PAGE_SIZE|showMoreSplitNotices|updateSplitNoticeMore/);
     assert.match(css, /body\.notice-dragging \.notice-hover-preview\s*\{[^}]*display:\s*none !important;/s);
     assert.doesNotMatch(css, /\.split-notice-more/);
-    assert.match(showDropSource, /spatial-workspace[\s\S]*is-notice-drop-active/);
+    assert.match(showDropSource, /compareBlocks\.length >= maxCompareBlocks\(\)/);
+    assert.match(showDropSource, /overlay\.hidden = false/);
+    assert.match(css, /\.split-drop-overlay\s*\{[^}]*position:\s*fixed;[^}]*top:\s*50%/s);
 });
 
 test('banner manager omits an untouched expiry so storage preserves it', async () => {
@@ -1603,6 +1618,24 @@ test('notice pagination renders previous, numbered, and next page controls', asy
     context.updateNoticePaginationUI({ page: 1, totalPages: 0, total: 0 }, false);
     assert.equal(container.hidden, true);
     assert.equal(status.textContent, '');
+});
+
+test('public startup fetches the notice list once and avoids forced layout during card transitions', async () => {
+    const app = await readFile('js/core.js', 'utf8');
+    const server = await readFile('server/server.js', 'utf8');
+    const packageJson = JSON.parse(await readFile('package.json', 'utf8'));
+    const loadDataSource = readNamedFunction(app, 'loadData');
+    const renderCardsSource = readNamedFunction(app, 'renderNoticeCards');
+    const startupSource = app.slice(app.indexOf("document.addEventListener('DOMContentLoaded'"));
+
+    assert.doesNotMatch(loadDataSource, /loadNoticePage/);
+    assert.match(loadDataSource, /Promise\.all\(\[settingsTask, loadBannerSlides\(\)\]\)/);
+    assert.match(startupSource, /Promise\.all\(\[loadData\(\), loadCategories\(\)\]\)/);
+    assert.match(startupSource, /await filterCards\(false, initialNoticePage\)/);
+    assert.doesNotMatch(renderCardsSource, /offsetWidth|offsetHeight/);
+    assert.equal(typeof packageJson.dependencies.compression, 'string');
+    assert.match(server, /import compression from 'compression'/);
+    assert.match(server, /app\.use\(compression\(\{ threshold: 1024 \}\)\)/);
 });
 
 test('notice viewport loader defers thumbnails until they intersect', async () => {
