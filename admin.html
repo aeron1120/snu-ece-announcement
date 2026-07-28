@@ -31,6 +31,7 @@
             <button type="button" class="admin-tab active" data-tab="review" onclick="selectAdminTab('review')">
                 검수 대기 <span class="tab-count" id="review-pending-count">—</span>
             </button>
+            <button type="button" class="admin-tab" data-tab="backfill" onclick="selectAdminTab('backfill')">카톡 백필</button>
             <button type="button" class="admin-tab" data-tab="compose" onclick="selectAdminTab('compose')">공지 추가하기</button>
             <button type="button" class="admin-tab" data-tab="notices" onclick="selectAdminTab('notices')">공지 목록</button>
             <button type="button" class="admin-tab" data-tab="banner" onclick="selectAdminTab('banner')">학내 홍보 관리</button>
@@ -54,6 +55,35 @@
                 <section id="review-editor" class="review-editor" aria-label="공지 검수 편집기">
                     <div class="review-empty">왼쪽에서 검수할 공지를 선택하세요.</div>
                 </section>
+            </div>
+        </section>
+
+        <section class="admin-panel" id="panel-backfill" aria-labelledby="panel-backfill-title">
+            <h2 id="panel-backfill-title">카카오톡 로그 백필</h2>
+            <p class="review-auto-note">대화 내보내기 원본의 CRLF 경계를 유지해 파싱합니다. 자동 분류는 초안이며, 아래 표에서 검토한 항목만 검수함으로 보냅니다.</p>
+            <div class="backfill-upload-row">
+                <input type="file" id="kakao-backfill-file" accept=".txt,text/plain">
+                <button class="btn" type="button" id="kakao-backfill-preview-button" onclick="previewKakaoBackfill()">원본 분석하기</button>
+            </div>
+            <p class="review-status" id="kakao-backfill-status" aria-live="polite"></p>
+            <div class="backfill-summary" id="kakao-backfill-summary" hidden></div>
+            <div class="backfill-table-wrap" id="kakao-backfill-table-wrap" hidden>
+                <table class="backfill-table">
+                    <thead>
+                        <tr>
+                            <th scope="col">포함</th>
+                            <th scope="col">시각·발신</th>
+                            <th scope="col">제목</th>
+                            <th scope="col">발신 주체</th>
+                            <th scope="col">분류 초안</th>
+                            <th scope="col">묶음</th>
+                        </tr>
+                    </thead>
+                    <tbody id="kakao-backfill-rows"></tbody>
+                </table>
+                <div class="backfill-actions">
+                    <button class="btn" type="button" id="kakao-backfill-import-button" onclick="importKakaoBackfill()">선택 항목을 검수함에 넣기</button>
+                </div>
             </div>
         </section>
 

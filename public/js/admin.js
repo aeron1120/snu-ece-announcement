@@ -29,6 +29,8 @@ let reviewInboxPollTimer = null;
 let reviewInboxPollInFlight = false;
 let adminFeedbackItems = [];
 let adminFeedbackFilter = 'all';
+let kakaoBackfillBatchId = '';
+let kakaoBackfillDrafts = [];
 
 // 제목 양식에서 쓰는 유형 목록. 편집할 때 기존 제목을 되돌려 읽는 데에도 쓴다.
 const TITLE_KINDS = ['모집', '안내', '신청', '접수', '공지', '행사', '변경 안내', '결과 발표', '기간 연장'];
@@ -171,6 +173,145 @@ function selectAdminTab(name) {
     if (name === 'feedback') loadAdminFeedback();
     if (name === 'banner' && bannerManageAuthToken) unlockBannerPanel();
     if (name === 'settings' && superAdminAuthToken) unlockSettingsPanel();
+}
+
+function setKakaoBackfillStatus(message, isError = false) {
+    const status = document.getElementById('kakao-backfill-status');
+    if (!status) return;
+    status.textContent = message;
+    status.classList.toggle('error', isError);
+}
+
+function formatBackfillDateTime(value) {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    return new Intl.DateTimeFormat('ko-KR', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+    }).format(date);
+}
+
+function renderKakaoBackfillPreview(stats) {
+    const summary = document.getElementById('kakao-backfill-summary');
+    const wrap = document.getElementById('kakao-backfill-table-wrap');
+    const rows = document.getElementById('kakao-backfill-rows');
+    if (!summary || !wrap || !rows) return;
+    const unclassifiedPercent = ((Number(stats?.unclassifiedRate) || 0) * 100).toFixed(1);
+    summary.hidden = false;
+    summary.innerHTML = `
+        메시지 <strong>${Number(stats?.messageCount) || 0}건</strong> →
+        검토 초안 <strong>${Number(stats?.draftCount) || 0}건</strong> ·
+        30일 내 재공지 묶음 <strong>${Number(stats?.groupedDuplicateCount) || 0}건</strong> ·
+        미분류 <strong>${Number(stats?.unclassifiedCount) || 0}건 (${unclassifiedPercent}%)</strong>
+    `;
+    const categoryOptions = orderedNoticeCategories().map(category =>
+        `<option value="${escapeHtml(category.slug)}">${escapeHtml(category.name)}</option>`
+    ).join('');
+    rows.innerHTML = kakaoBackfillDrafts.map((draft, index) => `
+        <tr data-backfill-index="${index}">
+            <td><input class="backfill-include" type="checkbox" checked aria-label="${escapeHtml(draft.title)} 포함"></td>
+            <td>
+                <span class="backfill-meta">
+                    <strong>${escapeHtml(draft.sourceGroup || '미확인')}</strong>
+                    <span>${escapeHtml(draft.sender || '')}</span>
+                    <time>${escapeHtml(formatBackfillDateTime(draft.sourcePublishedAt))}</time>
+                </span>
+            </td>
+            <td>
+                <input class="backfill-title" type="text" maxlength="200" value="${escapeHtml(draft.title || '')}">
+                <small>${escapeHtml(draft.contentPreview || '')}</small>
+            </td>
+            <td><input class="backfill-host" type="text" maxlength="80" value="${escapeHtml(draft.host || '')}"></td>
+            <td>
+                <select class="backfill-category" aria-label="분류 초안">
+                    <option value="">분류 선택</option>
+                    ${categoryOptions}
+                </select>
+            </td>
+            <td>
+                <span class="backfill-thread-count">재공지 ${Number(draft.reminderCount) || 0}건</span>
+                <small>사진 ${Number(draft.imageAttachmentCount) || 0} · 파일 ${Number(draft.attachmentCount) || 0}</small>
+            </td>
+        </tr>
+    `).join('');
+    rows.querySelectorAll('tr').forEach((row, index) => {
+        row.querySelector('.backfill-category').value = kakaoBackfillDrafts[index]?.categorySlug || '';
+    });
+    wrap.hidden = kakaoBackfillDrafts.length === 0;
+}
+
+async function previewKakaoBackfill() {
+    const input = document.getElementById('kakao-backfill-file');
+    const button = document.getElementById('kakao-backfill-preview-button');
+    const file = input?.files?.[0];
+    if (!file) {
+        setKakaoBackfillStatus('카카오톡 대화 내보내기 .txt 파일을 선택해주세요.', true);
+        return;
+    }
+    button.disabled = true;
+    setKakaoBackfillStatus('원본 개행을 유지한 채 메시지와 재공지 묶음을 분석하고 있습니다.');
+    try {
+        const result = await apiRequest('/api/admin/backfill/kakao/preview', {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+            body: await file.arrayBuffer()
+        });
+        kakaoBackfillBatchId = result.batchId;
+        kakaoBackfillDrafts = Array.isArray(result.drafts) ? result.drafts : [];
+        renderKakaoBackfillPreview(result.stats || {});
+        setKakaoBackfillStatus('자동 분류는 초안입니다. 제목·발신 주체·카테고리를 확인한 뒤 검수함으로 보내세요.');
+    } catch (error) {
+        kakaoBackfillBatchId = '';
+        kakaoBackfillDrafts = [];
+        setKakaoBackfillStatus(error.message || '백필 원본을 분석하지 못했습니다.', true);
+    } finally {
+        button.disabled = false;
+    }
+}
+
+async function importKakaoBackfill() {
+    if (!kakaoBackfillBatchId) {
+        setKakaoBackfillStatus('먼저 원본 파일을 분석해주세요.', true);
+        return;
+    }
+    const button = document.getElementById('kakao-backfill-import-button');
+    const edits = Array.from(document.querySelectorAll('#kakao-backfill-rows tr')).map(row => {
+        const draft = kakaoBackfillDrafts[Number(row.dataset.backfillIndex)];
+        return {
+            sourceExternalId: draft.sourceExternalId,
+            include: row.querySelector('.backfill-include').checked,
+            title: row.querySelector('.backfill-title').value.trim(),
+            host: row.querySelector('.backfill-host').value.trim(),
+            categorySlug: row.querySelector('.backfill-category').value
+        };
+    });
+    const missingCategory = edits.find(edit => edit.include && !edit.categorySlug);
+    if (missingCategory) {
+        setKakaoBackfillStatus('포함할 모든 항목의 카테고리를 선택해주세요.', true);
+        return;
+    }
+    button.disabled = true;
+    setKakaoBackfillStatus('선택 항목을 검수함에 저장하고 있습니다.');
+    try {
+        const result = await apiRequest('/api/admin/backfill/kakao/import', {
+            method: 'POST',
+            headers: getNoticeAdminHeaders(),
+            body: JSON.stringify({ batchId: kakaoBackfillBatchId, edits })
+        });
+        kakaoBackfillBatchId = '';
+        setKakaoBackfillStatus(
+            `검수함 ${result.createdCount}건 저장 · 제외 ${result.skippedCount}건 · 중복 ${result.duplicateCount}건 · 실패 ${result.failedCount}건`
+        );
+        await loadReviewNotices();
+    } catch (error) {
+        setKakaoBackfillStatus(error.message || '백필 초안을 저장하지 못했습니다.', true);
+    } finally {
+        button.disabled = false;
+    }
 }
 
 // ========================================

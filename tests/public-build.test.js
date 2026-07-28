@@ -610,6 +610,28 @@ test('automatic ECE crawling feeds a live review inbox and original text is blac
     assert.match(css, /\.compare-col-content\s*\{[^}]*color:\s*#111111/s);
 });
 
+test('Kakao backfill is previewed and human-edited before entering the review inbox', async () => {
+    const html = await readFile('admin.html', 'utf8');
+    const admin = await readFile('js/admin.js', 'utf8');
+    const server = await readFile('server/server.js', 'utf8');
+    const parser = await readFile('server/services/kakao-backfill.js', 'utf8');
+    const schema = await readFile('server/sql/supabase-schema.sql', 'utf8');
+
+    assert.match(html, /data-tab="backfill"/);
+    assert.match(html, /id="kakao-backfill-file"/);
+    assert.match(html, /id="kakao-backfill-rows"/);
+    assert.match(admin, /function previewKakaoBackfill/);
+    assert.match(admin, /function importKakaoBackfill/);
+    assert.match(server, /express\.raw\([\s\S]*text\/plain/);
+    assert.match(server, /\/api\/admin\/backfill\/kakao\/preview/);
+    assert.match(server, /\/api\/admin\/backfill\/kakao\/import/);
+    assert.match(server, /analysisStatus: 'backfill_draft'/);
+    assert.match(parser, /raw\.split\('\\r\\n'\)/);
+    assert.match(parser, /Math\.abs\(sentAtMs - Date\.parse\(candidate\.latestSentAt\)\) <= 30 \* DAY_MS/);
+    assert.match(schema, /source_group text/);
+    assert.match(schema, /thread_key text/);
+});
+
 test('rails share one bright navy and the emblem sits on it without a white circle', async () => {
     const css = await readFile('css/core.css', 'utf8');
     const html = await readFile('index.html', 'utf8');

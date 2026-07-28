@@ -154,6 +154,26 @@ test('admin pages require a short-lived HttpOnly server session', async t => {
     });
     assert.equal(protectedApi.status, 200);
 
+    const backfillSample = [
+        '--------------- 2025년 3월 9일 일요일 ---------------',
+        '[전기정보 학생회] [오전 9:46] [졸업 학점 안내]\n필수 이수 학점을 확인하세요.'
+    ].join('\r\n');
+    const blockedBackfill = await fetch(`${baseUrl}/api/admin/backfill/kakao/preview`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: backfillSample
+    });
+    assert.equal(blockedBackfill.status, 401);
+    const preview = await fetch(`${baseUrl}/api/admin/backfill/kakao/preview`, {
+        method: 'POST',
+        headers: { Cookie: cookie, 'Content-Type': 'text/plain' },
+        body: backfillSample
+    });
+    assert.equal(preview.status, 201);
+    const previewResult = await preview.json();
+    assert.equal(previewResult.stats.draftCount, 1);
+    assert.equal(previewResult.drafts[0].categorySlug, 'academics');
+
     const logout = await fetch(`${baseUrl}/api/admin/session`, {
         method: 'DELETE',
         headers: { Cookie: cookie }

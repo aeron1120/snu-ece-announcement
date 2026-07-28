@@ -7,6 +7,7 @@ import { createClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
 import cron from 'node-cron';
 import { getGeminiRetryAfterSeconds } from './services/gemini-rate-limit.js';
+import { buildKakaoBackfillDrafts } from './services/kakao-backfill.js';
 import {
     calculateNoticeLifecycle,
     getNoticeLifecycleState,
@@ -110,6 +111,8 @@ const PROMO_STATUSES = new Set(['pending', 'approved', 'rejected']);
 const ADMIN_SESSION_COOKIE = 'ece_admin_session';
 const ADMIN_SESSION_TTL_MS = 8 * 60 * 60 * 1000;
 const adminSessions = new Map();
+const kakaoBackfillBatches = new Map();
+const KAKAO_BACKFILL_BATCH_TTL_MS = 30 * 60 * 1000;
 // 실제 학내 홍보가 등록되기 전 순환·관리 흐름을 확인할 수 있는 임시 항목이다.
 // 관리 화면에서 언제든 수정하거나 삭제할 수 있으며, 오른쪽 레일에만 노출된다.
 const defaultBannerSlides = [
@@ -1815,6 +1818,156 @@ app.use(createAutomationRouter({
     config: automationConfig,
     frontendOrigin: process.env.FRONTEND_ORIGIN || ''
 }));
+
+function pruneKakaoBackfillBatches(now = Date.now()) {
+    for (const [id, batch] of kakaoBackfillBatches) {
+        if (batch.expiresAt <= now) kakaoBackfillBatches.delete(id);
+    }
+    while (kakaoBackfillBatches.size > 20) {
+        kakaoBackfillBatches.delete(kakaoBackfillBatches.keys().next().value);
+    }
+}
+
+const kakaoBackfillRaw = express.raw({
+    type: ['text/plain', 'application/octet-stream'],
+    limit: '20mb'
+});
+
+app.post('/api/admin/backfill/kakao/preview', requireNoticeAdmin, kakaoBackfillRaw, (req, res) => {
+    try {
+        if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
+            return res.status(400).json({ error: '카카오톡 내보내기 원본 파일을 선택해주세요.' });
+        }
+        pruneKakaoBackfillBatches();
+        const parsed = buildKakaoBackfillDrafts(req.body);
+        const batchId = crypto.randomUUID();
+        kakaoBackfillBatches.set(batchId, {
+            drafts: parsed.drafts,
+            stats: parsed.stats,
+            expiresAt: Date.now() + KAKAO_BACKFILL_BATCH_TTL_MS
+        });
+        res.status(201).json({
+            batchId,
+            stats: parsed.stats,
+            drafts: parsed.drafts.map(draft => ({
+                sourceExternalId: draft.sourceExternalId,
+                sourcePublishedAt: draft.sourcePublishedAt,
+                title: draft.title,
+                contentPreview: draft.content.slice(0, 300),
+                sender: draft.sender,
+                host: draft.host,
+                sourceGroup: draft.sourceGroup,
+                categorySlug: draft.categorySlug,
+                classificationStatus: draft.classificationStatus,
+                imageAttachmentCount: draft.imageAttachmentCount,
+                attachmentCount: draft.attachments.length,
+                reminderCount: draft.reminderCount,
+                deadlineExpressions: draft.deadlineExpressions
+            }))
+        });
+    } catch (error) {
+        if (error instanceof TypeError) {
+            return res.status(400).json({ error: error.message });
+        }
+        res.status(500).json({ error: error.message || '카카오톡 백필 미리보기 실패' });
+    }
+});
+
+app.post('/api/admin/backfill/kakao/import', requireNoticeAdmin, async (req, res) => {
+    try {
+        pruneKakaoBackfillBatches();
+        const batchId = String(req.body?.batchId || '').trim();
+        const batch = kakaoBackfillBatches.get(batchId);
+        if (!batch) {
+            return res.status(404).json({ error: '백필 미리보기가 만료되었습니다. 원본 파일을 다시 선택해주세요.' });
+        }
+        const editMap = new Map(
+            (Array.isArray(req.body?.edits) ? req.body.edits : [])
+                .map(edit => [String(edit?.sourceExternalId || ''), edit])
+        );
+        const categories = await automationStore.listCategories();
+        const categoryIdBySlug = new Map(categories.map(category => [category.slug, Number(category.id)]));
+        let createdCount = 0;
+        let skippedCount = 0;
+        let duplicateCount = 0;
+        const failures = [];
+
+        for (const draft of batch.drafts) {
+            const edit = editMap.get(draft.sourceExternalId) || {};
+            if (edit.include === false) {
+                skippedCount += 1;
+                continue;
+            }
+            const categorySlug = String(edit.categorySlug || draft.categorySlug || '').trim();
+            const categoryId = categoryIdBySlug.get(categorySlug);
+            if (!categoryId) {
+                failures.push({
+                    sourceExternalId: draft.sourceExternalId,
+                    error: '카테고리를 선택해주세요.'
+                });
+                continue;
+            }
+            try {
+                await automationStore.createPendingNotice({
+                    sourceType: draft.sourceType,
+                    sourceExternalId: draft.sourceExternalId,
+                    sourcePublishedAt: draft.sourcePublishedAt,
+                    lastCrawledAt: new Date().toISOString(),
+                    title: String(edit.title || draft.title).trim().slice(0, 200),
+                    content: draft.content,
+                    rawTitle: draft.rawTitle,
+                    rawContent: draft.rawContent,
+                    target: draft.target,
+                    targets: draft.targets,
+                    host: String(edit.host || draft.host).trim().slice(0, 80),
+                    sourceGroup: draft.sourceGroup,
+                    threadKey: draft.threadKey,
+                    deadline: null,
+                    aiSummary: [],
+                    keywords: draft.urls,
+                    attachments: draft.attachments,
+                    analysisStatus: 'backfill_draft',
+                    analysisConfidence: null,
+                    existingCategoryIds: [categoryId],
+                    crawlMetadata: {
+                        sender: draft.sender,
+                        threadMessages: draft.threadMessages,
+                        reminderCount: draft.reminderCount,
+                        imageAttachmentCount: draft.imageAttachmentCount,
+                        deadlineExpressions: draft.deadlineExpressions,
+                        urls: draft.urls,
+                        classification: {
+                            source: 'rule',
+                            categorySlug,
+                            humanReviewedInBatch: true
+                        }
+                    }
+                });
+                createdCount += 1;
+            } catch (error) {
+                if (error?.code === 'DUPLICATE_SOURCE_NOTICE') {
+                    duplicateCount += 1;
+                } else {
+                    failures.push({
+                        sourceExternalId: draft.sourceExternalId,
+                        error: error?.message || '저장 실패'
+                    });
+                }
+            }
+        }
+
+        kakaoBackfillBatches.delete(batchId);
+        res.json({
+            createdCount,
+            skippedCount,
+            duplicateCount,
+            failedCount: failures.length,
+            failures
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message || '카카오톡 백필 적재 실패' });
+    }
+});
 
 app.get('/api/health', (req, res) => {
     res.json({ ok: true, storage: useSupabase ? 'supabase' : 'file', bannerStorage: bannerStorageMode });
