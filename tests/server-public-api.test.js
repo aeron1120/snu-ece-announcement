@@ -103,6 +103,37 @@ test('public notice API is paginated, has detail lookup, and hides Express signa
     assert.equal(missing.status, 404);
 });
 
+test('summary mismatch reports are anonymous and enter the admin feedback inbox', async t => {
+    const feedbackPath = path.join(process.cwd(), 'server', 'data', 'feedback.json');
+    const originalFeedback = await readFile(feedbackPath, 'utf8').catch(() => '[]');
+    t.after(() => writeFile(feedbackPath, originalFeedback, 'utf8'));
+
+    const server = await new Promise(resolve => {
+        const listening = app.listen(0, () => resolve(listening));
+    });
+    t.after(() => server.close());
+    const baseUrl = `http://127.0.0.1:${server.address().port}`;
+
+    const listResponse = await fetch(`${baseUrl}/api/notices?limit=1`);
+    const list = await listResponse.json();
+    const notice = list.notices[0];
+    assert.ok(notice?.id);
+
+    const report = await fetch(`${baseUrl}/api/notices/${encodeURIComponent(notice.id)}/summary-report`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}'
+    });
+    assert.equal(report.status, 201);
+    assert.deepEqual(await report.json(), { ok: true });
+
+    const stored = JSON.parse(await readFile(feedbackPath, 'utf8'));
+    assert.equal(stored[0].category, 'summary_mismatch');
+    assert.equal(String(stored[0].noticeId), String(notice.id));
+    assert.equal(Object.hasOwn(stored[0], 'ip'), false);
+    assert.equal(Object.hasOwn(stored[0], 'userAgent'), false);
+});
+
 test('admin pages require a short-lived HttpOnly server session', async t => {
     const settingsPath = path.join(process.cwd(), 'server', 'data', 'settings.json');
     const originalSettings = await readFile(settingsPath, 'utf8');

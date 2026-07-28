@@ -664,7 +664,7 @@ async function loadAdminFeedback() {
         const items = Array.isArray(result?.feedback) ? result.feedback : [];
         adminFeedbackItems = items.map(item => ({
             ...item,
-            category: item.category === 'banner' ? 'banner' : 'general'
+            category: ['banner', 'summary_mismatch'].includes(item.category) ? item.category : 'general'
         }));
         const badge = document.getElementById('feedback-count');
         if (badge) {
@@ -683,7 +683,7 @@ async function loadAdminFeedback() {
 }
 
 function setAdminFeedbackFilter(category) {
-    adminFeedbackFilter = ['general', 'banner'].includes(category) ? category : 'all';
+    adminFeedbackFilter = ['general', 'banner', 'summary_mismatch'].includes(category) ? category : 'all';
     document.querySelectorAll('[data-feedback-filter]').forEach(button => {
         button.classList.toggle('active', button.dataset.feedbackFilter === adminFeedbackFilter);
     });
@@ -699,6 +699,7 @@ function renderAdminFeedback() {
     list.innerHTML = visibleItems.length
         ? visibleItems.map(item => {
             const isBanner = item.category === 'banner';
+            const isSummaryMismatch = item.category === 'summary_mismatch';
             const inquiry = isBanner && item.inquiry ? item.inquiry : null;
             const contact = inquiry
                 ? [inquiry.phone, inquiry.email].filter(Boolean).map(value => escapeHtml(value)).join(' · ')
@@ -707,8 +708,9 @@ function renderAdminFeedback() {
                 ? escapeHtml(inquiry.linkUrl)
                 : '';
             return `
-                <div class="admin-feedback-item ${isBanner ? 'is-banner' : ''}">
-                    <span class="feedback-kind ${isBanner ? 'banner' : 'general'}">${isBanner ? '배너 문의' : '일반 문의'}</span>
+                <div class="admin-feedback-item ${isBanner ? 'is-banner' : ''}${isSummaryMismatch ? ' is-summary-mismatch' : ''}">
+                    <span class="feedback-kind ${isBanner ? 'banner' : (isSummaryMismatch ? 'summary' : 'general')}">${isBanner ? '배너 문의' : (isSummaryMismatch ? '요약 오류' : '일반 문의')}</span>
+                    ${isSummaryMismatch ? `<p class="admin-feedback-notice"><strong>${escapeHtml(item.noticeTitle || '제목 없음')}</strong><br><span>공지 ID ${escapeHtml(item.noticeId || '')}</span></p>` : ''}
                     <p class="admin-feedback-msg">${escapeHtml(item.message)}</p>
                     ${inquiry ? `
                         <dl class="banner-inquiry-details">

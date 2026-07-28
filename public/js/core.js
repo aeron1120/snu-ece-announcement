@@ -1059,6 +1059,29 @@ async function submitFeedback() {
     }
 }
 
+async function reportSummaryMismatch(id, button) {
+    const noticeId = String(id || '').trim();
+    if (!noticeId || button?.disabled) return;
+    const originalLabel = button?.textContent || '요약이 원문과 다릅니다';
+    if (button) {
+        button.disabled = true;
+        button.textContent = '전달 중…';
+    }
+    try {
+        await apiRequest(`/api/notices/${encodeURIComponent(noticeId)}/summary-report`, {
+            method: 'POST',
+            body: JSON.stringify({})
+        });
+        if (button) button.textContent = '검수함에 전달했습니다';
+    } catch (error) {
+        if (button) {
+            button.disabled = false;
+            button.textContent = originalLabel;
+        }
+        alert(error.message || '전달하지 못했습니다. 잠시 후 다시 시도해주세요.');
+    }
+}
+
 window.onclick = function(event) {
     if (event.target.classList?.contains('overlay')) {
         event.target.style.display = 'none';
@@ -2257,8 +2280,13 @@ function renderCompareSpace(blockIds = compareBlocks) {
                     <h3 class="compare-col-title">${escapeHtml(notice.title || '')}</h3>
                     <div class="compare-col-meta">${escapeHtml(dateText)} · 조회 ${Number(notice.views) || 0}</div>
                     ${thumb}
-                    <h4 class="compare-col-label">AI 3줄 요약</h4>
+                    <div class="compare-summary-heading">
+                        <h4 class="compare-col-label">AI 3줄 요약</h4>
+                        <span>원문 확인 필수</span>
+                    </div>
                     <ul class="compare-col-summary">${summary}</ul>
+                    <button class="summary-mismatch-button" type="button"
+                            onclick="reportSummaryMismatch('${safeId}', this)">요약이 원문과 다릅니다</button>
                     <h4 class="compare-col-label">공지 원문</h4>
                     <div class="compare-col-content">${linkify(notice.content || '')}</div>
                     <button class="compare-col-open" type="button" onclick="openDetail('${safeId}')">전체 공지 열기 →</button>

@@ -2069,6 +2069,28 @@ app.post('/api/feedback', async (req, res) => {
     }
 });
 
+app.post('/api/notices/:id/summary-report', feedbackLimiter, async (req, res) => {
+    try {
+        const notice = await getPublishedNoticeById(req.params.id);
+        if (!notice) {
+            return res.status(404).json({ error: '공지를 찾을 수 없습니다.' });
+        }
+        const items = await readFeedback();
+        items.unshift({
+            id: crypto.randomUUID(),
+            category: 'summary_mismatch',
+            noticeId: String(notice.id),
+            noticeTitle: String(notice.title || '').slice(0, 160),
+            message: 'AI 요약과 공지 원문이 다르다는 신고가 접수되었습니다.',
+            createdAt: new Date().toISOString()
+        });
+        await writeFeedback(items.slice(0, 1000));
+        res.status(201).json({ ok: true });
+    } catch (error) {
+        res.status(500).json({ error: error.message || '요약 신고 저장 실패' });
+    }
+});
+
 const bannerInquiryJson = express.json({
     limit: '2mb',
     type: 'application/vnd.ece-banner+json'

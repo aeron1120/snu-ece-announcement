@@ -476,6 +476,32 @@ test('the contact modal is an anonymous feedback box, not admin contact info', a
     assert.doesNotMatch(feedbackRoute, /req\.ip|x-forwarded-for|headers\['user-agent'\]/i);
 });
 
+test('AI summaries disclose their limits and can be reported for admin review', async () => {
+    const html = await readFile('index.html', 'utf8');
+    const app = await readFile('js/core.js', 'utf8');
+    const server = await readFile('server/server.js', 'utf8');
+    const adminHtml = await readFile('admin.html', 'utf8');
+    const admin = await readFile('js/admin.js', 'utf8');
+    const guide = await readFile('service-guide.html', 'utf8');
+    const prepare = await readFile('scripts/prepare-public.mjs', 'utf8');
+
+    assert.match(html, />AI 3줄 요약</);
+    assert.doesNotMatch(html, /Gemini AI 3줄 요약/);
+    assert.match(html, /원문 확인 필수/);
+    assert.match(html, /요약이 원문과 다릅니다/);
+    assert.match(html, /href="\.\/service-guide\.html">서비스 안내/);
+    assert.match(app, /function reportSummaryMismatch/);
+    assert.match(app, /\/summary-report/);
+    assert.match(app, /compare-summary-heading[\s\S]*원문 확인 필수/);
+    assert.match(server, /app\.post\('\/api\/notices\/:id\/summary-report', feedbackLimiter/);
+    assert.match(server, /category: 'summary_mismatch'/);
+    assert.match(adminHtml, /data-feedback-filter="summary_mismatch"/);
+    assert.match(admin, /isSummaryMismatch/);
+    assert.match(guide, /AI 3줄 요약은 공지의 핵심을 빠르게 훑기 위한 참고 정보/);
+    assert.match(guide, /원문의 내용이 우선/);
+    assert.match(prepare, /service-guide\.html/);
+});
+
 test('banner inquiries use a dedicated identified submission page and protected admin image access', async () => {
     const html = await readFile('banner-inquiry.html', 'utf8');
     const app = await readFile('js/banner-inquiry.js', 'utf8');
