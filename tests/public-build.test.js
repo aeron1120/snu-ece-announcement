@@ -149,6 +149,22 @@ test('desktop rails stay pinned to the viewport while the page scrolls', async (
     assert.doesNotMatch(css, /position:\s*sticky/);
 });
 
+test('compact desktop turns the left rail into a drawer and preserves banner ratio', async () => {
+    const desktopCss = await readFile('css/desktop.css', 'utf8');
+    const desktopJs = await readFile('js/desktop.js', 'utf8');
+    const mobileJs = await readFile('js/mobile.js', 'utf8');
+
+    assert.match(desktopCss, /@media \(max-width:\s*1360px\)/);
+    assert.match(desktopCss, /\.page-shell\s*\{[^}]*padding-left:\s*0;[^}]*padding-right:\s*var\(--compact-ad-rail-width\)/s);
+    assert.match(desktopCss, /\.rail-left\s*\{[^}]*transform:\s*translateX\(-100%\)/s);
+    assert.match(desktopCss, /\.rail-left\.drawer-open\s*\{[^}]*translateX\(0\)/s);
+    assert.match(desktopCss, /\.rail-right\s*\{[^}]*width:\s*var\(--compact-ad-rail-width\)/s);
+    assert.match(desktopCss, /\.rail-ad-image\s*\{[^}]*height:\s*auto;[^}]*aspect-ratio:\s*auto;[^}]*object-fit:\s*contain/s);
+    assert.match(mobileJs, /function usesDrawerNavigation\(\)/);
+    assert.match(mobileJs, /COMPACT_DESKTOP_DRAWER_QUERY/);
+    assert.match(desktopJs, /event\.key === 'Escape'[\s\S]*closeMobileDrawer\(\)/);
+});
+
 test('the public page drops the top banner, the saved-posts feature, and the refresh button', async () => {
     const html = await readFile('index.html', 'utf8');
     const app = await readFile('js/core.js', 'utf8');

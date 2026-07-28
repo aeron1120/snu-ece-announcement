@@ -5,10 +5,18 @@
 // 공지 비교는 좁은 화면에 맞춰 최대 두 블록으로 core가 제한한다.
 // ========================================
 
+const COMPACT_DESKTOP_DRAWER_QUERY = '(max-width: 1360px)';
+
+function usesDrawerNavigation() {
+    return getLayoutMode() === 'mobile'
+        || (getLayoutMode() === 'desktop'
+            && window.matchMedia(COMPACT_DESKTOP_DRAWER_QUERY).matches);
+}
+
 // 서랍 제어는 index.html의 onclick에서 직접 부르므로 전역에 둔다.
-// 데스크탑 모드에서 눌릴 일은 없지만, 눌려도 아무 일도 일어나지 않아야 한다.
+// 폭이 좁은 데스크톱에서도 같은 왼쪽 탐색 서랍을 재사용한다.
 function openMobileDrawer() {
-    if (getLayoutMode() !== 'mobile') return;
+    if (!usesDrawerNavigation()) return;
     document.getElementById('left-brand-rail')?.classList.add('drawer-open');
     document.getElementById('drawer-scrim')?.classList.add('drawer-open');
     document.body.style.overflow = 'hidden';

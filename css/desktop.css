@@ -54,3 +54,62 @@ html[data-view="desktop"] .spatial-workspace.is-split[data-blocks="1"] .notice-b
 @media (max-width: 1500px) {
     html[data-view="desktop"] .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+/* 노트북·분할 창처럼 폭이 줄어든 데스크톱에서는 왼쪽 레일만 서랍으로
+   접는다. 오른쪽 홍보 레일은 고정하되 이미지의 원래 비율을 유지한다. */
+@media (max-width: 1360px) {
+    html[data-view="desktop"] {
+        --compact-ad-rail-width: clamp(200px, 20vw, var(--rail-width));
+    }
+
+    html[data-view="desktop"] .page-shell {
+        min-width: 0;
+        padding-left: 0;
+        padding-right: var(--compact-ad-rail-width);
+    }
+
+    html[data-view="desktop"] .page-main {
+        max-width: 100%;
+        padding: 28px;
+    }
+
+    html[data-view="desktop"] .rail-left {
+        left: 0;
+        width: min(280px, 82vw);
+        z-index: 1200;
+        transform: translateX(-100%);
+        transition: transform 0.22s ease;
+    }
+
+    html[data-view="desktop"] .rail-left.drawer-open {
+        transform: translateX(0);
+    }
+
+    html[data-view="desktop"] .drawer-scrim {
+        display: none;
+        position: fixed;
+        inset: 0;
+        z-index: 1100;
+        background: rgba(15, 44, 98, 0.5);
+    }
+
+    html[data-view="desktop"] .drawer-scrim.drawer-open {
+        display: block;
+    }
+
+    html[data-view="desktop"] .mobile-menu-btn,
+    html[data-view="desktop"] .rail-left .drawer-close-btn {
+        display: block !important;
+    }
+
+    html[data-view="desktop"] .rail-right {
+        width: var(--compact-ad-rail-width);
+    }
+
+    html[data-view="desktop"] .rail-ad-image {
+        width: calc(100% + 2px);
+        height: auto;
+        aspect-ratio: auto;
+        object-fit: contain;
+    }
+}
