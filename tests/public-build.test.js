@@ -491,7 +491,12 @@ test('AI summaries disclose their limits and can be reported for admin review', 
     assert.doesNotMatch(html, /Gemini AI 3줄 요약/);
     assert.match(html, /원문 확인 필수/);
     assert.match(html, /요약이 원문과 다릅니다/);
-    assert.match(html, /href="\.\/service-guide\.html">서비스 안내/);
+    assert.match(html, /aria-label="서울대학교 관련 링크"[\s\S]*href="\.\/service-guide\.html">서비스 안내/);
+    const inquiryLinks = html.slice(
+        html.indexOf('<nav class="brand-links inquiry-links"'),
+        html.indexOf('</nav>', html.indexOf('<nav class="brand-links inquiry-links"'))
+    );
+    assert.doesNotMatch(inquiryLinks, /서비스 안내/);
     assert.match(app, /function reportSummaryMismatch/);
     assert.match(app, /\/summary-report/);
     assert.match(app, /compare-summary-heading[\s\S]*원문 확인 필수/);

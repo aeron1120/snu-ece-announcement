@@ -28,7 +28,14 @@ function calculateDDay(dateKey, now = new Date()) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) return null;
     const [year, month, day] = dateKey.split('-').map(Number);
     const targetUtc = Date.UTC(year, month - 1, day);
-    const todayUtc = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+    const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Seoul',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+    }).formatToParts(now);
+    const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
+    const todayUtc = Date.UTC(Number(values.year), Number(values.month) - 1, Number(values.day));
     return Math.round((targetUtc - todayUtc) / 86_400_000);
 }
 

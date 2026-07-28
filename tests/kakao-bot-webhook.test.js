@@ -68,3 +68,14 @@ test('permalink keeps an existing public-site path and query', () => {
         'https://example.test/board?source=bot&id=7'
     );
 });
+
+test('D-day is based on Korea time even when the runtime clock is UTC', () => {
+    const payload = buildKakaoNoticeEvent({
+        notice: { id: 8, title: '자정 기준 테스트', deadline: '2026-07-29' },
+        categorySlugs: ['academics'],
+        publicBaseUrl: 'https://notice.example.test',
+        now: new Date('2026-07-28T16:00:00Z')
+    });
+    assert.equal(payload.notice.dDay, 0);
+    assert.match(payload.message, /\(D-Day\)/);
+});

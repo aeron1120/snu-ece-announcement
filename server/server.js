@@ -991,10 +991,14 @@ async function listNotices() {
 function getLocalDateKey(value = new Date()) {
     const date = value instanceof Date ? value : new Date(value);
     if (Number.isNaN(date.getTime())) return '';
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
+    const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Seoul',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+    }).formatToParts(date);
+    const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
+    return `${values.year}-${values.month}-${values.day}`;
 }
 
 function listImminentDeadlineNotices(rows, {
@@ -1004,8 +1008,7 @@ function listImminentDeadlineNotices(rows, {
 } = {}) {
     const today = getLocalDateKey(now);
     const normalizedDays = Math.max(0, Number(days) || 0);
-    const end = new Date(now);
-    end.setDate(end.getDate() + normalizedDays);
+    const end = new Date(now.getTime() + normalizedDays * 86_400_000);
     const endDate = getLocalDateKey(end);
     const notices = rows
         .filter(notice => !notice.isAlwaysOpen)
