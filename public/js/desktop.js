@@ -1,5 +1,6 @@
 // SNU ECE 공지방 — 데스크탑 뷰 모듈
 (function () {
+    const COMPACT_DESKTOP_DRAWER_QUERY = '(max-width: 1360px)';
     let keyboardHandler = null;
     let compactQuery = null;
     let compactQueryHandler = null;

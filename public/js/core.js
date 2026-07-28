@@ -35,6 +35,11 @@ let activeBannerSlideIndex = 0;
 let initialBannerRandomized = false;
 let bannerRotationInterval = null;
 let bannerTransitionTimer = null;
+let bannerSwipePointerId = null;
+let bannerSwipeStartX = 0;
+let bannerSwipeStartY = 0;
+let bannerSwipeDeltaX = 0;
+let suppressBannerLinkUntil = 0;
 let compareBlocks = [];   // 독립 비교 공간에 담긴 공지 id들 (데스크톱 전용, 최대 4)
 let compareWorkspaceOpen = false;
 let compareDockSide = 'left';
@@ -54,10 +59,6 @@ let activeCompareDropPosition = 'after';
 let activeFeedbackCategory = 'general';
 let noticeHoverPreviewTimer = null;
 let activeHoverPreviewNoticeId = '';
-let preferredStudentYear = '';
-
-const STUDENT_YEAR_PREFERENCE_KEY = 'eceStudentEntryYear';
-const STUDENT_YEAR_PROMPTED_KEY = 'eceStudentEntryYearPrompted';
 
 let adminInfo = { name: "ECE 학생회장 (이름 : 박지호)", phone: "010-1234-5678", kakao: "snu_ece_pres" };
 let bannerAdminInfo = { name: "학생회 대외협력국 (국장 : 이배너)", phone: "010-8888-9999", kakao: "snu_ece_ads" };
@@ -89,10 +90,10 @@ function orderedNoticeCategories(categories = activeCategories) {
 }
 
 const filterState = {
-    'deadline-status': '전체', 'host': '전체', 'has-image': '전체', 'views': '전체', 'sort': '최신순'
+    'deadline-status': '전체', 'host': '전체', 'views': '전체', 'sort': '최신순'
 };
 const FILTER_DEFAULTS = Object.freeze({
-    'deadline-status': '전체', 'host': '전체', 'has-image': '전체', 'views': '전체', 'sort': '최신순'
+    'deadline-status': '전체', 'host': '전체', 'views': '전체', 'sort': '최신순'
 });
 
 function buildApiUrl(path) {
@@ -450,7 +451,6 @@ function getNoticeListFilters() {
         target: document.getElementById('targetFilter')?.value || '전체',
         deadlineStatus: filterState['deadline-status'],
         host: filterState.host,
-        hasImage: filterState['has-image'],
         views: filterState.views,
         sort: filterState.sort,
         dateFrom: document.getElementById('filter-date-from')?.value || '',
@@ -674,6 +674,66 @@ function stepRightRailBanner(direction, event) {
     selectRightRailBanner(activeBannerSlideIndex + step, step);
 }
 
+function startBannerSwipe(event) {
+    if (getLayoutMode() !== 'mobile' || event.button > 0) return;
+    const stage = event.currentTarget;
+    bannerSwipePointerId = event.pointerId;
+    bannerSwipeStartX = event.clientX;
+    bannerSwipeStartY = event.clientY;
+    bannerSwipeDeltaX = 0;
+    try {
+        stage.setPointerCapture?.(event.pointerId);
+    } catch {
+        // 합성 이벤트나 이미 취소된 포인터에서는 캡처가 거절될 수 있다.
+    }
+    stopBannerRotation();
+}
+
+function moveBannerSwipe(event) {
+    if (event.pointerId !== bannerSwipePointerId) return;
+    const deltaX = event.clientX - bannerSwipeStartX;
+    const deltaY = event.clientY - bannerSwipeStartY;
+    if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 8) return;
+    bannerSwipeDeltaX = deltaX;
+    if (Math.abs(deltaX) < 6) return;
+    event.preventDefault();
+    const stage = event.currentTarget;
+    stage.classList.add('is-swiping');
+    stage.style.transform = `translateX(${deltaX * 0.38}px)`;
+    stage.style.opacity = String(Math.max(0.72, 1 - Math.abs(deltaX) / 520));
+}
+
+function finishBannerSwipe(event, cancelled = false) {
+    if (event.pointerId !== bannerSwipePointerId) return;
+    const stage = event.currentTarget;
+    const deltaY = event.clientY - bannerSwipeStartY;
+    const shouldMove = !cancelled
+        && Math.abs(bannerSwipeDeltaX) >= 44
+        && Math.abs(bannerSwipeDeltaX) > Math.abs(deltaY) * 1.15;
+    if (stage.hasPointerCapture?.(event.pointerId)) {
+        stage.releasePointerCapture(event.pointerId);
+    }
+    stage.classList.remove('is-swiping');
+    stage.style.removeProperty('transform');
+    stage.style.removeProperty('opacity');
+    bannerSwipePointerId = null;
+
+    if (shouldMove) {
+        suppressBannerLinkUntil = Date.now() + 550;
+        stepRightRailBanner(bannerSwipeDeltaX < 0 ? 1 : -1, event);
+        return;
+    }
+    bannerSwipeDeltaX = 0;
+    startBannerRotation();
+}
+
+function allowBannerLinkClick(event) {
+    if (Date.now() >= suppressBannerLinkUntil) return true;
+    event.preventDefault();
+    event.stopPropagation();
+    return false;
+}
+
 function renderRightRailInquiryFallback() {
     const container = document.getElementById('right-rail-ad-content');
     if (!container) return;
@@ -716,14 +776,21 @@ function renderRightRailAd({ restartRotation = true, transitionDirection = 0 } =
         </div>
     ` : '';
     const imageContent = slide.linkUrl
-        ? `<a class="rail-ad-link rail-ad-image-link" href="${escapeHtml(slide.linkUrl)}" target="_blank" rel="noopener noreferrer">${image}</a>`
+        ? `<a class="rail-ad-link rail-ad-image-link" href="${escapeHtml(slide.linkUrl)}" target="_blank"
+                rel="noopener noreferrer" onclick="return allowBannerLinkClick(event)">${image}</a>`
         : image;
     const transitionClass = transitionDirection < 0
         ? ' is-entering-left'
         : (transitionDirection > 0 ? ' is-entering-right' : '');
     const content = `
-        <div class="rail-ad-image-stage${transitionClass}">${imageContent}</div>
-        ${controls}
+        <div class="rail-ad-image-stage${transitionClass}"
+             onpointerdown="startBannerSwipe(event)"
+             onpointermove="moveBannerSwipe(event)"
+             onpointerup="finishBannerSwipe(event)"
+             onpointercancel="finishBannerSwipe(event, true)">
+            ${imageContent}
+            ${controls}
+        </div>
     `;
     container.innerHTML = `<div class="rail-ad-viewport">${content}</div>`;
     container.onmouseenter = stopBannerRotation;
@@ -995,22 +1062,6 @@ function safeHttpUrl(value) {
     }
 }
 
-function readLocalPreference(key) {
-    try {
-        return localStorage.getItem(key) || '';
-    } catch {
-        return '';
-    }
-}
-
-function writeLocalPreference(key, value) {
-    try {
-        localStorage.setItem(key, value);
-    } catch {
-        // 저장소가 차단된 환경에서는 현재 세션의 화면만 갱신한다.
-    }
-}
-
 function noticeTargetLabels(notice) {
     return [...new Set([
         ...(Array.isArray(notice?.targets) ? notice.targets : []),
@@ -1018,56 +1069,9 @@ function noticeTargetLabels(notice) {
     ].map(value => String(value || '').trim()).filter(Boolean))];
 }
 
-function noticeMatchesStudentYear(notice, studentYear = preferredStudentYear) {
-    const yearMatch = String(studentYear || '').match(/(\d{2})학번/);
-    if (!yearMatch) return true;
-    const studentNumber = Number(yearMatch[1]);
-    const labels = noticeTargetLabels(notice);
-    if (labels.length === 0 || labels.includes('전체')) return true;
-    return labels.some(label => {
-        const labelMatch = label.match(/(\d{2})학번/);
-        if (!labelMatch) return false;
-        const targetNumber = Number(labelMatch[1]);
-        if (/이상|↑/.test(label)) return studentNumber >= targetNumber;
-        return studentNumber === targetNumber;
-    });
-}
-
 function formatNoticeTargetBadge(notice) {
     const label = String(notice?.target || noticeTargetLabels(notice)[0] || '전체');
     return label.replace(/(\d{2})학번\s*이상/g, '$1학번↑');
-}
-
-function maybeAskStudentYear() {
-    preferredStudentYear = readLocalPreference(STUDENT_YEAR_PREFERENCE_KEY);
-    if (readLocalPreference(STUDENT_YEAR_PROMPTED_KEY)) return;
-    const modal = document.getElementById('student-year-modal');
-    if (!modal) return;
-    modal.style.display = 'flex';
-    modal.setAttribute('aria-hidden', 'false');
-}
-
-function closeStudentYearPrompt() {
-    const modal = document.getElementById('student-year-modal');
-    if (!modal) return;
-    modal.style.display = 'none';
-    modal.setAttribute('aria-hidden', 'true');
-}
-
-function saveStudentYearPreference() {
-    preferredStudentYear = document.getElementById('student-year-choice')?.value || '';
-    writeLocalPreference(STUDENT_YEAR_PREFERENCE_KEY, preferredStudentYear);
-    writeLocalPreference(STUDENT_YEAR_PROMPTED_KEY, '1');
-    closeStudentYearPrompt();
-    renderNoticeCards(true);
-}
-
-function skipStudentYearPreference() {
-    preferredStudentYear = '';
-    writeLocalPreference(STUDENT_YEAR_PREFERENCE_KEY, '');
-    writeLocalPreference(STUDENT_YEAR_PROMPTED_KEY, '1');
-    closeStudentYearPrompt();
-    renderNoticeCards(true);
 }
 
 // ========================================
@@ -1517,7 +1521,7 @@ function updateFilterChips() {
     if (!chipsArea || !bar || !labelEl) return;
     chipsArea.innerHTML = '';
 
-    const labelMap = { 'deadline-status': '마감', 'host': '기관', 'has-image': '이미지', 'views': '조회수' };
+    const labelMap = { 'deadline-status': '마감', 'host': '기관', 'views': '조회수' };
     let hasActive = false;
 
     const dateFrom = document.getElementById('filter-date-from')?.value;
@@ -1665,9 +1669,8 @@ function renderNoticeEmptyState() {
     if (hasDetailedNoticeFilters()) {
         return `
             <div class="notice-empty-state">
-                <strong>선택한 필터에 맞는 공지가 없습니다.</strong>
-                <p>카테고리나 상세 조건을 해제하면 더 많은 공지를 볼 수 있습니다.</p>
-                <button class="btn btn-outline btn-small" type="button" onclick="resetAllFilters()">필터 모두 해제</button>
+                <strong>해당하는 공지가 없습니다.</strong>
+                <p>다른 카테고리나 조건으로 다시 확인해 주세요.</p>
             </div>
         `;
     }
@@ -1704,17 +1707,7 @@ function renderNoticeCards(animate = false) {
 
     const filtered = notices;
 
-    const unrankedBaseNotices = filtered.filter(notice => !blockSet.has(String(notice.id)));
-    const preferredNotices = [];
-    const otherNotices = [];
-    unrankedBaseNotices.forEach(notice => {
-        (preferredStudentYear && !noticeMatchesStudentYear(notice)
-            ? otherNotices
-            : preferredNotices).push(notice);
-    });
-    const baseNotices = preferredStudentYear
-        ? [...preferredNotices, ...otherNotices]
-        : unrankedBaseNotices;
+    const baseNotices = filtered.filter(notice => !blockSet.has(String(notice.id)));
     baseNotices.forEach(notice => {
         const datePresentation = getNoticeDatePresentation(notice);
         const rawTitle = notice.title || "제목 없음";
@@ -1735,8 +1728,7 @@ function renderNoticeCards(animate = false) {
             datePresentation.badgeClass === 'd-day' ? 'card-urgent' : '',
             datePresentation.badgeClass === 'expired' ? 'card-expired' : '',
             notice.isArchived ? 'is-archived' : '',
-            notice.isInGracePeriod ? 'is-grace-period' : '',
-            preferredStudentYear && !noticeMatchesStudentYear(notice) ? 'is-outside-student-target' : ''
+            notice.isInGracePeriod ? 'is-grace-period' : ''
         ].filter(Boolean).join(' ');
         const dateTagHtml = datePresentation.badgeText
             ? `<span class="tag ${datePresentation.badgeClass}">${escapeHtml(datePresentation.badgeText)}</span>`
@@ -2954,7 +2946,6 @@ document.addEventListener('DOMContentLoaded', async function () {
     await loadData();
     await loadCategories();
     const initialNoticePage = restoreNoticeListStateFromUrl();
-    maybeAskStudentYear();
     buildCategoryTabs();
     syncNoticeSortChips();
     updateFilterChips();

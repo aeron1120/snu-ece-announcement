@@ -59,6 +59,42 @@ body {
 
 .page-shell { width: 100%; margin: 0 auto; }
 .page-main { width: 100%; max-width: 1400px; margin: 0 auto; padding: 40px; }
+.site-footer {
+    margin-top: 72px;
+    padding: 34px 4px 10px;
+    color: #8a919d;
+    border-top: 1px solid var(--border-soft);
+    font-size: 12px;
+    line-height: 1.7;
+}
+.site-footer-links {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 5px 0;
+    margin-bottom: 13px;
+}
+.site-footer-links a,
+.site-footer-links button {
+    display: inline-flex;
+    align-items: center;
+    min-height: 28px;
+    padding: 0 13px;
+    color: #747c89;
+    background: transparent;
+    border: 0;
+    border-right: 1px solid #d8dce2;
+    border-radius: 0;
+    font: inherit;
+    font-weight: 600;
+    text-decoration: none;
+    cursor: pointer;
+}
+.site-footer-links a:first-child { padding-left: 0; }
+.site-footer-links a:last-child { border-right: 0; }
+.site-footer-links a:hover,
+.site-footer-links button:hover { color: var(--primary); }
+.site-footer p { margin: 2px 0; }
 
 /* ---------- 좌우 고정 레일 (공통 외형) ----------
    위치 고정과 표시 여부는 뷰별 CSS가 정한다. 여기에는 색·간격만 둔다. */
@@ -176,12 +212,15 @@ body {
     overflow: hidden;
 }
 .rail-ad-image-stage {
+    position: relative;
     width: 100%;
     aspect-ratio: 4 / 5;
     flex: 0 0 auto;
     overflow: hidden;
+    touch-action: pan-y;
     transition: opacity 0.22s ease, transform 0.22s cubic-bezier(0.4, 0, 1, 1);
 }
+.rail-ad-image-stage.is-swiping { transition: none; }
 .rail-ad-image-stage.is-leaving-left { opacity: 0; transform: translateX(-42px); }
 .rail-ad-image-stage.is-leaving-right { opacity: 0; transform: translateX(42px); }
 .rail-ad-image-stage.is-entering-right {
@@ -241,12 +280,16 @@ body {
     outline: 0;
 }
 .rail-ad-controls {
+    position: absolute;
+    inset: 0;
+    z-index: 3;
     display: grid;
     grid-template-columns: 34px 1fr 34px;
     align-items: center;
     gap: 8px;
-    margin: 10px 0 0;
-    padding: 0 22px;
+    margin: 0;
+    padding: 0 8px;
+    pointer-events: none;
 }
 .rail-ad-controls button {
     display: grid;
@@ -255,11 +298,13 @@ body {
     padding: 0;
     place-items: center;
     color: var(--rail-text);
-    background: transparent;
-    border: 1px solid rgba(255,255,255,0.65);
+    background: rgba(12, 34, 78, 0.64);
+    border: 1px solid rgba(255,255,255,0.72);
     font: inherit;
     font-size: 18px;
     cursor: pointer;
+    pointer-events: auto;
+    backdrop-filter: blur(5px);
     transition: color 0.15s ease, background-color 0.15s ease, transform 0.15s ease;
 }
 .rail-ad-controls button:hover,
@@ -269,7 +314,20 @@ body {
     outline: none;
 }
 .rail-ad-controls button:active { transform: scale(0.94); }
-.rail-ad-count { color: var(--rail-text-dim); font-size: 11px; text-align: center; font-variant-numeric: tabular-nums; }
+.rail-ad-controls button:last-child { grid-column: 3; }
+.rail-ad-count {
+    position: absolute;
+    left: 50%;
+    bottom: 8px;
+    padding: 3px 8px;
+    color: #fff;
+    background: rgba(12, 34, 78, 0.68);
+    font-size: 10px;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+    transform: translateX(-50%);
+    backdrop-filter: blur(5px);
+}
 .brand-links a:focus-visible,
 .brand-links button:focus-visible,
 .rail-cta:focus-visible,
@@ -368,23 +426,30 @@ body {
 .notice-quick-filters {
     display: flex;
     align-items: center;
-    gap: 8px;
-    margin: -12px 0 22px;
+    justify-content: flex-start;
+    gap: 6px;
+    margin: -12px 0 16px;
     flex-wrap: wrap;
 }
 .notice-quick-filters button {
-    min-height: 38px;
-    padding: 0 14px;
+    min-height: 30px;
+    padding: 0 10px;
     color: #4c586d;
     background: #fff;
     border: 1px solid var(--border);
-    border-radius: 19px;
+    border-radius: 15px;
     font: inherit;
-    font-size: 12.5px;
+    font-size: 11.5px;
     font-weight: 700;
     cursor: pointer;
+    transition: color 0.16s ease, background-color 0.16s ease,
+        border-color 0.16s ease, transform 0.16s ease, opacity 0.16s ease;
 }
-.notice-quick-filters button:hover { color: var(--primary); border-color: var(--primary); }
+.notice-quick-filters button:hover {
+    color: var(--primary);
+    border-color: var(--primary);
+    transform: translateY(-1px);
+}
 .notice-quick-filters button.active {
     color: #fff;
     background: var(--primary);
@@ -589,14 +654,6 @@ body {
 }
 /* 좌우 여백을 주면 "결과 4 건"처럼 숫자와 단위가 벌어진다. */
 .filter-result-count strong { color: var(--primary); }
-.card.is-outside-student-target {
-    opacity: 0.56;
-    filter: saturate(0.72);
-}
-.card.is-outside-student-target:hover,
-.card.is-outside-student-target:focus-within {
-    opacity: 0.82;
-}
 .notice-results-toolbar {
     display: flex;
     align-items: center;
@@ -1599,36 +1656,6 @@ body.reordering-compare-block .compare-trash-zone {
 .feedback-category-btn:hover { color: var(--primary); border-color: var(--primary); transform: translateY(-1px); }
 .feedback-category-btn.active { color: white; background: var(--primary); border-color: var(--primary); }
 .feedback-category-btn:active { transform: translateY(1px); }
-
-.student-year-modal { width: min(460px, 100%); }
-.student-year-modal h2 {
-    margin: 7px 0 10px;
-    color: var(--primary-deep);
-    font-family: var(--serif);
-    font-size: 27px;
-}
-.student-year-help {
-    margin: 0 0 22px;
-    color: var(--text-sub);
-    font-size: 14px;
-    line-height: 1.7;
-}
-.student-year-modal select {
-    width: 100%;
-    min-height: 46px;
-    margin-top: 8px;
-    padding: 0 13px;
-    color: var(--text-main);
-    background: white;
-    border: 1px solid var(--border);
-    font: inherit;
-}
-.student-year-actions {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 8px;
-    margin-top: 22px;
-}
 
 /* ---------- 문의 모달 ---------- */
 .contact-row { gap: 12px; }

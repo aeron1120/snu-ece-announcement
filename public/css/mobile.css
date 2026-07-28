@@ -147,58 +147,80 @@ html[data-preview="1"] .mobile-mode-btn { display: none !important; }
 
 /* ---------- 카테고리 탭 ---------- */
 html[data-view="mobile"] .category-tabs {
-    height: auto;
-    margin: 0 0 10px;
-    padding: 5px;
+    height: 54px;
+    margin: 0 0 12px;
+    padding: 0;
     overflow: hidden;
-    background: #fff;
-    border: 0;
-    border-radius: 18px;
+    background: transparent;
+    border-top: 2px solid var(--primary-deep);
+    border-bottom: 1.5px solid var(--primary-deep);
+    border-radius: 0;
 }
 html[data-view="mobile"] .category-tabs-inner {
     display: grid;
     width: 100%;
     grid-template-columns: repeat(5, minmax(0, 1fr));
-    gap: 3px;
+    gap: 0;
     padding: 0;
 }
 html[data-view="mobile"] .category-tab {
     min-width: 0;
-    min-height: 42px;
+    min-height: 52px;
     justify-content: center;
     padding: 0 3px;
-    margin: 0;
+    margin: 0 0 -1.5px;
     border: 0;
-    border-radius: 13px;
+    border-bottom: 2px solid transparent;
+    border-radius: 0;
     font-size: 12px;
 }
 html[data-view="mobile"] .category-tab.active {
-    color: #fff;
-    background: var(--primary);
+    color: var(--primary-deep);
+    background: transparent;
+    border-bottom-color: var(--primary-deep);
 }
 html[data-view="mobile"] .notice-quick-filters {
-    display: none;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 7px;
+    display: flex;
+    justify-content: flex-start;
+    gap: 5px;
+    max-height: 0;
     order: 2;
-    margin: 8px 0 12px;
-    padding: 10px;
-    overflow: visible;
-    background: #fff;
-    border: 1px solid var(--border);
-    border-radius: 16px;
-    box-shadow: 0 7px 18px rgba(27, 52, 104, 0.07);
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(-7px);
+    transition: max-height 220ms ease, margin 220ms ease,
+        opacity 170ms ease, transform 220ms ease, visibility 0s linear 220ms;
 }
-html[data-view="mobile"] .notice-quick-filters.is-mobile-open { display: grid; }
+html[data-view="mobile"] .notice-quick-filters.is-mobile-open {
+    max-height: 76px;
+    margin: 5px 0 10px;
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+    transition-delay: 0s;
+}
 html[data-view="mobile"] .notice-quick-filters button {
-    min-height: 40px;
-    width: 100%;
+    min-height: 29px;
+    width: auto;
     min-width: 0;
-    padding-inline: 8px;
-    border-radius: 20px;
-    white-space: normal;
-    line-height: 1.25;
+    padding-inline: 9px;
+    border-radius: 15px;
+    white-space: nowrap;
+    font-size: 10.5px;
+    line-height: 1;
+    opacity: 0;
+    transform: translateY(-4px);
 }
+html[data-view="mobile"] .notice-quick-filters.is-mobile-open button {
+    opacity: 1;
+    transform: translateY(0);
+}
+html[data-view="mobile"] .notice-quick-filters.is-mobile-open button:nth-child(2) { transition-delay: 25ms; }
+html[data-view="mobile"] .notice-quick-filters.is-mobile-open button:nth-child(3) { transition-delay: 50ms; }
+html[data-view="mobile"] .notice-quick-filters.is-mobile-open button:nth-child(4) { transition-delay: 75ms; }
 
 html[data-view="mobile"] .notice-results-toolbar {
     align-items: flex-start;
@@ -384,7 +406,6 @@ html[data-view="mobile"][data-preview="1"] .notice-detail-view { padding-top: 6p
 /* ---------- 모달 ---------- */
 html[data-view="mobile"] .modal { padding: 24px 18px; border: 0; border-radius: 24px; }
 html[data-view="mobile"] .form-row { flex-direction: column; gap: 0; }
-html[data-view="mobile"] .student-year-actions { grid-template-columns: 1fr; }
 /* 모바일에서는 비교·분할·6점 드래그 UI를 제공하지 않는다. */
 html[data-view="mobile"] .card-block-controls,
 html[data-view="mobile"] .compare-space,
@@ -425,6 +446,21 @@ html[data-view="mobile"] #contact-modal .contact-row { flex-direction: column; a
 html[data-view="mobile"] #contact-modal .contact-copy-btn { width: 100%; }
 html[data-view="mobile"] #notification-category-list { grid-template-columns: 1fr; }
 html[data-view="mobile"] .notice-hover-preview { display: none !important; }
+html[data-view="mobile"] .site-footer {
+    margin-top: 44px;
+    padding: 24px 4px 4px;
+    font-size: 10.5px;
+}
+html[data-view="mobile"] .site-footer-links {
+    align-items: flex-start;
+    gap: 2px 0;
+}
+html[data-view="mobile"] .site-footer-links a,
+html[data-view="mobile"] .site-footer-links button {
+    min-height: 26px;
+    padding: 0 9px;
+    font-size: 10.5px;
+}
 
 @media (prefers-reduced-motion: reduce) {
     html[data-view="mobile"] button,

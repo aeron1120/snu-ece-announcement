@@ -106,7 +106,8 @@ test('administrator surfaces live on admin.html, not the public page', async () 
     ]) {
         assert.doesNotMatch(publicHtml, new RegExp(leaked.replace('.', '\\.')));
     }
-    assert.doesNotMatch(publicHtml, /admin(?:\.html|\/workspace)|관리자 페이지/);
+    assert.match(publicHtml, /href="\.\/admin-login\.html">관리자 페이지</);
+    assert.doesNotMatch(publicHtml, /href="[^"]*admin\.html|\/admin\/workspace/);
 });
 
 test('public shell exposes brand and managed advertising rails', async () => {
@@ -162,6 +163,7 @@ test('compact desktop turns the left rail into a drawer and keeps the vertical b
     assert.match(desktopCss, /\.rail-ad-image\s*\{[^}]*width:\s*100%;[^}]*height:\s*100%;[^}]*object-fit:\s*cover/s);
     assert.match(mobileJs, /function usesDrawerNavigation\(\)/);
     assert.match(mobileJs, /COMPACT_DESKTOP_DRAWER_QUERY/);
+    assert.match(desktopJs, /const COMPACT_DESKTOP_DRAWER_QUERY = '\(max-width: 1360px\)'/);
     assert.match(desktopJs, /event\.key === 'Escape'[\s\S]*closeMobileDrawer\(\)/);
 });
 
@@ -255,7 +257,7 @@ test('mobile cards stay compact, keep paging, and disable notice comparison drag
     assert.match(mobileCss, /\.notice-pagination\s*\{[^}]*display:\s*flex/s);
     assert.match(mobileCss, /\.card-block-controls,[\s\S]*\.compare-space,[\s\S]*display:\s*none !important/s);
     assert.match(html, /id="mobile-special-filter-toggle"[\s\S]*toggleMobileQuickFilters/);
-    assert.match(mobileCss, /\.notice-quick-filters\.is-mobile-open\s*\{\s*display:\s*grid;/s);
+    assert.match(mobileCss, /\.notice-quick-filters\.is-mobile-open\s*\{[^}]*max-height:\s*76px;[^}]*opacity:\s*1;[^}]*visibility:\s*visible/s);
     assert.match(mobileCss, /button:active:not\(:disabled\),[\s\S]*transform:\s*translateY\(1px\) scale\(0\.97\)/s);
     assert.match(renderCards, /const comparisonEnabled = getLayoutMode\(\) === 'desktop'/);
     assert.match(renderCards, /const blockControlsHtml = comparisonEnabled/);
@@ -911,7 +913,7 @@ test('right-rail image errors restore the inquiry fallback', async () => {
     assert.match(app, /onerror="renderRightRailInquiryFallback\(\)"/);
 });
 
-test('right-rail banners start randomly, auto-rotate, and keep manual arrows directly below the image', async () => {
+test('right-rail banners start randomly, auto-rotate, overlay manual arrows, and swipe on mobile', async () => {
     const html = await readFile('index.html', 'utf8');
     const app = await readFile('js/core.js', 'utf8');
     const css = await readFile('css/core.css', 'utf8');
@@ -925,11 +927,16 @@ test('right-rail banners start randomly, auto-rotate, and keep manual arrows dir
     assert.match(app, /이전 배너[\s\S]*&lt;[\s\S]*다음 배너[\s\S]*&gt;/);
     assert.match(app, /function startBannerRotation/);
     assert.match(app, /setInterval\([\s\S]*6500\)/);
-    assert.match(app, /class="rail-ad-image-stage\$\{transitionClass\}"[\s\S]*\$\{imageContent\}[\s\S]*\$\{controls\}/);
+    assert.match(app, /class="rail-ad-image-stage\$\{transitionClass\}"[\s\S]*onpointerdown="startBannerSwipe\(event\)"[\s\S]*\$\{imageContent\}[\s\S]*\$\{controls\}/);
+    assert.match(app, /function startBannerSwipe/);
+    assert.match(app, /function moveBannerSwipe/);
+    assert.match(app, /function finishBannerSwipe/);
+    assert.match(app, /Math\.abs\(bannerSwipeDeltaX\) >= 44/);
     assert.doesNotMatch(app, /class="rail-ad-dot/);
-    assert.match(css, /\.rail-ad-image-stage\s*\{[^}]*width:\s*100%;[^}]*aspect-ratio:\s*4\s*\/\s*5/s);
+    assert.match(css, /\.rail-ad-image-stage\s*\{[^}]*width:\s*100%;[^}]*aspect-ratio:\s*4\s*\/\s*5;[^}]*touch-action:\s*pan-y/s);
     assert.match(css, /\.rail-ad-image\s*\{[^}]*width:\s*100%;[^}]*height:\s*100%;[^}]*object-fit:\s*cover[^}]*border:\s*0/s);
-    assert.match(css, /\.rail-ad-controls\s*\{[^}]*grid-template-columns:\s*34px 1fr 34px/s);
+    assert.match(css, /\.rail-ad-controls\s*\{[^}]*position:\s*absolute;[^}]*inset:\s*0;[^}]*grid-template-columns:\s*34px 1fr 34px/s);
+    assert.match(css, /\.rail-ad-controls button:last-child\s*\{\s*grid-column:\s*3;/s);
     assert.match(css, /\.rail-ad-image-stage\.is-leaving-left\s*\{[^}]*translateX\(-42px\)/s);
     assert.match(css, /\.rail-ad-image-stage\.is-entering-right\s*\{[^}]*rail-banner-enter-right/s);
     assert.match(css, /@keyframes rail-banner-enter-left/);
@@ -1321,7 +1328,7 @@ test('notice filtering and sorting are requested from the server before cards re
     assert.match(clearNoticeUrlSource, /params\.delete\(NOTICE_URL_PARAM\)/);
 });
 
-test('student-year preference is optional, asked once, and keeps out-of-target notices visible', async () => {
+test('student year defaults to all without interrupting first visit', async () => {
     const html = await readFile('index.html', 'utf8');
     const app = await readFile('js/core.js', 'utf8');
     const css = await readFile('css/core.css', 'utf8');
@@ -1336,15 +1343,27 @@ test('student-year preference is optional, asked once, and keeps out-of-target n
     );
     assert.doesNotMatch(searchMarkup, /id="targetFilter"/);
     assert.match(filterMarkup, /id="targetFilter"/);
-    assert.match(html, /id="student-year-modal"/);
-    assert.match(html, /선택하지 않아도 모든 기능을 그대로 쓸 수 있습니다/);
-    assert.match(app, /STUDENT_YEAR_PROMPTED_KEY/);
-    assert.match(app, /function saveStudentYearPreference/);
-    assert.match(app, /function skipStudentYearPreference/);
-    assert.match(app, /preferredNotices[\s\S]*otherNotices/);
-    assert.match(app, /is-outside-student-target/);
-    assert.match(app, /replace\(\/\(\\d\{2\}\)학번\\s\*이상\/g, '\$1학번↑'\)/);
-    assert.match(css, /\.card\.is-outside-student-target/);
+    assert.match(filterMarkup, /id="targetFilter"[\s\S]*<option value="전체">전체 학번<\/option>/);
+    assert.doesNotMatch(html, /id="student-year-modal"/);
+    assert.doesNotMatch(app, /STUDENT_YEAR_PROMPTED_KEY|preferredStudentYear|saveStudentYearPreference|skipStudentYearPreference/);
+    assert.doesNotMatch(app, /preferredNotices[\s\S]*otherNotices|is-outside-student-target/);
+    assert.doesNotMatch(css, /\.card\.is-outside-student-target/);
+});
+
+test('public filters omit image presence, empty states stay simple, and the footer exposes quiet utility links', async () => {
+    const html = await readFile('index.html', 'utf8');
+    const app = await readFile('js/core.js', 'utf8');
+    const css = await readFile('css/core.css', 'utf8');
+    const listFilters = readNamedFunction(app, 'getNoticeListFilters');
+    const emptyState = readNamedFunction(app, 'renderNoticeEmptyState');
+
+    assert.doesNotMatch(html, /id="fg-has-image"|이미지 있음|이미지 없음/);
+    assert.doesNotMatch(listFilters, /hasImage|has-image/);
+    assert.match(emptyState, /해당하는 공지가 없습니다/);
+    assert.doesNotMatch(emptyState, /resetAllFilters|필터 모두 해제/);
+    assert.match(html, /class="site-footer"/);
+    assert.match(html, /알림 설정[\s\S]*일반 문의[\s\S]*홍보 신청[\s\S]*관리자 페이지/);
+    assert.match(css, /\.site-footer\s*\{[^}]*color:\s*#8a919d/s);
 });
 
 test('image notices lazy-load a poster; imageless notices show a big title poster', async () => {
