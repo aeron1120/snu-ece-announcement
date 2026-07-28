@@ -101,6 +101,13 @@ test('public notice API is paginated, has detail lookup, and hides Express signa
 
     const missing = await fetch(`${baseUrl}/api/notices/9007199254740991`);
     assert.equal(missing.status, 404);
+
+    const deadlinesResponse = await fetch(`${baseUrl}/api/notices/deadlines/imminent?days=7`);
+    assert.equal(deadlinesResponse.status, 200);
+    const deadlines = await deadlinesResponse.json();
+    assert.deepEqual(Object.keys(deadlines.counts).sort(), ['today', 'upcoming']);
+    assert.ok(Array.isArray(deadlines.notices));
+    assert.equal(deadlines.range.days, 7);
 });
 
 test('summary mismatch reports are anonymous and enter the admin feedback inbox', async t => {

@@ -42,6 +42,7 @@ export function createAutomationRouter({
     analyzer = null,
     pushService = null,
     prepareNoticePublication = null,
+    onNoticePublished = null,
     requireAdmin,
     config,
     frontendOrigin = ''
@@ -320,6 +321,14 @@ export function createAutomationRouter({
                 preparedEdits,
                 { notify: req.body?.notify !== false }
             );
+            if (onNoticePublished) {
+                await onNoticePublished({
+                    ...notice,
+                    categoryIds: Array.isArray(preparedEdits.categoryIds)
+                        ? preparedEdits.categoryIds
+                        : (notice.categoryIds || [])
+                });
+            }
             res.json({ notice });
         } catch (error) {
             errorResponse(res, error);

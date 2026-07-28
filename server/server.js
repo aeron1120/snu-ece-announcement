@@ -25,6 +25,10 @@ import { createNoticeThumbnailRouter } from './routes/notice-thumbnail-route.js'
 import { createNoticeThumbnailService } from './services/notice-thumbnail-service.js';
 import webPush from 'web-push';
 import { createPushService } from './services/push-service.js';
+import {
+    buildNoticePermalink,
+    createKakaoBotWebhookService
+} from './services/kakao-bot-webhook.js';
 import { rateLimit } from 'express-rate-limit';
 
 dotenv.config();
@@ -53,6 +57,12 @@ const automationStore = createAutomationStore({
     useSupabase,
     filePath: automationFilePath,
     canonicalCategories: CANONICAL_NOTICE_CATEGORIES
+});
+const publicSiteUrl = process.env.PUBLIC_SITE_URL || process.env.FRONTEND_ORIGIN || '';
+const kakaoBotWebhookService = createKakaoBotWebhookService({
+    webhookUrl: process.env.KAKAO_NOTICE_WEBHOOK_URL,
+    publicBaseUrl: publicSiteUrl,
+    categoryProvider: () => automationStore.listCategories()
 });
 const noticeThumbnailService = createNoticeThumbnailService({
     cacheDir: thumbnailCacheDir
@@ -987,6 +997,41 @@ function getLocalDateKey(value = new Date()) {
     return `${year}-${month}-${day}`;
 }
 
+function listImminentDeadlineNotices(rows, {
+    now = new Date(),
+    days = 7,
+    publicBaseUrl = ''
+} = {}) {
+    const today = getLocalDateKey(now);
+    const normalizedDays = Math.max(0, Number(days) || 0);
+    const end = new Date(now);
+    end.setDate(end.getDate() + normalizedDays);
+    const endDate = getLocalDateKey(end);
+    const notices = rows
+        .filter(notice => !notice.isAlwaysOpen)
+        .filter(notice => {
+            const deadline = String(notice.deadlineAt || notice.deadline || '').slice(0, 10);
+            return deadline >= today && deadline <= endDate;
+        })
+        .map(notice => {
+            const deadline = String(notice.deadlineAt || notice.deadline || '').slice(0, 10);
+            return {
+                ...toNoticeSummary(notice),
+                deadline,
+                permalink: buildNoticePermalink(publicBaseUrl, notice.id)
+            };
+        });
+    return {
+        generatedAt: now.toISOString(),
+        range: { from: today, to: endDate, days: normalizedDays },
+        counts: {
+            today: notices.filter(notice => notice.deadline === today).length,
+            upcoming: notices.length
+        },
+        notices
+    };
+}
+
 function normalizeNoticeListFilters(input = {}) {
     const categoryIds = String(input.category || '')
         .split(',')
@@ -1822,6 +1867,12 @@ app.use(createAutomationRouter({
             categoryIds: prepared.categoryIds
         };
     },
+    onNoticePublished: async notice => {
+        const result = await kakaoBotWebhookService.notifyPublishedNotice(notice);
+        if (result.reason === 'webhook_error') {
+            console.warn('카카오톡 봇 웹훅 전송 실패:', result.status || result.error);
+        }
+    },
     requireAdmin: requireNoticeAdmin,
     config: automationConfig,
     frontendOrigin: process.env.FRONTEND_ORIGIN || ''
@@ -2322,6 +2373,19 @@ app.get('/api/notices', async (req, res) => {
     }
 });
 
+app.get('/api/notices/deadlines/imminent', async (req, res) => {
+    try {
+        const days = Math.min(31, Math.max(0, Number.parseInt(req.query.days, 10) || 7));
+        const rows = await listNoticeFilterRows();
+        res.json(listImminentDeadlineNotices(rows, {
+            days,
+            publicBaseUrl: publicSiteUrl
+        }));
+    } catch (error) {
+        res.status(500).json({ error: error.message || '마감 임박 공지 조회 실패' });
+    }
+});
+
 app.use(createNoticeThumbnailRouter({
     loadSource: loadPublishedNoticeThumbnailSource,
     thumbnailService: noticeThumbnailService,
@@ -2351,6 +2415,10 @@ app.post('/api/notices', requireNoticeAdmin, async (req, res) => {
         }
 
         const newNotice = await createNotice(payload);
+        const webhookResult = await kakaoBotWebhookService.notifyPublishedNotice(newNotice);
+        if (webhookResult.reason === 'webhook_error') {
+            console.warn('카카오톡 봇 웹훅 전송 실패:', webhookResult.status || webhookResult.error);
+        }
         res.status(201).json({ notice: newNotice });
     } catch (error) {
         const status = error instanceof TypeError ? 400 : 500;
@@ -2571,6 +2639,7 @@ export {
     createBannerSlide,
     isBannerExpiryActive,
     listBannerSlides,
+    listImminentDeadlineNotices,
     normalizeNoticeListFilters,
     normalizeBannerPayload,
     toNoticeSummary,

@@ -10,6 +10,7 @@
 - 자동 수집: Cloudflare Cron Worker → Render 보호 엔드포인트
 - 공지 분석: Gemini JSON 응답
 - 알림: VAPID Web Push
+- 카카오톡 봇 준비: 신청·학사 신규 공지 웹훅, 고유 링크, 마감 임박 조회 API
 
 자동 수집 공지는 즉시 공개되지 않습니다. 항상 `pending_review` 상태로 들어오며, 관리자가 원문·대상·요약·키워드·카테고리를 검수해 승인한 경우에만 공개되고 알림 작업이 생성됩니다.
 
@@ -80,6 +81,8 @@ npm run prepare:public
 필수 환경 변수는 [.env.example](.env.example)을 기준으로 설정합니다.
 
 - `FRONTEND_ORIGIN`: 실제 Cloudflare Pages origin
+- `PUBLIC_SITE_URL`: 공지별 카카오톡 링크를 만들 공개 사이트 주소
+- `KAKAO_NOTICE_WEBHOOK_URL`: 신청·학사 공지 게시 이벤트를 받을 봇 중계 서버 주소
 - `SUPER_ADMIN_TOKEN`, `NOTICE_ADMIN_TOKEN`, `BANNER_ADMIN_PASSWORD`: 서로 다른 긴 난수
 - `CRAWL_TRIGGER_SECRET`: 32자 이상 난수
 - `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`
@@ -131,6 +134,7 @@ Worker의 `CRAWL_TRIGGER_SECRET`은 Render와 정확히 같아야 합니다. Cro
 - 크롤러 실행 이력: `GET /api/admin/crawl-runs`
 - 관리자 수동 크롤링: `POST /api/admin/crawl/ece-academics`
 - 알림 작업 수동 재처리: `POST /api/admin/notification-jobs/process`
+- 마감 임박 다이제스트 소스: `GET /api/notices/deadlines/imminent?days=7`
 - 검수함: `GET /api/admin/review-notices`
 - 카테고리 후보: `GET /api/admin/category-candidates`
 
@@ -144,6 +148,13 @@ Worker의 `CRAWL_TRIGGER_SECRET`은 Render와 정확히 같아야 합니다. Cro
 - 영구 저장: Supabase URL 또는 서비스 역할 키 없음
 
 푸시 서비스가 404 또는 410을 반환한 구독은 자동으로 비활성화합니다. 일시 오류는 1분, 5분, 30분 후 재시도하며 성공 또는 영구 실패 기록은 중복 전송하지 않습니다.
+
+신청 또는 학사 카테고리 공지가 새로 게시되면 `KAKAO_NOTICE_WEBHOOK_URL`로
+`notice.published` JSON을 보냅니다. `message`에는 `[신청|학사]`, 공지 제목,
+절대 마감일과 D-Day, 공지 고유 링크가 모두 들어갑니다. 웹훅이 설정되지 않았거나
+다른 카테고리라면 게시 자체는 정상 완료되고 전송만 건너뜁니다. 하루 1회 다이제스트는
+마감 임박 API의 `counts.today`, `counts.upcoming`, `notices`를 봇 중계 서버에서 묶어
+발송하도록 연결할 수 있습니다.
 
 카테고리 후보의 `occurrenceCount`는 기간 안의 서로 다른 공지 수이고, `averageConfidence`는 그 공지들의 LLM 신뢰도 평균입니다. “다시 추천 안 함”은 영구 제외, “30일 보류”는 기간이 지난 뒤 기준을 다시 충족하면 재등장합니다.
 
