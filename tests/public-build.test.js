@@ -244,6 +244,34 @@ test('mobile mode opens a blurred phone preview instead of reflowing the desktop
     assert.match(html, /params\.get\('view'\)/);
 });
 
+test('result count appears only for an actual search or filter, and long rewards conveyor', async () => {
+    const app = await readFile('js/core.js', 'utf8');
+    const css = await readFile('css/core.css', 'utf8');
+
+    // 조건을 걸지 않은 기본 목록에서는 "결과 N건"을 띄우지 않는다.
+    const countSource = readNamedFunction(app, 'updateNoticeResultCount');
+    assert.match(countSource, /total > 0 && hasActiveNoticeQuery\(\)/);
+    assert.match(countSource, /countEl\.hidden = !show/);
+
+    const querySource = readNamedFunction(app, 'hasActiveNoticeQuery');
+    assert.match(querySource, /searchInput'\)\?\.value\.trim\(\)/);
+    assert.match(querySource, /quickNoticeFilters\)\.some\(Boolean\)/);
+    assert.match(querySource, /targetFilter/);
+    assert.match(querySource, /filter-date-from/);
+    assert.match(querySource, /value !== FILTER_DEFAULTS\[group\]/);
+
+    // 리워드가 칸보다 길면 같은 글을 이어 붙여 이음매 없이 한 방향으로 흘린다.
+    const marqueeSource = readNamedFunction(app, 'measureCardRewardMarquee');
+    assert.match(marqueeSource, /text\.scrollWidth - viewport\.clientWidth/);
+    assert.match(marqueeSource, /cloneNode\(true\)/);
+    assert.match(marqueeSource, /classList\.add\('is-marquee'\)/);
+    assert.match(marqueeSource, /prefers-reduced-motion: reduce/);
+    assert.match(css, /@keyframes card-reward-marquee\s*\{[\s\S]*?translateX\(-50%\)/);
+    // 이어 붙인 두 벌의 간격이 JS 계산과 어긋나면 이음매가 튄다.
+    assert.match(app, /CARD_REWARD_MARQUEE_GAP = 28/);
+    assert.match(css, /\.card-reward-text\s*\{[^}]*padding-right:\s*28px/s);
+});
+
 test('mobile cards stay compact, keep paging, and disable notice comparison dragging', async () => {
     const html = await readFile('index.html', 'utf8');
     const app = await readFile('js/core.js', 'utf8');
@@ -257,8 +285,11 @@ test('mobile cards stay compact, keep paging, and disable notice comparison drag
     assert.match(mobileCss, /\.card\.card-urgent\s*\{[^}]*border:\s*2px solid #c0392b/s);
     assert.match(mobileCss, /\.card-img-preview\s*\{[^}]*object-fit:\s*cover/s);
     assert.match(mobileCss, /\.card-img-preview\s*\{[^}]*object-position:\s*top center/s);
-    assert.match(mobileCss, /\.card-mobile-reward\s*\{[^}]*display:\s*inline-flex/s);
-    assert.match(mobileCss, /\.card-meta\s*\{[^}]*justify-content:\s*space-between/s);
+    // 리워드는 뷰별로 마크업을 나누지 않고 한 벌로 조회수 바로 왼쪽에 선다.
+    assert.doesNotMatch(mobileCss, /card-mobile-reward|card-desktop-reward/);
+    assert.match(await readFile('css/core.css', 'utf8'), /\.card-reward\s*\{[^}]*display:\s*inline-flex/s);
+    assert.match(mobileCss, /\.card-meta\s*\{[^}]*justify-content:\s*flex-end/s);
+    assert.match(renderCards, /class="card-meta"[\s\S]*\$\{rewardHtml\}[\s\S]*class="view-count"/);
     assert.match(mobileCss, /\.notice-pagination\s*\{[^}]*display:\s*flex/s);
     assert.match(mobileCss, /\.card-block-controls,[\s\S]*\.compare-space,[\s\S]*display:\s*none !important/s);
     // 빠른 필터 손잡이는 따로 두지 않는다. '상세 필터' 바 하나가 둘 다 연다.

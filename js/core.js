@@ -105,6 +105,10 @@ const FILTER_DEFAULTS = Object.freeze({
     'deadline-status': '전체', 'host': '전체', 'views': '전체', 'sort': '최신순'
 });
 
+// 컨베이어로 흐르는 리워드 문구 사이의 간격. CSS의 값과 반드시 같아야
+// 트랙을 절반 미는 계산이 이음매 없이 맞아떨어진다.
+const CARD_REWARD_MARQUEE_GAP = 28;
+
 function buildApiUrl(path) {
     return API_BASE_URL ? `${API_BASE_URL}${path}` : path;
 }
@@ -1966,11 +1970,15 @@ function renderNoticeCards(animate = false) {
         // 이미지 카드만 본문 위에 제목을 다시 보여준다(텍스트 카드는 포스터가 곧 제목).
         const titleHtml = hasImg ? `<h3 class="card-title">${safeTitle}</h3>` : '';
         const rewardText = notice.rewardNote || notice.surveyReward || '';
-        const surveyRewardHtml = rewardText
-            ? `<div class="survey-reward card-desktop-reward" aria-label="리워드">🎁 ${escapeHtml(rewardText)}</div>`
-            : '';
-        const mobileRewardHtml = rewardText
-            ? `<span class="card-mobile-reward" aria-label="리워드">🎁 ${escapeHtml(rewardText)}</span>`
+        // 리워드는 조회수와 같은 줄, 바로 왼쪽에 놓는다. 자리보다 길면
+        // 렌더 후 measureCardRewardMarquee가 컨베이어처럼 흘려보낸다.
+        const rewardHtml = rewardText
+            ? `<span class="card-reward" aria-label="리워드 ${escapeHtml(rewardText)}">
+                   <span class="card-reward-icon" aria-hidden="true">🎁</span>
+                   <span class="card-reward-viewport">
+                       <span class="card-reward-track"><span class="card-reward-text">${escapeHtml(rewardText)}</span></span>
+                   </span>
+               </span>`
             : '';
 
         const card = document.createElement('div');
@@ -2007,11 +2015,10 @@ function renderNoticeCards(animate = false) {
                     ${notice.host ? `<span class="tag">${escapeHtml(notice.host)}</span>` : ''}
                 </div>
                 ${titleHtml}
-                ${surveyRewardHtml}
                 <div class="card-date">${escapeHtml(datePresentation.dateLabel)}</div>
                 ${excerpt ? `<p class="card-excerpt">${escapeHtml(excerpt)}</p>` : ''}
                 <div class="card-meta">
-                    ${mobileRewardHtml}
+                    ${rewardHtml}
                     <span class="view-count">조회 ${Number(notice.views) || 0}</span>
                 </div>
             </div>
@@ -2028,6 +2035,8 @@ function renderNoticeCards(animate = false) {
     grid.querySelectorAll?.('img[data-thumbnail-src]')
         ?.forEach(image => noticeViewportLoader.observeThumbnail(image));
 
+    measureCardRewardMarquee(grid);
+
     if (animate && grid.childElementCount > 0) {
         requestAnimationFrame(() => {
             requestAnimationFrame(() => {
@@ -2039,12 +2048,59 @@ function renderNoticeCards(animate = false) {
         });
     }
 
+    updateNoticeResultCount();
+}
+
+/* "결과 N건"은 사용자가 검색하거나 필터를 걸었을 때만 의미가 있다.
+   아무 조건도 걸지 않은 기본 목록에서는 전체 건수를 다시 알려줄 필요가 없다. */
+function updateNoticeResultCount() {
     const countEl = document.getElementById('filter-result-count');
-    if (countEl) {
-        const total = Number(noticeRepository.pagination.total) || 0;
-        countEl.hidden = total === 0;
-        countEl.innerHTML = total > 0 ? `결과 <strong>${total}</strong>건` : '';
-    }
+    if (!countEl) return;
+    const total = Number(noticeRepository.pagination.total) || 0;
+    const show = total > 0 && hasActiveNoticeQuery();
+    countEl.hidden = !show;
+    countEl.innerHTML = show ? `결과 <strong>${total}</strong>건` : '';
+}
+
+// 검색어나 상세·빠른 필터 중 하나라도 기본값에서 벗어났는지.
+// 카테고리 탭은 목록을 고르는 이동이지 조건 걸기가 아니라 여기서 세지 않는다.
+function hasActiveNoticeQuery() {
+    if (document.getElementById('searchInput')?.value.trim()) return true;
+    if (Object.values(quickNoticeFilters).some(Boolean)) return true;
+    if ((document.getElementById('targetFilter')?.value || '전체') !== '전체') return true;
+    if (document.getElementById('filter-date-from')?.value) return true;
+    if (document.getElementById('filter-date-to')?.value) return true;
+    return Object.entries(filterState)
+        .some(([group, value]) => group !== 'sort' && value !== FILTER_DEFAULTS[group]);
+}
+
+/* 리워드 문구가 제 칸보다 길면 컨베이어처럼 한 방향으로 계속 흘린다.
+   같은 글을 하나 더 이어 붙이고 트랙을 절반만큼 밀면 이음매 없이 반복된다.
+   길이에 비례해 속도를 정해야 짧은 문구가 지나치게 빨리 지나가지 않는다. */
+function measureCardRewardMarquee(root) {
+    const rewards = root?.querySelectorAll?.('.card-reward');
+    if (!rewards?.length) return;
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+
+    requestAnimationFrame(() => {
+        rewards.forEach(reward => {
+            const viewport = reward.querySelector('.card-reward-viewport');
+            const track = reward.querySelector('.card-reward-track');
+            const text = reward.querySelector('.card-reward-text');
+            if (!viewport || !track || !text || reward.classList.contains('is-marquee')) return;
+
+            const overflow = text.scrollWidth - viewport.clientWidth;
+            if (overflow <= 1) return;
+
+            const clone = text.cloneNode(true);
+            clone.setAttribute('aria-hidden', 'true');
+            track.appendChild(clone);
+            // 초당 26px 정도가 눈으로 따라 읽기 편한 속도다.
+            const duration = Math.max(6, (text.scrollWidth + CARD_REWARD_MARQUEE_GAP) / 26);
+            reward.style.setProperty('--marquee-duration', `${duration.toFixed(2)}s`);
+            reward.classList.add('is-marquee');
+        });
+    });
 }
 
 async function filterCards() {

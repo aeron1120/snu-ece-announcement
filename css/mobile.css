@@ -291,24 +291,19 @@ html[data-view="mobile"] .card .tag { padding: 3px 5px; font-size: 9.5px; }
 html[data-view="mobile"] .card-title { font-size: 14px; line-height: 1.38; -webkit-line-clamp: 2; }
 html[data-view="mobile"] .card-date { font-size: 10.5px; }
 html[data-view="mobile"] .card-excerpt { font-size: 10.5px; line-height: 1.45; -webkit-line-clamp: 1; }
-html[data-view="mobile"] .card-desktop-reward { display: none; }
 html[data-view="mobile"] .card-meta {
     align-items: center;
-    justify-content: space-between;
+    justify-content: flex-end;
     gap: 5px;
     min-width: 0;
     font-size: 10px;
 }
-html[data-view="mobile"] .card-mobile-reward {
-    display: inline-flex;
-    min-width: 0;
-    overflow: hidden;
-    color: #6b3f00;
-    font-weight: 750;
-    white-space: nowrap;
-    text-overflow: ellipsis;
+/* 좁은 칸이라 칩을 한 단계 줄인다. 흐르는 방식은 데스크톱과 같다. */
+html[data-view="mobile"] .card-reward {
+    padding: 2px 6px;
+    font-size: 9.5px;
 }
-html[data-view="mobile"] .card-meta .view-count { margin-left: auto; }
+html[data-view="mobile"] .card-reward-icon { font-size: 9px; }
 html[data-view="mobile"] .notice-pagination {
     display: flex;
     gap: 6px;

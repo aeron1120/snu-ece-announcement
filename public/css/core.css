@@ -1028,16 +1028,48 @@ body {
 .tags .tag.d-day { background: var(--danger-bg); color: var(--danger); }
 .tags .tag.expired { background: #e8eaee; color: #59616d; }
 .tag.target { background: var(--ok-bg); color: var(--ok); }
-.survey-reward {
-    padding: 7px 9px;
-    color: #6b3f00;
-    background: #fff7dc;
-    border-left: 3px solid #d99a19;
-    font-size: 12px;
+/* 리워드 — 조회수와 같은 줄, 바로 왼쪽에 앉는 호박색 칩.
+   조회수는 회색이라 두 정보가 색으로 분명히 갈린다. */
+.card-reward {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    min-width: 0;
+    flex: 0 1 auto;
+    max-width: 100%;
+    padding: 3px 8px;
+    color: #8a5a00;
+    background: #fdf4e0;
+    border-radius: 999px;
+    font-size: 11px;
     font-weight: 750;
-    line-height: 1.4;
+    line-height: 1.5;
 }
-.card-mobile-reward { display: none; }
+.card-reward-icon { flex-shrink: 0; font-size: 10px; }
+/* 칩 안에서만 글이 흐르도록 넘치는 부분을 잘라 둔다. */
+.card-reward-viewport { min-width: 0; overflow: hidden; }
+.card-reward-track { display: flex; width: max-content; }
+.card-reward-text {
+    /* 이 값은 core.js의 CARD_REWARD_MARQUEE_GAP과 같아야 한다. */
+    padding-right: 28px;
+    white-space: nowrap;
+}
+/* 흐르지 않는 짧은 문구는 여백 없이 그대로 보인다. */
+.card-reward:not(.is-marquee) .card-reward-text { padding-right: 0; }
+.card-reward.is-marquee .card-reward-track {
+    /* 3초쯤 멈춰 읽을 시간을 준 뒤 한 방향으로 계속 흐른다. */
+    animation: card-reward-marquee var(--marquee-duration, 12s) linear 3s infinite;
+}
+@keyframes card-reward-marquee {
+    from { transform: translateX(0); }
+    to { transform: translateX(-50%); }
+}
+/* 마우스를 올리면 멈춰 끝까지 읽을 수 있다. */
+.card-reward.is-marquee:hover .card-reward-track { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) {
+    .card-reward.is-marquee .card-reward-track { animation: none; }
+    .card-reward-text { padding-right: 0; }
+}
 
 /* 이미지 카드의 제목. 텍스트 카드는 포스터가 제목이므로 이 자리를 비운다. */
 .card-title {
@@ -1062,12 +1094,15 @@ body {
     -webkit-line-clamp: 2;
 }
 .card-meta {
-    display: flex; justify-content: flex-end; gap: 10px;
+    display: flex; align-items: center; justify-content: flex-end; gap: 8px;
+    min-width: 0;
     font-size: 11.5px; color: var(--text-sub);
     margin-top: auto; padding-top: 8px;
     font-variant-numeric: tabular-nums;
 }
-.view-count { white-space: nowrap; }
+/* 조회수는 오른쪽 끝에 붙고 줄어들지 않는다. 리워드 칩은 그 바로 왼쪽에
+   맞붙어 서고, 자리가 모자라면 조회수 대신 칩이 줄어든다. */
+.view-count { flex: 0 0 auto; white-space: nowrap; }
 
 /* 데스크톱 마우스 사용 환경에서만 잠시 머문 공지를 가볍게 펼쳐 보여준다. */
 .notice-hover-preview {
