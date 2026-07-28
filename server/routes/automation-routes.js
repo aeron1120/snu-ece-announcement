@@ -151,21 +151,9 @@ export function createAutomationRouter({
     });
 
     router.post('/api/admin/category-candidates/:id/approve', requireAdmin, async (req, res) => {
-        const name = String(req.body?.name || '').trim();
-        const slug = String(req.body?.slug || '').trim().toLowerCase();
-        if (!name || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
-            return res.status(400).json({ error: '카테고리 이름과 영문 슬러그를 확인해주세요.' });
-        }
-        try {
-            const candidate = await store.decideCategoryCandidate(req.params.id, {
-                action: 'approve',
-                name,
-                slug
-            });
-            res.json({ candidate });
-        } catch (error) {
-            errorResponse(res, error);
-        }
+        res.status(409).json({
+            error: '공지 주제는 학사·기회·혜택·자치·행사 네 범주로 고정되어 있습니다. 기존 범주에 병합해주세요.'
+        });
     });
 
     router.post('/api/admin/category-candidates/:id/merge', requireAdmin, async (req, res) => {
@@ -300,6 +288,10 @@ export function createAutomationRouter({
                 keywords: analysis.keywords,
                 categoryIds: analysis.existingCategoryIds,
                 surveyReward: analysis.surveyReward,
+                category: analysis.category || null,
+                hasReward: analysis.hasReward === true,
+                rewardNote: analysis.rewardNote || null,
+                requiresAction: analysis.requiresAction === true,
                 analysisStatus: 'succeeded',
                 analysisConfidence: analysis.confidence
             });

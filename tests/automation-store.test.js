@@ -31,7 +31,7 @@ test('automation configuration accepts complete crawl and push settings', () => 
     assert.equal(config.categories.minimumConfidence, 0.75);
 });
 
-test('JSON automation store supplies the six canonical notice categories in order', async () => {
+test('JSON automation store supplies the four topic-only notice categories in order', async () => {
     const directory = await mkdtemp(path.join(tmpdir(), 'ece-category-store-'));
     const store = createAutomationStore({
         useSupabase: false,
@@ -43,7 +43,7 @@ test('JSON automation store supplies the six canonical notice categories in orde
 
     assert.deepEqual(
         categories.map(category => category.name),
-        ['신청', '학사', '혜택/제휴', '캠퍼스', '자치', '설문조사']
+        ['학사', '기회', '혜택', '자치·행사']
     );
     assert.ok(categories.every(category => category.definition));
 

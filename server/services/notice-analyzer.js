@@ -53,7 +53,7 @@ export function validateNoticeAnalysis(value, activeCategoryIds = new Set()) {
         (Array.isArray(value.existingCategoryIds) ? value.existingCategoryIds : [])
             .map(Number)
             .filter(id => Number.isFinite(id) && activeCategoryIds.has(id))
-    ));
+    )).slice(0, 1);
     const rawConfidence = Number(value.confidence);
     if (!Number.isFinite(rawConfidence)) {
         throw new NoticeAnalysisError('confidence must be numeric');
@@ -67,7 +67,10 @@ export function validateNoticeAnalysis(value, activeCategoryIds = new Set()) {
         targets: targets.length > 0 ? targets : ['전체'],
         keywords,
         existingCategoryIds,
-        surveyReward: String(value.surveyReward || '').trim().slice(0, 120),
+        rewardNote: String(value.rewardNote || value.surveyReward || '').trim().slice(0, 120) || null,
+        hasReward: value.hasReward === true || Boolean(String(value.rewardNote || value.surveyReward || '').trim()),
+        requiresAction: value.requiresAction === true,
+        surveyReward: String(value.rewardNote || value.surveyReward || '').trim().slice(0, 120),
         verifiedNumbers: uniqueStrings(value.verifiedNumbers, { limit: 12, maxLength: 120 }),
         verificationWarnings: uniqueStrings(value.verificationWarnings, { limit: 8, maxLength: 200 }),
         confidence: Math.min(1, Math.max(0, rawConfidence)),
@@ -94,7 +97,9 @@ function buildVerificationPrompt({ title, content, categories, draft }) {
   "targets": ["전체 또는 NN학번"],
   "keywords": ["최대 10개"],
   "existingCategoryIds": [검증된 기존 카테고리 ID],
-  "surveyReward": "원문에 있는 설문 보상 또는 빈 문자열",
+  "hasReward": true 또는 false,
+  "rewardNote": "상품·지원금·할인 등 짧은 표기 또는 null",
+  "requiresAction": true 또는 false,
   "verifiedNumbers": ["원문과 대조한 주요 수치"],
   "verificationWarnings": ["관리자 확인이 필요한 불명확한 점"],
   "confidence": 0과 1 사이 숫자
@@ -103,9 +108,9 @@ function buildVerificationPrompt({ title, content, categories, draft }) {
 검수 원칙:
 - 원문에 없는 사실·수치·조건은 모두 제거합니다.
 - deadline은 실제 신청 또는 제출 마감이 명확할 때만 지정합니다.
-- 신청은 직접 제출 행동과 마감이 모두 있을 때, 학사는 학점·졸업·수강에 직접 영향을 줄 때만 선택합니다.
-- 혜택/제휴는 경제적 이익, 캠퍼스는 특정 날짜의 시설·출입 변화, 자치는 자치기구 대상, 설문조사는 의견·경험 자료 수집일 때만 선택합니다.
-- 카테고리는 중복 가능하지만 약한 연관성으로 늘리지 않습니다.
+- 카테고리는 반드시 학사, 기회, 혜택, 자치·행사 중 가장 핵심적인 하나만 선택합니다.
+- requiresAction은 신청·제출·응답이 필요할 때만 true입니다.
+- hasReward는 기프티콘·상품·간식·지원금·할인 등 즉시 확인 가능한 보상이 있을 때만 true입니다.
 
 활성 카테고리:
 ${categoryList}
@@ -153,19 +158,20 @@ function buildPrompt({ title, content, categories, correction }) {
   "targets": ["전체 또는 NN학번"],
   "keywords": ["최대 10개"],
   "existingCategoryIds": [기존 카테고리 ID],
-  "surveyReward": "설문 참여 보상·추첨 상품을 짧게 요약하거나 빈 문자열",
+  "hasReward": true 또는 false,
+  "rewardNote": "상품·지원금·할인 등 짧은 표기 또는 null",
+  "requiresAction": true 또는 false,
   "confidence": 0과 1 사이 숫자
 }
 
 카테고리 분류 원칙:
-- 신청: 사용자가 링크·폼·메일 등으로 직접 제출해야 하고 마감이 있을 때만 선택합니다.
-- 학사: 학점·졸업·수강에 직접 영향을 주며 다른 일반 채널로 대체하기 어려운 필수 공지입니다.
-- 혜택/제휴: 돈·물품·할인·지원 등 경제적 이익이 있지만 놓쳐도 학사상 불이익은 없습니다.
-- 캠퍼스: 특정 날짜에 출입·시설·교통·정전 등 캠퍼스 상태가 평소와 달라집니다.
-- 자치: 일반 학부생이 아니라 대의원·학생회 집행부 등 자치기구 구성원이 주 수신 대상입니다.
-- 설문조사: 프로그램 참가 신청이 아니라 응답자의 의견·경험·만족도·연구 자료를 수집하는 설문, 인터뷰, 사용자 조사입니다. 단순 행사 신청폼은 설문조사가 아닙니다.
-- 설문조사에 상품·기프티콘·사례비·추첨 보상이 있으면 surveyReward에 상품명과 조건을 한 문장으로 적습니다. 보상이 없거나 확인되지 않으면 빈 문자열입니다.
-- 여러 범주가 명백히 동시에 성립하면 중복 선택할 수 있지만, 약한 연관성으로 늘리지 말고 가능한 한 가장 핵심적인 한 범주만 선택합니다.
+- 학사: 수강·학점·졸업·성적·전공진입에 직접 영향을 줍니다.
+- 기회: 인턴·연구실·모집·공모전·대회·장학·교환 등 참여 기회입니다.
+- 혜택: 할인·지원·물품·제휴처럼 놓쳐도 학사상 불이익이 없는 경제적 혜택입니다.
+- 자치·행사: 학생 자치, 학내 행사, 시설·출입·교통 등 공동체와 캠퍼스 생활 정보입니다.
+- 네 카테고리 중 가장 핵심적인 하나만 선택합니다.
+- requiresAction은 신청·제출·응답이 필요할 때 true입니다.
+- hasReward는 상품·기프티콘·사례비·지원금·할인 등이 확인될 때 true이며 rewardNote에 짧게 적습니다.
 - 제목의 단어만 보지 말고 본문의 행동 요구, 마감, 실제 영향과 수신 대상을 근거로 판단합니다.
 
 편집 원칙:
@@ -219,6 +225,7 @@ export function createNoticeAnalyzer({
                 .filter(category => category?.isActive !== false)
                 .map(category => ({
                     id: Number(category.id),
+                    key: String(category.key || ''),
                     name: String(category.name || ''),
                     definition: String(category.definition || '')
                 }))
@@ -259,10 +266,16 @@ export function createNoticeAnalyzer({
                     categories,
                     draft
                 });
-                return validateNoticeAnalysis(
+                const verified = validateNoticeAnalysis(
                     parseModelJson(await generate(verificationPrompt)),
                     activeCategoryIds
                 );
+                return {
+                    ...verified,
+                    category: categories.find(item =>
+                        Number(item.id) === Number(verified.existingCategoryIds[0])
+                    )?.key || null
+                };
             } catch (error) {
                 throw new NoticeAnalysisError(
                     'Gemini verification did not satisfy the required schema',

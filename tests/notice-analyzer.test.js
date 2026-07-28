@@ -65,7 +65,7 @@ test('analyzer retries one schema-invalid response and returns corrected JSON', 
         apiKey: 'test-key',
         model: 'gemini-test-model',
         fetchImpl,
-        categoryProvider: async () => [{ id: 2, name: '수강신청' }]
+        categoryProvider: async () => [{ id: 2, key: 'ACADEMIC', name: '학사' }]
     });
 
     const result = await analyzer.analyzeNotice({
@@ -76,10 +76,11 @@ test('analyzer retries one schema-invalid response and returns corrected JSON', 
     assert.equal(calls, 3);
     assert.deepEqual(result.summary, ['검증된 핵심']);
     assert.deepEqual(result.existingCategoryIds, [2]);
+    assert.equal(result.category, 'ACADEMIC');
     assert.deepEqual(result.verifiedNumbers, ['2학기']);
     assert.match(requests[0].url, /gemini-test-model:generateContent/);
-    assert.match(requests[0].body.contents[0].parts[0].text, /신청: 사용자가 링크·폼·메일/);
-    assert.match(requests[0].body.contents[0].parts[0].text, /가능한 한 가장 핵심적인 한 범주만 선택/);
+    assert.match(requests[0].body.contents[0].parts[0].text, /학사: 수강·학점·졸업·성적·전공진입/);
+    assert.match(requests[0].body.contents[0].parts[0].text, /네 카테고리 중 가장 핵심적인 하나만 선택/);
     assert.match(
         requests[1].body.contents[0].parts[0].text,
         /이전 응답이 스키마를 만족하지 못했습니다/

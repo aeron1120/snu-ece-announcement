@@ -121,13 +121,17 @@ test('notice list filter normalization rejects unknown states instead of widenin
             sort: '최신순',
             dateFrom: '',
             dateTo: '',
+            urgentOnly: false,
+            rewardOnly: false,
+            actionOnly: false,
+            includePast: false,
             archiveMode: '',
             includeExpired: false
         }
     );
 });
 
-test('default lists hide archived notices while search keeps them after active results', () => {
+test('default and search lists hide past notices until the explicit past filter is enabled', () => {
     const lifecycleRows = [
         {
             ...rows[0],
@@ -157,7 +161,14 @@ test('default lists hide archived notices while search keeps them after active r
         normalizeNoticeListFilters({ search: '같은 검색' }),
         { now }
     );
-    assert.deepEqual(searchResult.map(notice => notice.id), [10, 11]);
+    assert.deepEqual(searchResult.map(notice => notice.id), [10]);
+
+    const pastResult = applyNoticeListFilters(
+        lifecycleRows,
+        normalizeNoticeListFilters({ search: '같은 검색', past: '1' }),
+        { now }
+    );
+    assert.deepEqual(pastResult.map(notice => notice.id), [10, 11]);
 });
 
 test('deadline-passed notices leave the default list and appear in the archive tab', () => {

@@ -10,6 +10,10 @@ create table if not exists public.notices (
   is_always_open boolean not null default false,
   is_pinned boolean not null default false,
   is_hidden boolean not null default false,
+  category text check (category is null or category in ('ACADEMIC', 'OPPORTUNITY', 'BENEFIT', 'COMMUNITY')),
+  has_reward boolean not null default false,
+  reward_note text,
+  requires_action boolean not null default false,
   survey_reward text not null default '',
   ai_summary jsonb not null default '[]'::jsonb,
   images jsonb not null default '[]'::jsonb,
@@ -206,6 +210,10 @@ alter table public.notices
   add column if not exists is_always_open boolean not null default false,
   add column if not exists is_pinned boolean not null default false,
   add column if not exists is_hidden boolean not null default false,
+  add column if not exists category text,
+  add column if not exists has_reward boolean not null default false,
+  add column if not exists reward_note text,
+  add column if not exists requires_action boolean not null default false,
   add column if not exists survey_reward text not null default '';
 
 update public.notices
@@ -284,15 +292,18 @@ create table if not exists public.categories (
 
 insert into public.categories (name, slug, is_active)
 values
-  ('신청', 'application', true),
-  ('학사', 'academics', true),
-  ('혜택/제휴', 'benefits-partnerships', true),
-  ('캠퍼스', 'campus', true),
-  ('자치', 'governance', true)
+  ('학사', 'academic', true),
+  ('기회', 'opportunity', true),
+  ('혜택', 'benefit', true),
+  ('자치·행사', 'community', true)
 on conflict (slug) do update
 set name = excluded.name,
     is_active = true,
     updated_at = now();
+
+update public.categories
+set is_active = false, updated_at = now()
+where slug not in ('academic', 'opportunity', 'benefit', 'community');
 
 create table if not exists public.category_aliases (
   id bigint generated always as identity primary key,
@@ -309,53 +320,87 @@ create table if not exists public.notice_categories (
   primary key (notice_id, category_id)
 );
 
-with ranked_notice_categories as (
+-- 기존 6개 혼합 축을 새 주제 4개로 한 번에 접는다.
+-- 신청은 제목·본문 키워드로만 분류하고 근거가 없으면 category를 비워 수동 검수 대상으로 남긴다.
+with old_category_flags as (
   select
-    nc.notice_id,
-    c.slug,
-    row_number() over (
-      partition by nc.notice_id
-      order by case c.slug
-        when 'academics' then 1
-        when 'application' then 2
-        when 'benefits-partnerships' then 3
-        when 'campus' then 4
-        when 'governance' then 5
-        else 99
-      end
-    ) as priority
-  from public.notice_categories nc
-  join public.categories c on c.id = nc.category_id
+    n.id,
+    n.title,
+    n.content,
+    n.category as current_category,
+    coalesce(bool_or(c.slug = 'application'), false) as was_application,
+    coalesce(bool_or(c.slug in ('academic', 'academics')), false) as was_academic,
+    coalesce(bool_or(c.slug in ('benefit', 'benefits-partnerships', 'survey')), false) as was_benefit,
+    coalesce(bool_or(c.slug = 'survey'), false) as was_survey,
+    coalesce(bool_or(c.slug in ('community', 'campus', 'governance')), false) as was_community
+  from public.notices n
+  left join public.notice_categories nc on nc.notice_id = n.id
+  left join public.categories c on c.id = nc.category_id
+  group by n.id, n.title, n.content, n.category
+),
+classified as (
+  select
+    id,
+    case
+      when was_application and concat_ws(' ', title, content)
+        ~* '(인턴|연구실|모집|공모전|경진대회|대회|장학|교환[[:space:]]*학생)'
+        then 'OPPORTUNITY'
+      when was_application and concat_ws(' ', title, content)
+        ~* '(수강[[:space:]]*신청|수강신청|수강[[:space:]]*정정|졸업|성적|전공[[:space:]]*진입)'
+        then 'ACADEMIC'
+      when was_application then null
+      when was_academic then 'ACADEMIC'
+      when was_benefit then 'BENEFIT'
+      when was_community then 'COMMUNITY'
+      when current_category in ('ACADEMIC', 'OPPORTUNITY', 'BENEFIT', 'COMMUNITY')
+        then current_category
+      else null
+    end as category
+  from old_category_flags
 )
 update public.notices n
-set expires_at = case ranked.slug
-  when 'academics' then coalesce(
-    n.deadline_at,
-    case
-      when extract(month from n.created_at at time zone 'Asia/Seoul') <= 6
-        then make_timestamptz(
-          extract(year from n.created_at at time zone 'Asia/Seoul')::integer,
-          6, 30, 23, 59, 59, 'Asia/Seoul'
-        )
-      else make_timestamptz(
-        extract(year from n.created_at at time zone 'Asia/Seoul')::integer,
-        12, 31, 23, 59, 59, 'Asia/Seoul'
-      )
-    end
-  ) + interval '7 days'
-  when 'application' then n.deadline_at + interval '3 days'
-  when 'benefits-partnerships' then coalesce(n.deadline_at, n.created_at + interval '60 days')
-  when 'campus' then (
-    date_trunc('day', n.deadline_at at time zone 'Asia/Seoul')
-    + interval '23 hours 59 minutes 59 seconds'
-  ) at time zone 'Asia/Seoul'
-  else null
+set
+  category = classified.category,
+  requires_action = n.requires_action or flags.was_application or flags.was_survey,
+  has_reward = n.has_reward or flags.was_survey
+from classified
+join old_category_flags flags on flags.id = classified.id
+where n.id = classified.id;
+
+delete from public.notice_categories;
+
+insert into public.notice_categories (notice_id, category_id)
+select n.id, c.id
+from public.notices n
+join public.categories c on c.slug = case n.category
+  when 'ACADEMIC' then 'academic'
+  when 'OPPORTUNITY' then 'opportunity'
+  when 'BENEFIT' then 'benefit'
+  when 'COMMUNITY' then 'community'
 end
-from ranked_notice_categories ranked
-where ranked.notice_id = n.id
-  and ranked.priority = 1
-  and n.expires_at is null
-  and n.is_always_open = false;
+where n.category is not null
+on conflict (notice_id, category_id) do nothing;
+
+-- 저장된 상태 열 대신 deadline 하나만 기준으로 진행중·마감임박·마감을 파생한다.
+update public.notices
+set expires_at = case when is_always_open then null else deadline_at end;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conname = 'notices_category_check'
+      and conrelid = 'public.notices'::regclass
+  ) then
+    alter table public.notices
+      add constraint notices_category_check
+      check (category is null or category in ('ACADEMIC', 'OPPORTUNITY', 'BENEFIT', 'COMMUNITY'))
+      not valid;
+  end if;
+end
+$$;
+
+alter table public.notices validate constraint notices_category_check;
 
 create table if not exists public.category_candidates (
   id bigint generated always as identity primary key,
@@ -516,7 +561,8 @@ declare
 begin
   insert into public.notices (
     title, content, target, targets, host, deadline, deadline_at, expires_at,
-    is_always_open, is_pinned, is_hidden, survey_reward, ai_summary, images,
+    is_always_open, is_pinned, is_hidden, category, has_reward, reward_note,
+    requires_action, survey_reward, ai_summary, images,
     status, source_type, raw_title, raw_content, analysis_status,
     published_at, views, is_deleted
   ) values (
@@ -531,6 +577,10 @@ begin
     coalesce((notice_payload->>'isAlwaysOpen')::boolean, false),
     coalesce((notice_payload->>'isPinned')::boolean, false),
     coalesce((notice_payload->>'isHidden')::boolean, false),
+    nullif(notice_payload->>'category', ''),
+    coalesce((notice_payload->>'hasReward')::boolean, false),
+    nullif(notice_payload->>'rewardNote', ''),
+    coalesce((notice_payload->>'requiresAction')::boolean, false),
     coalesce(notice_payload->>'surveyReward', ''),
     coalesce(notice_payload->'aiSummary', '[]'::jsonb),
     coalesce(notice_payload->'images', '[]'::jsonb),
@@ -614,6 +664,16 @@ begin
       is_hidden = case
         when edits ? 'isHidden' then coalesce((edits->>'isHidden')::boolean, false)
         else is_hidden
+      end,
+      category = case when edits ? 'category' then nullif(edits->>'category', '') else category end,
+      has_reward = case
+        when edits ? 'hasReward' then coalesce((edits->>'hasReward')::boolean, false)
+        else has_reward
+      end,
+      reward_note = case when edits ? 'rewardNote' then nullif(edits->>'rewardNote', '') else reward_note end,
+      requires_action = case
+        when edits ? 'requiresAction' then coalesce((edits->>'requiresAction')::boolean, false)
+        else requires_action
       end,
       survey_reward = case
         when edits ? 'surveyReward' then coalesce(edits->>'surveyReward', '')

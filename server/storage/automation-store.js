@@ -28,6 +28,7 @@ function nextId(rows) {
 }
 
 function mergeCanonicalCategories(document, canonicalCategories = []) {
+    const canonicalSlugs = new Set(canonicalCategories.map(category => category.slug));
     for (const canonical of canonicalCategories) {
         const existing = document.categories.find(category =>
             category.slug === canonical.slug || category.name === canonical.name
@@ -35,6 +36,7 @@ function mergeCanonicalCategories(document, canonicalCategories = []) {
         if (existing) {
             existing.name = canonical.name;
             existing.slug = canonical.slug;
+            existing.key = canonical.key;
             existing.definition = canonical.definition;
             existing.isActive = true;
             continue;
@@ -43,11 +45,15 @@ function mergeCanonicalCategories(document, canonicalCategories = []) {
             id: nextId(document.categories),
             name: canonical.name,
             slug: canonical.slug,
+            key: canonical.key,
             definition: canonical.definition,
             isActive: true,
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString()
         });
+    }
+    for (const category of document.categories) {
+        if (!canonicalSlugs.has(category.slug)) category.isActive = false;
     }
     return document;
 }
@@ -96,7 +102,11 @@ function toSupabaseNotice(row) {
         isAlwaysOpen: row.is_always_open === true,
         isPinned: row.is_pinned === true,
         isHidden: row.is_hidden === true,
-        surveyReward: row.survey_reward || '',
+        category: row.category || null,
+        hasReward: row.has_reward === true,
+        rewardNote: row.reward_note || row.survey_reward || null,
+        requiresAction: row.requires_action === true,
+        surveyReward: row.reward_note || row.survey_reward || '',
         aiSummary: Array.isArray(row.ai_summary) ? row.ai_summary : [],
         keywords: Array.isArray(row.keywords) ? row.keywords : [],
         attachments: Array.isArray(row.attachments) ? row.attachments : [],
@@ -131,6 +141,10 @@ function toSupabaseNoticeInsert(notice) {
         thread_key: notice.threadKey || null,
         ocr_text: notice.ocrText || '',
         deadline: notice.deadline || null,
+        category: notice.category || null,
+        has_reward: notice.hasReward === true,
+        reward_note: notice.rewardNote || null,
+        requires_action: notice.requiresAction === true,
         ai_summary: notice.aiSummary || [],
         keywords: notice.keywords || [],
         attachments: notice.attachments || [],
@@ -268,6 +282,9 @@ function createJsonStore(filePath, canonicalCategories = []) {
                 const notice = {
                     id: nextId(document.notices),
                     ...input,
+                    category: input.category || document.categories.find(category =>
+                        Number(category.id) === Number(input.existingCategoryIds?.[0])
+                    )?.key || null,
                     status: 'pending_review',
                     createdAt: now,
                     updatedAt: now
@@ -338,6 +355,9 @@ function createJsonStore(filePath, canonicalCategories = []) {
                             });
                         }
                     }
+                    notice.category = document.categories.find(category =>
+                        Number(category.id) === Number(analysis.categoryIds[0])
+                    )?.key || null;
                 }
                 return {
                     ...notice,
@@ -357,7 +377,8 @@ function createJsonStore(filePath, canonicalCategories = []) {
                     'title', 'content', 'target', 'targets', 'host', 'deadline',
                     'deadlineAt', 'expiresAt', 'isAlwaysOpen',
                     'isPinned',
-                    'isHidden', 'surveyReward',
+                    'isHidden', 'category', 'hasReward', 'rewardNote', 'requiresAction',
+                    'surveyReward',
                     'aiSummary', 'keywords', 'attachments', 'analysisConfidence'
                 ];
                 for (const field of editableFields) {
@@ -378,6 +399,9 @@ function createJsonStore(filePath, canonicalCategories = []) {
                             });
                         }
                     }
+                    notice.category = document.categories.find(category =>
+                        Number(category.id) === Number(edits.categoryIds[0])
+                    )?.key || null;
                 }
                 notice.status = 'published';
                 notice.publishedAt = now;
@@ -1094,6 +1118,10 @@ function createSupabaseStore(supabase, canonicalCategories = []) {
                 targets: 'targets',
                 keywords: 'keywords',
                 surveyReward: 'survey_reward',
+                category: 'category',
+                hasReward: 'has_reward',
+                rewardNote: 'reward_note',
+                requiresAction: 'requires_action',
                 analysisStatus: 'analysis_status',
                 analysisConfidence: 'analysis_confidence',
                 ocrText: 'ocr_text'
@@ -1480,14 +1508,22 @@ function createSupabaseStore(supabase, canonicalCategories = []) {
                 if (seedError) throw seedError;
                 data = await fetchCategories();
             }
-            return data.map(category => ({
-                id: Number(category.id),
-                name: category.name,
-                slug: category.slug,
-                definition: canonicalCategories.find(item => item.slug === category.slug)?.definition || '',
-                isActive: category.is_active,
-                aliases: (category.category_aliases || []).map(alias => alias.alias)
-            }));
+            const canonicalSlugSet = new Set(canonicalCategories.map(category => category.slug));
+            const visibleData = activeOnly && canonicalSlugSet.size > 0
+                ? data.filter(category => canonicalSlugSet.has(category.slug))
+                : data;
+            return visibleData.map(category => {
+                const canonical = canonicalCategories.find(item => item.slug === category.slug);
+                return {
+                    id: Number(category.id),
+                    key: canonical?.key || null,
+                    name: category.name,
+                    slug: category.slug,
+                    definition: canonical?.definition || '',
+                    isActive: category.is_active,
+                    aliases: (category.category_aliases || []).map(alias => alias.alias)
+                };
+            });
         },
 
         async getCategoryEvaluationData() {

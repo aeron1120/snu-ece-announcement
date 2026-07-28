@@ -14,35 +14,27 @@ const DEADLINE_PATTERNS = [
 
 const CATEGORY_RULES = Object.freeze([
     {
-        slug: 'application',
+        slug: 'academic',
         patterns: [
-            /신청|접수|지원|모집|등록|제출|설문|폼|구글\s*폼|참가/,
-            /마감|까지|신청\s*기간|접수\s*기간|\bD-\d+\b/i
-        ],
-        requireAll: true
-    },
-    {
-        slug: 'academics',
-        patterns: [
-            /수강|학점|졸업|학사|복학|휴학|전과|다전공|교과|성적|장학|계절학기|수업|시험|학적/
+            /수강|학점|졸업|학사|복학|휴학|전과|다전공|교과|성적|계절학기|수업|시험|학적|전공\s*진입/
         ]
     },
     {
-        slug: 'benefits-partnerships',
+        slug: 'opportunity',
+        patterns: [
+            /인턴|연구실|모집|공모전|경진대회|대회|장학|교환\s*학생|교환학생/
+        ]
+    },
+    {
+        slug: 'benefit',
         patterns: [
             /할인|혜택|제휴|지원금|상품|쿠폰|무료|장학금|기념품|물품|증정|환급/
         ]
     },
     {
-        slug: 'campus',
+        slug: 'community',
         patterns: [
-            /정전|단수|출입|통제|공사|휴관|폐쇄|셔틀|교통|주차|시설|캠퍼스|운영\s*시간|이용\s*제한/
-        ]
-    },
-    {
-        slug: 'governance',
-        patterns: [
-            /대의원|집행부|운영위원|학생회비|총회|회칙|선거|의결|자치|대표자|중앙운영위원/
+            /정전|단수|출입|통제|공사|휴관|폐쇄|셔틀|교통|주차|시설|캠퍼스|운영\s*시간|이용\s*제한|대의원|집행부|운영위원|학생회비|총회|회칙|선거|의결|자치|대표자|중앙운영위원|축제|행사/
         ]
     }
 ]);
@@ -228,6 +220,9 @@ export function buildKakaoBackfillDrafts(rawInput) {
         }
 
         const categorySlug = classifyDraft(message.title, message.body);
+        const requiresAction = /신청|접수|지원|모집|등록|제출|설문|폼|참가/.test(
+            `${message.title}\n${message.body}`
+        );
         const sourceExternalId = makeExternalId(message);
         const draft = {
             sourceType: 'kakao-backfill',
@@ -244,6 +239,7 @@ export function buildKakaoBackfillDrafts(rawInput) {
             sourceGroup: classifySender(message.sender),
             sender: message.sender,
             categorySlug,
+            requiresAction,
             classificationStatus: categorySlug ? 'draft' : 'unclassified',
             urls: message.urls,
             deadlineExpressions: message.deadlineExpressions,

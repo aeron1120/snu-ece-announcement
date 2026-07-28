@@ -1,6 +1,6 @@
 const KAKAO_NOTICE_CATEGORY_PRIORITY = Object.freeze([
-    ['application', '신청'],
-    ['academics', '학사']
+    ['opportunity', '기회'],
+    ['academic', '학사']
 ]);
 
 function cleanBaseUrl(value) {

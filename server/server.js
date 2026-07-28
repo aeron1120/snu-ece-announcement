@@ -615,7 +615,13 @@ function normalizeNoticeInput(body = {}) {
     const isAlwaysOpen = body.isAlwaysOpen === true || body.isAlwaysOpen === 'true';
     const isPinned = body.isPinned === true || body.isPinned === 'true';
     const isHidden = body.isHidden === true || body.isHidden === 'true';
-    const surveyReward = String(body.surveyReward || '').trim().slice(0, 120);
+    const rewardNote = String(body.rewardNote || body.surveyReward || '').trim().slice(0, 120) || null;
+    const hasReward = body.hasReward === true || body.hasReward === 'true' || Boolean(rewardNote);
+    const requiresAction = body.requiresAction === true || body.requiresAction === 'true';
+    const allowedCategories = new Set(CANONICAL_NOTICE_CATEGORIES.map(item => item.key));
+    const category = allowedCategories.has(String(body.category || '').trim())
+        ? String(body.category).trim()
+        : null;
     const aiSummary = Array.isArray(body.aiSummary)
         ? body.aiSummary.map(item => String(item || '').trim()).filter(Boolean).slice(0, 3)
         : [];
@@ -638,7 +644,11 @@ function normalizeNoticeInput(body = {}) {
         isAlwaysOpen,
         isPinned,
         isHidden,
-        surveyReward,
+        category,
+        hasReward,
+        rewardNote,
+        requiresAction,
+        surveyReward: rewardNote || '',
         aiSummary,
         categoryIds,
         images
@@ -688,7 +698,11 @@ function toClientNotice(row) {
         isAlwaysOpen: row.isAlwaysOpen === true || row.is_always_open === true,
         isPinned: row.isPinned === true || row.is_pinned === true,
         isHidden: row.isHidden === true || row.is_hidden === true,
-        surveyReward: String(row.surveyReward || row.survey_reward || ''),
+        category: row.category || null,
+        hasReward: row.hasReward === true || row.has_reward === true,
+        rewardNote: String(row.rewardNote || row.reward_note || row.surveyReward || row.survey_reward || '') || null,
+        requiresAction: row.requiresAction === true || row.requires_action === true,
+        surveyReward: String(row.rewardNote || row.reward_note || row.surveyReward || row.survey_reward || ''),
         isArchived: row.isArchived === true,
         isInGracePeriod: row.isInGracePeriod === true,
         aiSummary: Array.isArray(row.aiSummary)
@@ -726,7 +740,11 @@ function toNoticeSummary(row) {
         isAlwaysOpen: notice.isAlwaysOpen,
         isPinned: notice.isPinned,
         isHidden: notice.isHidden,
-        surveyReward: notice.surveyReward || extractSurveyReward(row.content || row.rawContent || ''),
+        category: notice.category,
+        hasReward: notice.hasReward,
+        rewardNote: notice.rewardNote || extractSurveyReward(row.content || row.rawContent || '') || null,
+        requiresAction: notice.requiresAction,
+        surveyReward: notice.rewardNote || notice.surveyReward || extractSurveyReward(row.content || row.rawContent || ''),
         isArchived: notice.isArchived,
         isInGracePeriod: notice.isInGracePeriod,
         aiSummary: notice.aiSummary,
@@ -1070,6 +1088,7 @@ function normalizeNoticeListFilters(input = {}) {
 
     const archiveMode = input.archive === 'expired' ? 'expired' : '';
     const archive = input.archive === 'true' || input.archive === true || archiveMode === 'expired';
+    const flag = value => value === true || String(value || '').toLowerCase() === 'true' || value === '1';
     return {
         categoryIds: Array.from(new Set(categoryIds)),
         search: String(input.search || '').trim().toLocaleLowerCase('ko-KR').slice(0, 200),
@@ -1081,10 +1100,12 @@ function normalizeNoticeListFilters(input = {}) {
         sort: allowedSorts.has(sort) ? sort : '최신순',
         dateFrom: cleanDate(input.dateFrom),
         dateTo: cleanDate(input.dateTo),
+        urgentOnly: flag(input.urgent),
+        rewardOnly: flag(input.reward),
+        actionOnly: flag(input.action),
+        includePast: flag(input.past) || archive,
         archiveMode,
-        includeExpired: archive
-            || Boolean(String(input.search || '').trim())
-            || deadlineStatus === '마감됨'
+        includeExpired: flag(input.past) || archive || deadlineStatus === '마감됨'
     };
 }
 
@@ -1128,6 +1149,9 @@ function applyNoticeListFilters(rows, filters, { now = new Date() } = {}) {
         if (filters.deadlineStatus === '마감임박' && !deadlineState.isUrgent) return false;
         if (filters.deadlineStatus === '상시' && deadlineState.hasDeadline) return false;
         if (filters.deadlineStatus === '마감됨' && !deadlineState.isExpired) return false;
+        if (filters.urgentOnly && !deadlineState.isUrgent) return false;
+        if (filters.rewardOnly && !notice.hasReward) return false;
+        if (filters.actionOnly && !notice.requiresAction) return false;
 
         if (filters.host !== '전체' && notice.host !== filters.host) return false;
         if (filters.categoryIds.length > 0
@@ -1190,6 +1214,10 @@ async function addNoticeLifecycle(rows) {
         Number(category.id),
         category.slug
     ]));
+    const categoryKeyById = new Map(categories.map(category => [
+        Number(category.id),
+        category.key || CANONICAL_NOTICE_CATEGORIES.find(item => item.slug === category.slug)?.key || null
+    ]));
     return rows.map(row => {
         const notice = toClientNotice(row);
         let lifecycle = {
@@ -1219,6 +1247,9 @@ async function addNoticeLifecycle(rows) {
         const state = getNoticeLifecycleState(lifecycle);
         return {
             ...row,
+            category: notice.category
+                || notice.categoryIds.map(id => categoryKeyById.get(Number(id))).find(Boolean)
+                || null,
             deadlineAt: lifecycle.deadlineAt,
             expiresAt: lifecycle.expiresAt,
             isAlwaysOpen: lifecycle.isAlwaysOpen,
@@ -1237,7 +1268,8 @@ async function listNoticeFilterRows() {
         const { data, error } = await supabase
             .from(SUPABASE_NOTICES_TABLE)
             .select(`
-                id,title,content,target,targets,host,deadline,deadline_at,expires_at,is_always_open,is_pinned,is_hidden,survey_reward,
+                id,title,content,target,targets,host,deadline,deadline_at,expires_at,is_always_open,is_pinned,is_hidden,
+                category,has_reward,reward_note,requires_action,survey_reward,
                 ai_summary,keywords,ocr_text,views,
                 source_published_at,created_at,updated_at,has_images,notice_categories(category_id)
             `)
@@ -1340,6 +1372,9 @@ async function prepareNoticeStoragePayload(payload, { createdAt = new Date().toI
     const categorySlugs = payload.categoryIds
         .map(id => categorySlugById.get(Number(id)))
         .filter(Boolean);
+    const selectedCategory = categories.find(category =>
+        Number(category.id) === Number(payload.categoryIds[0])
+    );
     const lifecycle = calculateNoticeLifecycle({
         deadlineAt: payload.deadlineAt,
         isAlwaysOpen: payload.isAlwaysOpen,
@@ -1348,6 +1383,7 @@ async function prepareNoticeStoragePayload(payload, { createdAt = new Date().toI
     });
     return {
         ...payload,
+        category: payload.category || selectedCategory?.key || null,
         deadline: lifecycle.deadlineAt ? lifecycle.deadlineAt.slice(0, 10) : '',
         deadlineAt: lifecycle.deadlineAt,
         expiresAt: lifecycle.expiresAt,
@@ -2053,6 +2089,10 @@ app.post('/api/admin/backfill/kakao/import', requireNoticeAdmin, async (req, res
                     sourceGroup: draft.sourceGroup,
                     threadKey: draft.threadKey,
                     deadline: null,
+                    category: categories.find(category =>
+                        Number(category.id) === Number(categoryId)
+                    )?.key || null,
+                    requiresAction: draft.requiresAction === true,
                     aiSummary: [],
                     keywords: draft.urls,
                     attachments: draft.attachments,

@@ -5,13 +5,15 @@ import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createAutomationRouter } from '../server/routes/automation-routes.js';
+import { CANONICAL_NOTICE_CATEGORIES } from '../server/config/notice-categories.js';
 import { createAutomationStore } from '../server/storage/automation-store.js';
 
 async function createTestServer({ crawlEnabled = true, pushService = null } = {}) {
     const directory = await mkdtemp(path.join(tmpdir(), 'ece-api-'));
     const store = createAutomationStore({
         useSupabase: false,
-        filePath: path.join(directory, 'automation.json')
+        filePath: path.join(directory, 'automation.json'),
+        canonicalCategories: CANONICAL_NOTICE_CATEGORIES
     });
     const crawler = {
         async crawl() {
@@ -158,7 +160,7 @@ test('admin review routes require auth and publish or reject pending notices', a
     assert.equal((await fixture.store.listNotificationJobs()).length, 1);
 });
 
-test('admin can approve a threshold category candidate and expose it publicly', async t => {
+test('topic-only taxonomy rejects adding a fifth public category', async t => {
     const fixture = await createTestServer();
     t.after(() => fixture.server.close());
     for (let index = 1; index <= 5; index += 1) {
@@ -193,12 +195,13 @@ test('admin can approve a threshold category candidate and expose it publicly', 
             body: JSON.stringify({ name: '장학 제도', slug: 'scholarships' })
         }
     );
-    assert.equal(approveResponse.status, 200);
+    assert.equal(approveResponse.status, 409);
 
     const categoriesResponse = await fetch(`${fixture.baseUrl}/api/categories`);
     assert.equal(categoriesResponse.status, 200);
     const categories = (await categoriesResponse.json()).categories;
-    assert.equal(categories[0].slug, 'scholarships');
-    const published = await fixture.store.listPublishedNotices();
-    assert.ok(published.every(notice => notice.categoryIds.includes(categories[0].id)));
+    assert.deepEqual(
+        categories.map(category => category.slug),
+        ['academic', 'opportunity', 'benefit', 'community']
+    );
 });

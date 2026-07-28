@@ -50,8 +50,11 @@ const original = await fs.readFile(sourcePath, 'utf8');
 const document = JSON.parse(original);
 await fs.writeFile(backupPath, original, 'utf8');
 
+const canonicalSlugs = new Set(CANONICAL_NOTICE_CATEGORIES.map(category => category.slug));
 const categories = Array.isArray(document.categories)
-    ? document.categories.filter(category => category.isActive !== false)
+    ? document.categories.filter(category =>
+        category.isActive !== false && canonicalSlugs.has(category.slug)
+    )
     : CANONICAL_NOTICE_CATEGORIES.map((category, index) => ({ id: index + 1, ...category }));
 const analyzer = createNoticeAnalyzer({
     apiKey,
@@ -112,6 +115,12 @@ for (let index = 0; index < notices.length; index += 1) {
         });
     }
     notice.categoryIds = categoryIds;
+    notice.category = categories.find(category =>
+        Number(category.id) === Number(categoryIds[0])
+    )?.key || null;
+    notice.hasReward = analysis.hasReward === true;
+    notice.rewardNote = analysis.rewardNote || null;
+    notice.requiresAction = analysis.requiresAction === true;
     notice.analysisStatus = 'succeeded';
     notice.analysisConfidence = analysis.confidence;
     notice.analysisVerification = {
@@ -119,7 +128,7 @@ for (let index = 0; index < notices.length; index += 1) {
         warnings: analysis.verificationWarnings || [],
         checkedAt: now
     };
-    if (analysis.surveyReward) notice.surveyReward = analysis.surveyReward;
+    notice.surveyReward = analysis.rewardNote || analysis.surveyReward || '';
     notice.updatedAt = now;
     await writeDocument(document);
     const labels = categoryIds

@@ -35,26 +35,28 @@ test('Kakao backfill classifies drafts and groups reminders within 30 days', () 
     assert.equal(result.stats.messageCount, 3);
     assert.equal(result.stats.draftCount, 2);
     assert.equal(result.stats.groupedDuplicateCount, 1);
-    assert.equal(result.drafts[0].categorySlug, 'application');
+    assert.equal(result.drafts[0].categorySlug, 'academic');
+    assert.equal(result.drafts[0].requiresAction, true);
     assert.equal(result.drafts[0].host, '전기정보 학생회');
     assert.equal(result.drafts[0].sourceGroup, '전기정보');
-    assert.equal(result.drafts[1].categorySlug, 'application');
+    assert.equal(result.drafts[1].categorySlug, 'opportunity');
+    assert.equal(result.drafts[1].requiresAction, true);
     assert.equal(result.drafts[1].host, '총학생회');
     assert.equal(result.drafts[1].sourceGroup, '총학·중앙');
     assert.equal(result.drafts[1].reminderCount, 1);
     assert.equal(result.drafts[1].threadMessages.length, 2);
 });
 
-test('Kakao category rules follow application, academics, benefits, campus, governance priority', () => {
+test('Kakao category rules follow the four topic-only categories', () => {
     const { classifyDraft, classifySender, extractDeadlineExpressions } = kakaoBackfillInternals;
     assert.equal(
         classifyDraft('장학금 신청', '3월 1일까지 폼으로 신청하세요'),
-        'application'
+        'opportunity'
     );
-    assert.equal(classifyDraft('졸업 학점 안내', '필수 이수 학점을 확인하세요'), 'academics');
-    assert.equal(classifyDraft('학생 제휴 할인', '상점 할인 혜택'), 'benefits-partnerships');
-    assert.equal(classifyDraft('정전 안내', '내일 캠퍼스 출입 통제'), 'campus');
-    assert.equal(classifyDraft('대의원 총회', '회칙 의결'), 'governance');
+    assert.equal(classifyDraft('졸업 학점 안내', '필수 이수 학점을 확인하세요'), 'academic');
+    assert.equal(classifyDraft('학생 제휴 할인', '상점 할인 혜택'), 'benefit');
+    assert.equal(classifyDraft('정전 안내', '내일 캠퍼스 출입 통제'), 'community');
+    assert.equal(classifyDraft('대의원 총회', '회칙 의결'), 'community');
     assert.equal(classifySender('서울대학교 공과대학 학생회'), '공과대학');
     assert.deepEqual(
         extractDeadlineExpressions('신청 기간 3월 1일까지, D-3'),

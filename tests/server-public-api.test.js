@@ -44,6 +44,10 @@ test('notice summaries expose card metadata without heavy detail fields', () => 
         isAlwaysOpen: false,
         isPinned: false,
         isHidden: false,
+        category: null,
+        hasReward: false,
+        rewardNote: null,
+        requiresAction: false,
         surveyReward: '',
         isArchived: false,
         isInGracePeriod: false,
@@ -231,7 +235,7 @@ test('admin pages require a short-lived HttpOnly server session', async t => {
     assert.equal(preview.status, 201);
     const previewResult = await preview.json();
     assert.equal(previewResult.stats.draftCount, 1);
-    assert.equal(previewResult.drafts[0].categorySlug, 'academics');
+    assert.equal(previewResult.drafts[0].categorySlug, 'academic');
 
     const logout = await fetch(`${baseUrl}/api/admin/session`, {
         method: 'DELETE',

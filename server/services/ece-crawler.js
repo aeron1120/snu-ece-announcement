@@ -17,6 +17,10 @@ function fallbackAnalysis() {
         targets: ['전체'],
         keywords: [],
         existingCategoryIds: [],
+        category: null,
+        hasReward: false,
+        rewardNote: null,
+        requiresAction: false,
         confidence: null,
         analysisStatus: 'failed'
     };
@@ -123,6 +127,10 @@ export function createEceCrawler({
                         aiSummary: analysis.summary || [],
                         keywords: analysis.keywords || [],
                         surveyReward: analysis.surveyReward || '',
+                        category: analysis.category || null,
+                        hasReward: analysis.hasReward === true,
+                        rewardNote: analysis.rewardNote || null,
+                        requiresAction: analysis.requiresAction === true,
                         existingCategoryIds: analysis.existingCategoryIds || [],
                         analysisStatus: analysis.analysisStatus || 'failed',
                         analysisConfidence: analysis.confidence ?? null,

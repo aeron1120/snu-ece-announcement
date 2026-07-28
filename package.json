@@ -9,6 +9,8 @@
     "start": "node server/server.js",
     "test": "node --test --test-concurrency=1",
     "prepare:public": "node scripts/prepare-public.mjs",
+    "migrate:categories:dry-run": "node scripts/migrate-notice-categories.mjs",
+    "migrate:categories": "node scripts/migrate-notice-categories.mjs --apply",
     "reclassify:local": "node scripts/reclassify-local-notices.mjs"
   },
   "dependencies": {

@@ -2,11 +2,10 @@ const SEOUL_OFFSET = '+09:00';
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 const CATEGORY_EXPIRY_PRIORITY = Object.freeze([
-    'academics',
-    'application',
-    'benefits-partnerships',
-    'campus',
-    'governance'
+    'academic',
+    'opportunity',
+    'benefit',
+    'community'
 ]);
 
 function isDateOnly(value) {
@@ -81,22 +80,9 @@ export function calculateNoticeLifecycle({
     }
 
     const expiryCategory = selectExpiryCategory(categorySlugs);
-    let expiresAt = null;
-    if (expiryCategory === 'application') {
-        if (!normalizedDeadlineAt) {
-            throw new TypeError('신청 공지는 관리자가 확인한 마감일이 필요합니다.');
-        }
-        expiresAt = addDays(normalizedDeadlineAt, 3);
-    } else if (expiryCategory === 'benefits-partnerships') {
-        expiresAt = normalizedDeadlineAt || addDays(normalizedCreatedAt.toISOString(), 60);
-    } else if (expiryCategory === 'academics') {
-        expiresAt = addDays(
-            normalizedDeadlineAt || getAcademicTermEnd(normalizedCreatedAt.toISOString()),
-            7
-        );
-    } else if (expiryCategory === 'campus' && normalizedDeadlineAt) {
-        expiresAt = endOfSeoulDay(normalizedDeadlineAt);
-    }
+    // 상태는 별도 저장하지 않고 deadline 하나로만 파생한다.
+    // 마감이 없는 공지는 상시/정보성으로 남고, 마감 시각이 지나면 곧바로 지난 공지가 된다.
+    const expiresAt = normalizedDeadlineAt;
 
     return {
         deadlineAt: normalizedDeadlineAt,
