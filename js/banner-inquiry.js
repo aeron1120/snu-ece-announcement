@@ -129,6 +129,12 @@ function validateBannerInquiry(payload) {
     if (payload.linkUrl && !/^https?:\/\//i.test(payload.linkUrl)) return '연결 링크는 http:// 또는 https://로 시작해야 합니다.';
     if (!payload.startDate || !payload.endDate) return '희망 게재 시작일과 종료일을 선택해주세요.';
     if (payload.endDate < payload.startDate) return '종료일은 시작일보다 빠를 수 없습니다.';
+    const startAt = Date.parse(`${payload.startDate}T00:00:00Z`);
+    const endAt = Date.parse(`${payload.endDate}T00:00:00Z`);
+    const exposureDays = Math.floor((endAt - startAt) / 86_400_000) + 1;
+    if (!Number.isFinite(exposureDays) || exposureDays > 14) {
+        return '게재 기간은 시작일과 종료일을 포함해 최대 14일까지 선택할 수 있습니다.';
+    }
     if (!payload.imageDataUrl) return '홍보 이미지를 선택해주세요.';
     if (!payload.consent) return '개인정보 수집 및 이용에 동의해주세요.';
     return '';

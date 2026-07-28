@@ -108,6 +108,23 @@ test('public notice API is paginated, has detail lookup, and hides Express signa
     assert.deepEqual(Object.keys(deadlines.counts).sort(), ['today', 'upcoming']);
     assert.ok(Array.isArray(deadlines.notices));
     assert.equal(deadlines.range.days, 7);
+
+    const longPromotion = await fetch(`${baseUrl}/api/banner-inquiries`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/vnd.ece-banner+json' },
+        body: JSON.stringify({
+            name: '홍길동',
+            organization: '테스트 학생회',
+            type: 'council',
+            email: 'test@example.test',
+            title: '학내 행사 안내',
+            description: '학생을 위한 학내 행사 안내 내용입니다.',
+            startDate: '2026-08-01',
+            endDate: '2026-08-20'
+        })
+    });
+    assert.equal(longPromotion.status, 400);
+    assert.match((await longPromotion.json()).error, /최대 14일/);
 });
 
 test('summary mismatch reports are anonymous and enter the admin feedback inbox', async t => {

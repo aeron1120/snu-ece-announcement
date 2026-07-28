@@ -52,6 +52,12 @@ h1 { margin: 0; color: var(--navy-deep); font-family: Georgia, "Nanum Myeongjo",
 .spec-grid span { color: var(--muted); font-size: 12px; font-weight: 750; }
 .spec-grid strong { display: block; margin-top: 6px; color: var(--navy-deep); font-size: 18px; }
 .spec-grid p { margin: 6px 0 0; color: var(--muted); font-size: 13px; line-height: 1.55; }
+.promotion-rules { margin-top: 28px; padding-top: 26px; border-top: 2px solid var(--navy); }
+.promotion-rules h2 { margin: 0; color: var(--navy-deep); font-size: 21px; }
+.promotion-rules dl { display: grid; margin: 18px 0 0; border-top: 1px solid var(--line); }
+.promotion-rules dl > div { display: grid; grid-template-columns: 92px 1fr; gap: 14px; padding: 15px 0; border-bottom: 1px solid var(--line); }
+.promotion-rules dt { color: var(--navy-deep); font-size: 13px; font-weight: 800; }
+.promotion-rules dd { margin: 0; color: #555e6d; font-size: 13px; line-height: 1.65; }
 .template-note { margin-top: 24px; padding: 20px; background: #edf2fb; border-left: 3px solid var(--navy); }
 .template-note h2 { margin: 0 0 8px; color: var(--navy-deep); font-size: 15px; }
 .template-note p { margin: 0; color: #4e596b; font-size: 13px; line-height: 1.7; }
@@ -134,6 +140,7 @@ input:focus, textarea:focus, select:focus { border-color: var(--navy); box-shado
     .form-grid.two { grid-template-columns: 1fr; }
     .inquiry-brand b { font-size: 17px; }
     .back-link { max-width: 92px; text-align: right; }
+    .promotion-rules dl > div { grid-template-columns: 1fr; gap: 5px; }
 }
 @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; }

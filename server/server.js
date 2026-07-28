@@ -2194,6 +2194,15 @@ app.post('/api/banner-inquiries', bannerInquiryJson, async (req, res) => {
             || inquiry.endDate < inquiry.startDate) {
             return res.status(400).json({ error: '희망 게재 기간을 확인해주세요.' });
         }
+        const exposureDays = Math.floor((
+            Date.parse(`${inquiry.endDate}T00:00:00Z`)
+            - Date.parse(`${inquiry.startDate}T00:00:00Z`)
+        ) / 86_400_000) + 1;
+        if (!Number.isFinite(exposureDays) || exposureDays > 14) {
+            return res.status(400).json({
+                error: '게재 기간은 시작일과 종료일을 포함해 최대 14일까지 신청할 수 있습니다.'
+            });
+        }
         if (req.body?.consent !== true) {
             return res.status(400).json({ error: '개인정보 수집 및 이용 동의가 필요합니다.' });
         }
