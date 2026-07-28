@@ -128,7 +128,7 @@ html[data-view="mobile"] .header {
 html[data-view="mobile"] .header-title-area { width: auto; flex: 1; }
 html[data-view="mobile"] .header h1,
 html[data-view="mobile"] .site-title { font-size: 22px; white-space: normal; }
-html[data-view="mobile"] .site-title-mark { height: 44px; }
+html[data-view="mobile"] .site-title-mark { height: 56px; }
 html[data-view="mobile"] .header-actions {
     width: auto;
     margin-left: 0;
@@ -292,7 +292,9 @@ html[data-view="mobile"] .card-img-preview {
     object-position: top center;
     -webkit-user-drag: none;
 }
-html[data-view="mobile"] .card-poster-title { font-size: 15px; line-height: 1.34; }
+/* 모바일 포스터는 데스크톱의 절반 남짓이라 같은 비율로 줄인다.
+   크기 자체는 제목 길이에 맞춰 정해진 값을 그대로 물려받는다. */
+html[data-view="mobile"] .card-poster-title { --poster-title-scale: 0.62; line-height: 1.3; }
 html[data-view="mobile"] .card-body { gap: 5px; padding: 8px; }
 html[data-view="mobile"] .card .tags {
     max-height: 36px;

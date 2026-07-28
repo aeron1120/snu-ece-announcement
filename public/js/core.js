@@ -1154,7 +1154,35 @@ function escapeHtml(value) {
         .replace(/'/g, '&#39;');
 }
 
-function posterTitleLines(value, maxLines = 4) {
+/* 사진 없는 공지는 포스터 자리에 제목을 크게 싣는다. 제목 길이는 천차만별인데
+   글자 크기를 고정해 두면 긴 제목이 상자를 넘쳐 카드가 깨진다.
+   길이에 맞춰 크기·줄 수·한 줄 글자 수를 함께 정해, 어떤 제목이 와도
+   상자 안에 들어오게 한다. 아래 값들은 포스터 안쪽 높이(약 172px)를
+   넘지 않도록 잡은 것이다. */
+/* perLine은 한 줄에 들어가는 한글 글자 수다. 포스터 안쪽 폭을 좁게 잡아
+   200px으로 보고 floor(200 / 글자크기)로 정했다. 이 값이 한 칸이라도
+   크면 줄이 브라우저에서 한 번 더 접혀 높이가 두 배가 된다. */
+function posterTitleFit(length) {
+    if (length <= 22) return { size: 25, maxLines: 4, perLine: 8 };
+    if (length <= 36) return { size: 21, maxLines: 5, perLine: 9 };
+    if (length <= 52) return { size: 18, maxLines: 6, perLine: 11 };
+    return { size: 16, maxLines: 7, perLine: 12 };
+}
+
+/* 한 줄에 몇 글자가 들어가는지는 글자 폭에 달렸다. 한글·한자는 글자 크기와
+   폭이 거의 같지만 알파벳과 숫자는 그 절반쯤이다. 글자 수를 그대로 세면
+   영문 제목이 실제보다 길다고 잘못 판단해 불필요하게 줄이 쪼개진다. */
+function posterTextWidth(value) {
+    let width = 0;
+    for (const char of String(value || '')) {
+        width += /[ᄀ-ᇿ㄰-㆏가-힯　-〿一-鿿＀-￯]/.test(char)
+            ? 1
+            : 0.55;
+    }
+    return width;
+}
+
+function posterTitleLines(value, maxLines = 4, perLine = 0) {
     const normalized = String(value || '제목 없음').replace(/\s+/g, ' ').trim();
     const lines = [];
     const hostMatch = normalized.match(/^(\[[^\]]+\])\s*(.*)$/);
@@ -1166,6 +1194,24 @@ function posterTitleLines(value, maxLines = 4) {
 
     let words = remainder.split(' ').filter(Boolean)
         .filter((word, index, all) => index === 0 || word !== all[index - 1]);
+    // 띄어쓰기 없이 아주 긴 낱말은 낱말 단위로는 쪼갤 수 없어 한 줄에 몰린다.
+    // 그대로 두면 브라우저가 제멋대로 접어 상자를 넘치므로 미리 끊어 둔다.
+    const wordCeiling = perLine || 18;
+    words = words.flatMap(word => {
+        if (posterTextWidth(word) <= wordCeiling) return [word];
+        const chunks = [];
+        let chunk = '';
+        for (const char of word) {
+            if (posterTextWidth(chunk + char) > wordCeiling && chunk) {
+                chunks.push(chunk);
+                chunk = char;
+            } else {
+                chunk += char;
+            }
+        }
+        if (chunk) chunks.push(chunk);
+        return chunks;
+    });
     const titleEndings = new Set(['모집', '안내', '신청', '접수', '공지', '행사', '발표', '연장']);
     let endingLine = '';
     if (words.length >= 3 && titleEndings.has(words.at(-1))) {
@@ -1173,15 +1219,25 @@ function posterTitleLines(value, maxLines = 4) {
         words = words.slice(0, -2);
     }
     const availableLines = Math.max(1, maxLines - lines.length - (endingLine ? 1 : 0));
-    const targetLength = Math.max(15, Math.min(18, Math.ceil(
-        words.reduce((sum, word) => sum + word.length + 1, 0) / availableLines
-    )));
+    // 한 줄에 실을 폭은 글자 크기에서 나온다. 넘겨받지 않았을 때만
+    // 예전처럼 내용 길이로 어림한다.
+    const ceiling = perLine || 18;
+    // 8.5는 한글 8자 반쯤의 폭이다. 이보다 짧게 끊으면 낱말 하나가
+    // 한 줄을 차지해 오히려 어색해진다.
+    const targetLength = Math.max(
+        Math.min(8.5, ceiling),
+        Math.min(ceiling, Math.ceil(
+            words.reduce((sum, word) => sum + posterTextWidth(word) + 0.55, 0) / availableLines
+        ))
+    );
     let current = '';
 
     words.forEach((word, index) => {
         const candidate = current ? `${current} ${word}` : word;
-        const remainingSlots = maxLines - lines.length;
-        if (current && candidate.length > targetLength && remainingSlots > 1) {
+        // 남은 줄이 없다고 해서 나머지를 한 줄에 몰아넣으면 그 줄이 끝없이
+        // 길어져 상자를 넘친다. 폭을 넘으면 언제나 줄을 바꾸고,
+        // 넘치는 줄은 아래에서 잘라낸다.
+        if (current && posterTextWidth(candidate) > targetLength) {
             lines.push(current);
             current = word;
         } else {
@@ -1191,13 +1247,22 @@ function posterTitleLines(value, maxLines = 4) {
     });
     if (endingLine) lines.push(endingLine);
 
-    return lines.slice(0, maxLines);
+    if (lines.length <= maxLines) return lines;
+    // 다 담지 못했으면 잘렸다는 걸 말줄임으로 알린다.
+    const kept = lines.slice(0, maxLines);
+    kept[kept.length - 1] = `${kept.at(-1)}…`;
+    return kept;
 }
 
 function renderPosterTitle(value) {
-    return posterTitleLines(value)
+    const normalized = String(value || '제목 없음').replace(/\s+/g, ' ').trim();
+    const fit = posterTitleFit(normalized.length);
+    const lines = posterTitleLines(normalized, fit.maxLines, fit.perLine)
         .map(line => `<span class="card-poster-title-line${/^\[[^\]]+\]$/.test(line) ? ' is-host' : ''}">${escapeHtml(line)}</span>`)
         .join('');
+    // 크기는 인라인 변수로 넘기고 실제 적용은 CSS가 한다.
+    // 모바일은 같은 변수에 배율만 곱해 쓴다.
+    return `<p class="card-poster-title" style="--poster-title-size:${fit.size}px">${lines}</p>`;
 }
 
 /* 미리보기는 position: fixed라 한 번 자리를 잡으면 화면에 붙어 버린다.
@@ -2022,7 +2087,7 @@ function renderNoticeCards(animate = false) {
             ? `<div class="card-poster">
                    <img class="card-img-preview" alt="" data-thumbnail-src="${escapeHtml(notice.thumbnailUrl || '/icons/default-notice-thumbnail.png')}">
                </div>`
-            : `<div class="card-poster is-text"><p class="card-poster-title">${renderPosterTitle(rawTitle)}</p></div>`;
+            : `<div class="card-poster is-text">${renderPosterTitle(rawTitle)}</div>`;
 
         const cardClass = [
             'card',

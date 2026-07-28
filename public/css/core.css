@@ -502,7 +502,7 @@ body {
 }
 .header-title-area { display: flex; align-items: center; gap: 12px; min-width: 0; }
 /* 워드마크가 제목 자리를 대신한다. 글자 제목은 이미지가 없을 때만 나온다. */
-.site-title-mark { display: block; width: auto; height: 62px; -webkit-user-drag: none; }
+.site-title-mark { display: block; width: auto; height: 82px; -webkit-user-drag: none; }
 .site-title-text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; }
 .site-title.is-text .site-title-text { position: static; width: auto; height: auto; overflow: visible; clip: auto; }
 .header h1, .site-title {
@@ -1032,10 +1032,14 @@ body {
     background: linear-gradient(160deg, #f6f8fc 0%, #eef2f9 100%);
 }
 .card-poster-title {
+    /* 제목 길이에 따라 renderPosterTitle이 --poster-title-size를 넘겨준다.
+       모바일은 --poster-title-scale로 같은 값을 줄여 쓴다. */
+    --poster-title-scale: 1;
     margin: 0;
+    width: 100%;
     font-family: 'Pretendard', 'Malgun Gothic', system-ui, sans-serif;
-    font-size: 25px;
-    line-height: 1.38;
+    font-size: calc(var(--poster-title-size, 25px) * var(--poster-title-scale));
+    line-height: 1.34;
     font-weight: 750;
     letter-spacing: -0.025em;
     color: var(--primary-deep);
@@ -1043,6 +1047,10 @@ body {
     display: flex;
     flex-direction: column;
     gap: 2px;
+    /* 계산이 어긋나도 상자 밖으로 새지 않게 하는 마지막 방어선.
+       흐림 처리를 얹으면 제목이 다 들어간 경우에도 마지막 줄이 옅어지므로
+       자르기만 한다. */
+    max-height: 100%;
     overflow: hidden;
 }
 .card-poster-title-line { display: block; overflow-wrap: anywhere; }
