@@ -106,7 +106,7 @@ test('administrator surfaces live on admin.html, not the public page', async () 
     ]) {
         assert.doesNotMatch(publicHtml, new RegExp(leaked.replace('.', '\\.')));
     }
-    assert.match(publicHtml, /href="\.\/admin-login\.html">관리자 페이지</);
+    assert.match(publicHtml, /href="\.\/admin-login\.html" rel="nofollow">관리자 로그인</);
     assert.doesNotMatch(publicHtml, /href="[^"]*admin\.html|\/admin\/workspace/);
 });
 
@@ -160,7 +160,9 @@ test('compact desktop turns the left rail into a drawer and keeps the vertical b
     assert.match(desktopCss, /\.rail-left\s*\{[^}]*transform:\s*translateX\(-100%\)/s);
     assert.match(desktopCss, /\.rail-left\.drawer-open\s*\{[^}]*translateX\(0\)/s);
     assert.match(desktopCss, /\.rail-right\s*\{[^}]*width:\s*var\(--compact-ad-rail-width\)/s);
-    assert.match(desktopCss, /\.rail-ad-image\s*\{[^}]*width:\s*100%;[^}]*height:\s*100%;[^}]*object-fit:\s*cover/s);
+    // 좁은 데스크톱에서도 레일을 끝까지 채우되, 배너 원본은 잘라내지 않는다.
+    // 남는 자리는 같은 그림을 흐리게 깐 배경 층이 메운다.
+    assert.match(desktopCss, /\.rail-ad-image\s*\{[^}]*width:\s*100%;[^}]*height:\s*100%;[^}]*object-fit:\s*contain/s);
     assert.match(mobileJs, /function usesDrawerNavigation\(\)/);
     assert.match(mobileJs, /COMPACT_DESKTOP_DRAWER_QUERY/);
     assert.match(desktopJs, /const COMPACT_DESKTOP_DRAWER_QUERY = '\(max-width: 1360px\)'/);
@@ -259,8 +261,11 @@ test('mobile cards stay compact, keep paging, and disable notice comparison drag
     assert.match(mobileCss, /\.card-meta\s*\{[^}]*justify-content:\s*space-between/s);
     assert.match(mobileCss, /\.notice-pagination\s*\{[^}]*display:\s*flex/s);
     assert.match(mobileCss, /\.card-block-controls,[\s\S]*\.compare-space,[\s\S]*display:\s*none !important/s);
-    assert.match(html, /id="mobile-special-filter-toggle"[\s\S]*toggleMobileQuickFilters/);
-    assert.match(mobileCss, /\.notice-quick-filters\.is-mobile-open\s*\{[^}]*max-height:\s*76px;[^}]*opacity:\s*1;[^}]*visibility:\s*visible/s);
+    // 빠른 필터 손잡이는 따로 두지 않는다. '상세 필터' 바 하나가 둘 다 연다.
+    assert.doesNotMatch(html, /mobile-special-filter-toggle|toggleMobileQuickFilters/);
+    assert.match(html, /id="filter-toggle-bar"[\s\S]*aria-controls="filter-panel notice-quick-filters"/);
+    assert.match(readNamedFunction(app, 'setFilterPanelOpen'), /quickFilters\?\.classList\.toggle\('is-mobile-open', open\)/);
+    assert.match(mobileCss, /\.notice-quick-filters\.is-mobile-open\s*\{[^}]*max-height:\s*116px;[^}]*opacity:\s*1;[^}]*visibility:\s*visible/s);
     assert.match(mobileCss, /button:active:not\(:disabled\),[\s\S]*transform:\s*translateY\(1px\) scale\(0\.97\)/s);
     assert.match(renderCards, /const comparisonEnabled = getLayoutMode\(\) === 'desktop'/);
     assert.match(renderCards, /const blockControlsHtml = comparisonEnabled/);
@@ -306,12 +311,18 @@ test('notice blocks use six-dot handles and expose only left/right split targets
     assert.doesNotMatch(css, /split-drop-dash|\.split-drop-border/);
     assert.doesNotMatch(css, /\.compare-add-zone\.is-bottom\s*\{/);
     assert.doesNotMatch(css, /\.compare-col\.is-notice-split-left::after/);
-    assert.match(css, /\.split-drop-overlay\s*\{[^}]*position:\s*fixed;[^}]*grid-template-columns:\s*92px minmax\(160px, 1fr\) 92px/s);
-    assert.match(css, /\.split-drop-zone\.is-right\s*\{\s*grid-column:\s*3;/s);
+    // 놓기 표적은 화면 위쪽 가운데에 작게 뜬다. 목록 한가운데를 가리지 않아야
+    // 아래쪽 공지를 끌 때도 카드가 보인다.
+    assert.match(css, /\.split-drop-overlay\s*\{[^}]*position:\s*fixed;[^}]*top:\s*16px;[^}]*justify-content:\s*center/s);
+    // 버튼 안에는 글자를 두지 않는다.
+    assert.doesNotMatch(html, /공지 놓기<\/strong>/);
+    assert.match(html, /data-split-side="right"[\s\S]*?class="split-drop-glyph"/);
     assert.match(css, /\.spatial-workspace\.is-split\s*\{[^}]*display:\s*block;/s);
     assert.match(css, /\.spatial-workspace\.is-split \.compare-space-stage\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*repeat\(2,/s);
     assert.match(css, /\.spatial-workspace\.is-split\[data-blocks="1"\]\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*repeat\(2,/s);
-    assert.doesNotMatch(css, /\.spatial-workspace\.is-split\[data-blocks="1"\]\[data-dock="right"\]/);
+    // 오른쪽 표적에 놓으면 공지 블록도 오른쪽에 선다.
+    assert.match(css, /\.spatial-workspace\.is-split\[data-blocks="1"\]\[data-dock="right"\]\s*\{[^}]*grid-template-areas:\s*"base blocks"/s);
+    assert.match(readNamedFunction(app, 'applyPendingNoticeSplit'), /compareDockSide = placement/);
     assert.match(css, /\.spatial-workspace\.is-split\[data-blocks="1"\] \.compare-space\s*\{[^}]*position:\s*sticky/s);
     assert.match(css, /\.spatial-workspace\.is-split\[data-blocks="1"\] \.notice-base-block > \.grid\s*\{[^}]*grid-template-columns:\s*repeat\(2,/s);
     assert.match(css, /\.compare-space\.is-notice-drop-active \.compare-empty-slot\s*\{[^}]*display:\s*flex;/s);
@@ -921,7 +932,12 @@ test('right-rail image errors restore the inquiry fallback', async () => {
 
     assert.ok(fallbackSource);
     assert.match(fallbackSource, /openBannerInquiryFromRail\(\)/);
-    assert.match(app, /onerror="renderRightRailInquiryFallback\(\)"/);
+    // 이미지 하나가 깨져도 캐러셀 전체를 버리지 않는다. 살아 있는 배너가
+    // 하나도 남지 않았을 때만 홍보 신청 안내로 떨어진다.
+    assert.match(app, /onerror="handleBannerImageError\(event\)"/);
+    const errorSource = readNamedFunction(app, 'handleBannerImageError');
+    assert.match(errorSource, /is-broken/);
+    assert.match(errorSource, /alive\.length === 0.*renderRightRailInquiryFallback\(\)/s);
 });
 
 test('right-rail banners start randomly, auto-rotate, overlay manual arrows, and swipe on mobile', async () => {
@@ -929,37 +945,53 @@ test('right-rail banners start randomly, auto-rotate, overlay manual arrows, and
     const app = await readFile('js/core.js', 'utf8');
     const css = await readFile('css/core.css', 'utf8');
     const desktopCss = await readFile('css/desktop.css', 'utf8');
-    assert.match(app, /function renderRightRailAd\(\{ restartRotation = true, transitionDirection = 0 \} = \{\}\)/);
+    const mobileCss = await readFile('css/mobile.css', 'utf8');
+    assert.match(app, /function renderRightRailAd\(\{ restartRotation = true \} = \{\}\)/);
     assert.match(app, /slide\.linkUrl[\s\S]*class="rail-ad-link\b/);
     assert.match(app, /class="rail-ad-image"/);
     assert.match(app, /getBannerSlidesByPlacement\('right_rail'\)\.slice\(0, 5\)/);
     assert.match(app, /Math\.floor\(Math\.random\(\) \* slides\.length\)/);
     assert.match(app, /function stepRightRailBanner/);
-    assert.match(app, /이전 배너[\s\S]*&lt;[\s\S]*다음 배너[\s\S]*&gt;/);
+    assert.match(app, /이전 배너[\s\S]*다음 배너/);
     assert.match(app, /function startBannerRotation/);
-    assert.match(app, /setInterval\([\s\S]*6500\)/);
-    assert.match(app, /class="rail-ad-image-stage\$\{transitionClass\}"[\s\S]*onpointerdown="startBannerSwipe\(event\)"[\s\S]*\$\{imageContent\}[\s\S]*\$\{controls\}/);
+    assert.match(app, /BANNER_ROTATION_DELAY = 6500/);
     assert.match(app, /function startBannerSwipe/);
     assert.match(app, /function moveBannerSwipe/);
     assert.match(app, /function finishBannerSwipe/);
-    assert.match(app, /Math\.abs\(bannerSwipeDeltaX\) >= 44/);
     assert.doesNotMatch(readNamedFunction(app, 'startBannerSwipe'), /getLayoutMode\(\) !== 'mobile'/);
     assert.match(app, /class="rail-ad-image"[\s\S]*draggable="false"/);
-    assert.doesNotMatch(app, /class="rail-ad-dot/);
-    assert.match(css, /\.rail-ad-image-stage\s*\{[^}]*width:\s*100%;[^}]*aspect-ratio:\s*4\s*\/\s*5;[^}]*touch-action:\s*pan-y/s);
-    assert.match(css, /\.rail-ad-image\s*\{[^}]*width:\s*100%;[^}]*height:\s*100%;[^}]*object-fit:\s*cover[^}]*border:\s*0/s);
-    assert.match(css, /\.rail-ad-controls\s*\{[^}]*position:\s*absolute;[^}]*inset:\s*0;[^}]*grid-template-columns:\s*34px 1fr 34px/s);
-    assert.match(css, /\.rail-ad-controls button:last-child\s*\{\s*grid-column:\s*3;/s);
-    assert.match(css, /\.rail-ad-image-stage\.is-leaving-left\s*\{[^}]*translateX\(-42px\)/s);
-    assert.match(css, /\.rail-ad-image-stage\.is-entering-right\s*\{[^}]*rail-banner-enter-right/s);
-    assert.match(css, /@keyframes rail-banner-enter-left/);
+
+    // 트랙 캐러셀: 앞뒤 복제 슬라이드를 덧대 끝에서 끝으로 끊김 없이 이어진다.
+    assert.match(app, /class="rail-ad-track"/);
+    assert.match(app, /class="rail-ad-slide"/);
+    assert.match(app, /isClone: true/);
+    // readNamedFunction은 구조 분해 매개변수의 중괄호에서 멈추므로 직접 잘라 쓴다.
+    const renderStart = app.indexOf('function renderRightRailAd(');
+    const renderSource = app.slice(renderStart, app.indexOf('\nfunction ', renderStart + 1));
+    assert.match(renderSource, /usable\[usable\.length - 1\][\s\S]*usable\[0\]/);
+    // 손가락을 1:1로 따라가고, 놓으면 가까운 칸으로 붙는다.
+    assert.match(readNamedFunction(app, 'moveBannerSwipe'), /dragOffset: deltaX/);
+    assert.match(readNamedFunction(app, 'finishBannerSwipe'), /width \* 0\.18/);
+    // 복제 칸에 닿으면 전환이 끝난 뒤 진짜 칸으로 소리 없이 되돌린다.
+    assert.match(readNamedFunction(app, 'stepRightRailBanner'), /landedOnClone[\s\S]*animate: false/);
+
+    // 레일 세로를 비율로 묶지 않는다. 묶으면 레일 아래가 남색으로 빈다.
+    assert.doesNotMatch(css, /\.rail-ad-stage\s*\{[^}]*aspect-ratio/s);
+    assert.match(css, /\.rail-ad-stage\s*\{[^}]*width:\s*100%;[^}]*height:\s*100%;[^}]*flex:\s*1 1 auto[^}]*touch-action:\s*pan-y/s);
+    assert.match(css, /\.rail-ad-slide\s*\{[^}]*flex:\s*0 0 100%/s);
+    assert.match(css, /\.rail-ad-track\s*\{[^}]*display:\s*flex;[^}]*height:\s*100%;[^}]*transition-property:\s*transform/s);
+    // 배너 원본은 잘리지 않고, 남는 자리는 흐린 배경 층이 메운다.
+    assert.match(css, /\.rail-ad-image\s*\{[^}]*height:\s*100%;[^}]*object-fit:\s*contain[^}]*border:\s*0/s);
+    assert.match(css, /\.rail-ad-backdrop\s*\{[^}]*position:\s*absolute;[^}]*background-size:\s*cover;[^}]*filter:\s*blur/s);
+    // 모바일 배너는 16:9 원본이 딱 맞으므로 흐린 배경이 필요 없다.
+    assert.match(mobileCss, /\.rail-ad-stage\s*\{[^}]*aspect-ratio:\s*16\s*\/\s*9/s);
+    assert.match(mobileCss, /\.rail-ad-backdrop\s*\{\s*display:\s*none/s);
+    assert.match(css, /\.rail-ad-dot\.is-active/);
     assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
-    assert.match(app, /function transitionRightRailBanner/);
-    const renderSource = readNamedFunction(app, 'renderRightRailAd');
+
     assert.doesNotMatch(renderSource, /slide\.description|자세히 보기|<h2>/);
     assert.doesNotMatch(renderSource, /class="ad-label"/);
     assert.doesNotMatch(html, /class="rail-section-label">학내 홍보</);
-    assert.match(app, /container\.innerHTML = `<div class="rail-ad-viewport">\$\{content\}<\/div>`/);
     assert.match(css, /#right-rail-ad-content\s*\{[^}]*height:\s*100%;[^}]*min-height:\s*100%/s);
     assert.match(css, /\.rail-ad-viewport\s*\{[^}]*display:\s*flex;[^}]*min-height:\s*100%/s);
     assert.match(desktopCss, /\.rail-right\s*\{[^}]*overflow:\s*hidden/s);
@@ -1058,7 +1090,7 @@ test('one fixed block keeps the complete base notice flow in the right half', as
     assert.doesNotMatch(css, /\.split-notice-more/);
     assert.match(showDropSource, /compareBlocks\.length >= maxCompareBlocks\(\)/);
     assert.match(showDropSource, /overlay\.hidden = false/);
-    assert.match(css, /\.split-drop-overlay\s*\{[^}]*position:\s*fixed;[^}]*top:\s*50%/s);
+    assert.match(css, /\.split-drop-overlay\s*\{[^}]*position:\s*fixed;[^}]*top:\s*16px/s);
 });
 
 test('banner manager omits an untouched expiry so storage preserves it', async () => {
@@ -1377,7 +1409,11 @@ test('public filters omit image presence, empty states stay simple, and the foot
     assert.match(emptyState, /해당하는 공지가 없습니다/);
     assert.doesNotMatch(emptyState, /resetAllFilters|필터 모두 해제/);
     assert.match(html, /class="site-footer"/);
-    assert.match(html, /알림 설정[\s\S]*일반 문의[\s\S]*홍보 신청[\s\S]*관리자 페이지/);
+    // 링크 그리드는 서비스 / 문의 / 바로가기 / 운영 네 갈래로 나뉜다.
+    assert.match(html, /알림 설정[\s\S]*일반 문의[\s\S]*홍보 신청[\s\S]*이용약관/);
+    // 관리자 진입점은 주 링크 목록이 아니라 법적 고지 줄의 최소 버튼으로만 남는다.
+    assert.match(html, /class="footer-admin-link"[\s\S]*rel="nofollow"/);
+    assert.doesNotMatch(html, /관리자 페이지/);
     assert.match(css, /\.site-footer\s*\{[^}]*color:\s*#8a919d/s);
 });
 

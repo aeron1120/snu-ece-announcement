@@ -24,7 +24,8 @@ body {
     font-weight: 800;
     text-decoration: none;
 }
-.login-brand img { width: 42px; height: 42px; object-fit: contain; background: var(--navy); }
+/* 남색 엠블럼이라 뒤에 남색 판을 깔지 않는다. */
+.login-brand img { width: 42px; height: 42px; object-fit: contain; }
 .login-card {
     padding: 34px;
     border: 1px solid var(--line);

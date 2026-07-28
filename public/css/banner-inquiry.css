@@ -27,11 +27,10 @@ button, input, textarea, select { font: inherit; }
     justify-content: space-between;
     border-bottom: 2px solid var(--navy);
 }
-.inquiry-brand { display: flex; align-items: center; gap: 12px; color: var(--navy-deep); text-decoration: none; }
+/* 흰 바탕 위 로고 잠금. 엠블럼은 배경 없는 남색 판을 쓴다. */
+.inquiry-brand { display: inline-flex; align-items: center; gap: 11px; color: var(--navy); text-decoration: none; }
 .inquiry-brand img { object-fit: contain; }
-.inquiry-brand span { display: grid; line-height: 1.1; }
-.inquiry-brand b { font-family: Georgia, serif; font-size: 21px; letter-spacing: .03em; }
-.inquiry-brand small { margin-top: 5px; font-size: 13px; font-weight: 750; }
+.inquiry-brand span { font-size: 19px; font-weight: 800; letter-spacing: -.01em; }
 .back-link { color: var(--navy); font-size: 14px; font-weight: 750; text-decoration: none; }
 .back-link:hover { text-decoration: underline; text-underline-offset: 4px; }
 
@@ -140,7 +139,7 @@ input:focus, textarea:focus, select:focus { border-color: var(--navy); box-shado
 
 @media (max-width: 820px) {
     .inquiry-header { width: min(100% - 28px, 680px); min-height: 76px; }
-    .inquiry-brand img { width: 42px; height: 42px; }
+    .inquiry-brand img { width: 38px; height: 38px; }
     .back-link { font-size: 12px; }
     .inquiry-layout { display: block; width: min(100% - 28px, 680px); margin: 42px auto 70px; }
     .inquiry-intro { position: static; }
@@ -149,7 +148,7 @@ input:focus, textarea:focus, select:focus { border-color: var(--navy); box-shado
 @media (max-width: 520px) {
     .form-grid.two { grid-template-columns: 1fr; }
     .banner-format-grid { grid-template-columns: 1fr; }
-    .inquiry-brand b { font-size: 17px; }
+    .inquiry-brand span { font-size: 16px; }
     .back-link { max-width: 92px; text-align: right; }
     .promotion-rules dl > div { grid-template-columns: 1fr; gap: 5px; }
 }

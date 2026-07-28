@@ -103,13 +103,16 @@ html[data-view="mobile"] .rail-ad-viewport {
     min-height: 0;
     margin: 0;
 }
-html[data-view="mobile"] .rail-ad-image-stage { aspect-ratio: 16 / 9; }
-html[data-view="mobile"] .rail-ad-image {
-    width: 100%;
-    height: 100%;
-    margin: 0;
-    object-fit: contain;
+/* 모바일 배너는 16:9 원본을 그대로 쓰므로 무대도 같은 비율로 잡는다.
+   높이가 정해지므로 세로로 늘어나는 flex 규칙은 여기서 풀어준다. */
+html[data-view="mobile"] .rail-ad-stage {
+    height: auto;
+    aspect-ratio: 16 / 9;
+    flex: 0 0 auto;
 }
+html[data-view="mobile"] .rail-ad-image { object-fit: cover; }
+/* 비율이 정확히 맞아 여백이 없으므로 흐린 배경 층은 필요 없다. */
+html[data-view="mobile"] .rail-ad-backdrop { display: none; }
 
 /* ---------- 헤더 ---------- */
 html[data-view="mobile"] .header {
@@ -184,7 +187,7 @@ html[data-view="mobile"] .notice-quick-filters {
     justify-content: flex-start;
     gap: 5px;
     max-height: 0;
-    order: 2;
+    order: 3;
     margin: 0;
     padding: 0;
     overflow: hidden;
@@ -195,7 +198,8 @@ html[data-view="mobile"] .notice-quick-filters {
         opacity 170ms ease, transform 220ms ease, visibility 0s linear 220ms;
 }
 html[data-view="mobile"] .notice-quick-filters.is-mobile-open {
-    max-height: 76px;
+    /* 칩이 커졌으므로 좁은 화면에서 세 줄로 접혀도 잘리지 않게 여유를 둔다. */
+    max-height: 116px;
     margin: 5px 0 10px;
     opacity: 1;
     visibility: visible;
@@ -203,17 +207,19 @@ html[data-view="mobile"] .notice-quick-filters.is-mobile-open {
     transition-delay: 0s;
 }
 html[data-view="mobile"] .notice-quick-filters button {
-    min-height: 29px;
+    min-height: 32px;
     width: auto;
     min-width: 0;
-    padding-inline: 9px;
-    border-radius: 15px;
+    padding-inline: 12px;
+    border-radius: 16px;
     white-space: nowrap;
-    font-size: 10.5px;
+    font-size: 11.5px;
     line-height: 1;
     opacity: 0;
     transform: translateY(-4px);
 }
+html[data-view="mobile"] .notice-quick-filters button::before { font-size: 10px; }
+html[data-view="mobile"] .notice-quick-filters button.active::before { width: 10px; margin-right: 4px; }
 html[data-view="mobile"] .notice-quick-filters.is-mobile-open button {
     opacity: 1;
     transform: translateY(0);
@@ -319,6 +325,15 @@ html[data-view="mobile"] .detail-title { font-size: 24px; }
 html[data-view="mobile"] .detail-image-nav { width: 38px; height: 38px; font-size: 27px; }
 html[data-view="mobile"] .detail-image-nav.previous { left: 6px; }
 html[data-view="mobile"] .detail-image-nav.next { right: 6px; }
+/* 좁은 화면에서도 확대 버튼은 44px 터치 타겟을 지킨다. */
+html[data-view="mobile"] .detail-image-zoom {
+    right: 8px;
+    bottom: 8px;
+    min-height: 44px;
+    padding: 0 14px;
+    font-size: 12.5px;
+}
+html[data-view="mobile"] .detail-image-counter { left: 8px; bottom: 8px; }
 html[data-view="mobile"] .image-viewer-toolbar {
     min-height: 60px;
     padding: 10px 12px;
@@ -355,33 +370,10 @@ html[data-view="mobile"] .search-field {
 }
 html[data-view="mobile"] .search-container input { width: 100%; min-width: 0; font-size: 14px; }
 html[data-view="mobile"] .search-submit { width: 38px; height: 38px; }
-html[data-view="mobile"] .mobile-special-filter-toggle {
-    position: relative;
-    z-index: 2;
-    display: grid;
-    width: 58px;
-    height: 30px;
-    min-height: 30px;
-    order: 1;
-    place-items: center;
-    align-self: center;
-    margin: -17px 0 4px;
-    padding: 8px 0 0;
-    color: var(--primary);
-    background: #fff;
-    border: 1.5px solid var(--primary);
-    border-top: 0;
-    border-radius: 0 0 29px 29px;
-    box-shadow: 0 6px 12px rgba(24, 62, 143, 0.10);
-}
-html[data-view="mobile"] .mobile-special-filter-toggle svg {
-    transition: transform 160ms ease;
-}
-html[data-view="mobile"] .mobile-special-filter-toggle.is-open svg {
-    transform: rotate(180deg);
-}
+/* '상세 필터' 바가 빠른 필터 줄보다 먼저 온다. 바를 누르면 그 아래로
+   빠른 필터가 펼쳐지고 이어서 상세 패널이 열린다. */
 html[data-view="mobile"] .filter-toggle-bar {
-    order: 3;
+    order: 2;
     min-height: 48px;
     padding: 8px 12px;
     height: auto;
@@ -480,21 +472,100 @@ html[data-view="mobile"] #contact-modal .contact-row { flex-direction: column; a
 html[data-view="mobile"] #contact-modal .contact-copy-btn { width: 100%; }
 html[data-view="mobile"] #notification-category-list { grid-template-columns: 1fr; }
 html[data-view="mobile"] .notice-hover-preview { display: none !important; }
+/* ---------- 푸터 ----------
+   모바일에서는 사이드바가 접혀 푸터가 사실상 주 내비게이션이 된다.
+   그래서 데스크톱과 반대로 링크를 더 크고 진하게 키우고, 수집 신선도를
+   맨 위 배지로 올린다. 순서 변경은 grid 영역 재배치로만 처리한다. */
 html[data-view="mobile"] .site-footer {
+    grid-template-areas: "sync" "links" "legal";
     margin-top: 44px;
-    padding: 24px 4px 4px;
-    font-size: 10.5px;
+    padding: 24px 4px 0;
 }
-html[data-view="mobile"] .site-footer-links {
+
+/* 동기화 배지 — 상태에 따라 색·문구·아이콘이 함께 바뀐다. */
+html[data-view="mobile"] .site-footer-sync {
+    flex-direction: column;
     align-items: flex-start;
-    gap: 2px 0;
+    gap: 2px;
+    margin-top: 0;
+    margin-bottom: 20px;
+    padding: 12px 14px;
+    border: 1px solid transparent;
+    border-radius: 12px;
+    color: var(--ok);
+    background: var(--ok-bg);
+    border-color: rgba(47, 107, 72, 0.22);
 }
-html[data-view="mobile"] .site-footer-links a,
-html[data-view="mobile"] .site-footer-links button {
-    min-height: 26px;
-    padding: 0 9px;
-    font-size: 10.5px;
+html[data-view="mobile"] .footer-sync-icon {
+    width: 16px;
+    height: 16px;
+    margin-bottom: 2px;
 }
+html[data-view="mobile"] .footer-sync-label { font-size: 13px; font-weight: 800; }
+html[data-view="mobile"] .footer-sync-detail { font-size: 11.5px; opacity: 0.85; }
+html[data-view="mobile"] .site-footer-sync[data-state="stale"] {
+    color: #8a6d1f;
+    background: #fdf8e9;
+    border-color: rgba(138, 109, 31, 0.25);
+}
+html[data-view="mobile"] .site-footer-sync[data-state="failed"] {
+    color: var(--danger);
+    background: var(--danger-bg);
+    border-color: rgba(192, 57, 43, 0.24);
+}
+html[data-view="mobile"] .site-footer-sync[data-state="loading"] {
+    color: #6f7885;
+    background: #f4f6f9;
+    border-color: var(--border);
+}
+html[data-view="mobile"] .site-footer-sync[data-state="stale"] .footer-sync-icon,
+html[data-view="mobile"] .site-footer-sync[data-state="stale"] .footer-sync-label,
+html[data-view="mobile"] .site-footer-sync[data-state="failed"] .footer-sync-icon,
+html[data-view="mobile"] .site-footer-sync[data-state="failed"] .footer-sync-label {
+    color: inherit;
+}
+
+/* 2열 × 2행. 각 칸 오른쪽·아래에 1px 선을 두되 마지막 열과 행은 뺀다. */
+html[data-view="mobile"] .site-footer-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: stretch;
+    gap: 0;
+}
+html[data-view="mobile"] .footer-column {
+    padding: 14px 12px;
+    border-right: 1px solid var(--border-soft);
+    border-bottom: 1px solid var(--border-soft);
+}
+html[data-view="mobile"] .footer-column:nth-child(2n) { border-right: 0; padding-right: 2px; }
+html[data-view="mobile"] .footer-column:nth-child(2n+1) { padding-left: 2px; }
+html[data-view="mobile"] .footer-column:nth-last-child(-n+2) { border-bottom: 0; }
+html[data-view="mobile"] .footer-column-title {
+    margin-bottom: 8px;
+    color: var(--text-sub);
+    font-size: 12px;
+    font-weight: 700;
+}
+/* 터치 타겟은 글자 크기가 아니라 여백으로 44px를 확보한다. */
+html[data-view="mobile"] .footer-link-list a,
+html[data-view="mobile"] .footer-link-list button,
+html[data-view="mobile"] .footer-link-list .footer-link-muted {
+    min-height: 44px;
+    padding: 12px 0;
+    color: var(--text-main);
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1.35;
+}
+html[data-view="mobile"] .footer-link-list .footer-link-muted { color: #aab0ba; }
+html[data-view="mobile"] .footer-external-icon { width: 12px; height: 12px; }
+
+html[data-view="mobile"] .site-footer-legal {
+    flex-direction: column;
+    align-items: flex-start;
+    margin-top: 18px;
+    padding: 14px 0 22px;
+}
+html[data-view="mobile"] .site-footer p { font-size: 11px; }
 
 @media (prefers-reduced-motion: reduce) {
     html[data-view="mobile"] button,

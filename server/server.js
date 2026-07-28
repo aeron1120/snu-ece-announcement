@@ -1278,7 +1278,7 @@ async function listNoticeFilterRows() {
                 id,title,content,target,targets,host,deadline,deadline_at,expires_at,is_always_open,is_pinned,is_hidden,
                 category,has_reward,reward_note,requires_action,survey_reward,
                 ai_summary,keywords,ocr_text,views,
-                source_published_at,created_at,updated_at,has_images,notice_categories(category_id)
+                source_published_at,created_at,updated_at,last_crawled_at,has_images,notice_categories(category_id)
             `)
             .eq('is_deleted', false)
             .eq('status', 'published')
@@ -2184,6 +2184,37 @@ app.post('/api/admin/review-notices/:id/ocr', requireNoticeAdmin, async (req, re
 
 app.get('/api/health', (req, res) => {
     res.json({ ok: true, storage: useSupabase ? 'supabase' : 'file', bannerStorage: bannerStorageMode });
+});
+
+// 푸터의 "마지막 동기화" 표시용. 공개 목록에 실제로 보이는 공지만 세고,
+// 시각은 크롤러가 남긴 lastCrawledAt을 우선 쓰되 없으면 갱신·생성 시각으로 떨어진다.
+app.get('/api/sync-status', async (req, res) => {
+    try {
+        const rows = await listNoticeFilterRows();
+        // 공개 목록의 기본 상태와 같은 필터를 태워, 푸터 건수와 목록 상단
+        // "공지 N건"이 어긋나 보이지 않게 한다.
+        const visible = applyNoticeListFilters(rows, normalizeNoticeListFilters({}));
+        const latest = visible.reduce((newest, row) => {
+            const stamp = row?.lastCrawledAt
+                || row?.last_crawled_at
+                || row?.updatedAt
+                || row?.updated_at
+                || row?.createdAt
+                || row?.created_at
+                || null;
+            if (!stamp) return newest;
+            const time = new Date(stamp).getTime();
+            if (Number.isNaN(time)) return newest;
+            return !newest || time > newest ? time : newest;
+        }, null);
+
+        res.json({
+            lastSyncedAt: latest ? new Date(latest).toISOString() : null,
+            noticeCount: visible.length
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message || '동기화 상태 조회 실패' });
+    }
 });
 
 app.get('/api/settings', async (req, res) => {

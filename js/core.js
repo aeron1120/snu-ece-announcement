@@ -34,12 +34,20 @@ let bannerSlides = [];
 let activeBannerSlideIndex = 0;
 let initialBannerRandomized = false;
 let bannerRotationInterval = null;
-let bannerTransitionTimer = null;
 let bannerSwipePointerId = null;
 let bannerSwipeStartX = 0;
 let bannerSwipeStartY = 0;
 let bannerSwipeDeltaX = 0;
 let suppressBannerLinkUntil = 0;
+/* 트랙 캐러셀 상태.
+   trackPosition은 앞뒤 복제 슬라이드를 포함한 트랙 위의 칸 번호다.
+   실제 슬라이드 i는 trackPosition i+1에 놓이고, 0번과 n+1번은 각각
+   마지막·첫 슬라이드의 복제본이라 끝에서 끝으로 끊김 없이 이어진다. */
+let bannerTrackPosition = 1;
+let bannerRenderedCount = 0;
+let bannerSettleTimer = null;
+const BANNER_SLIDE_DURATION = 460;
+const BANNER_ROTATION_DELAY = 6500;
 let compareBlocks = [];   // 독립 비교 공간에 담긴 공지 id들 (데스크톱 전용, 최대 4)
 let compareWorkspaceOpen = false;
 let compareDockSide = 'left';
@@ -160,6 +168,9 @@ function setLayoutMode(mode) {
     updateLayoutToggleLabel();
     applyViewModule(next);
     renderRightRailAd();
+    // 푸터는 뷰마다 관리자 버튼 노출과 동기화 문구가 다르다.
+    syncFooterAdminLink();
+    refreshFooterSyncStatus();
     if (document.body?.dataset.page === 'public' && document.getElementById('notice-grid')) {
         renderNoticeCards();
     }
@@ -621,57 +632,114 @@ function stopBannerRotation() {
 
 function startBannerRotation() {
     stopBannerRotation();
-    const slides = getBannerSlidesByPlacement('right_rail').slice(0, 5);
-    if (slides.length < 2) return;
+    if (getBannerSlidesByPlacement('right_rail').slice(0, 5).length < 2) return;
     bannerRotationInterval = window.setInterval(() => {
-        transitionRightRailBanner(
-            (activeBannerSlideIndex + 1) % slides.length,
-            { restartRotation: false, direction: 1 }
-        );
-    }, 6500);
+        stepRightRailBanner(1);
+    }, BANNER_ROTATION_DELAY);
 }
 
-function transitionRightRailBanner(index, { restartRotation = true, direction = 1 } = {}) {
-    const slides = getBannerSlidesByPlacement('right_rail').slice(0, 5);
-    if (!slides.length) return;
-    const nextIndex = (Number(index || 0) + slides.length) % slides.length;
-    const imageStage = document.querySelector('#right-rail-ad-content .rail-ad-image-stage');
-    const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-    clearTimeout(bannerTransitionTimer);
-    if (!imageStage || reduceMotion) {
-        activeBannerSlideIndex = nextIndex;
-        renderRightRailAd({ restartRotation, transitionDirection: 0 });
-        return;
-    }
-    imageStage.classList.add(direction < 0 ? 'is-leaving-right' : 'is-leaving-left');
-    bannerTransitionTimer = window.setTimeout(() => {
-        activeBannerSlideIndex = nextIndex;
-        renderRightRailAd({ restartRotation, transitionDirection: direction });
-        bannerTransitionTimer = null;
-    }, 220);
+function prefersReducedMotion() {
+    return Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
 }
 
-function selectRightRailBanner(index, direction = 1) {
-    const slides = getBannerSlidesByPlacement('right_rail').slice(0, 5);
-    if (!slides.length) return;
-    transitionRightRailBanner(index, { direction });
+function getBannerTrack() {
+    return document.querySelector('#right-rail-ad-content .rail-ad-track');
 }
 
+/* 트랙을 특정 칸으로 옮긴다. animate=false면 전환 없이 즉시 붙여 놓는데,
+   복제 슬라이드에서 진짜 슬라이드로 되돌아갈 때 이 경로를 쓴다. */
+function setBannerTrackPosition(position, { animate = true, dragOffset = 0 } = {}) {
+    const track = getBannerTrack();
+    if (!track) return;
+    const shouldAnimate = animate && !prefersReducedMotion();
+    track.style.transitionDuration = shouldAnimate ? `${BANNER_SLIDE_DURATION}ms` : '0ms';
+    track.style.transform = dragOffset
+        ? `translate3d(calc(${-position * 100}% + ${dragOffset}px), 0, 0)`
+        : `translate3d(${-position * 100}%, 0, 0)`;
+}
+
+function syncBannerIndicator() {
+    const container = document.getElementById('right-rail-ad-content');
+    if (!container) return;
+    const counter = container.querySelector('.rail-ad-count');
+    if (counter) counter.textContent = `${activeBannerSlideIndex + 1} / ${bannerRenderedCount}`;
+    container.querySelectorAll('.rail-ad-dot').forEach((dot, index) => {
+        const active = index === activeBannerSlideIndex;
+        dot.classList.toggle('is-active', active);
+        dot.setAttribute('aria-current', active ? 'true' : 'false');
+    });
+    // 복제 슬라이드가 화면에 보이는 순간에도 보조기기에는 진짜 슬라이드만 읽힌다.
+    container.querySelectorAll('.rail-ad-slide').forEach(slide => {
+        const isClone = slide.dataset.clone === 'true';
+        const isCurrent = Number(slide.dataset.index) === activeBannerSlideIndex;
+        slide.setAttribute('aria-hidden', isClone || !isCurrent ? 'true' : 'false');
+    });
+}
+
+/* 이웃한 칸으로 한 칸 민다. 복제 칸에 도착하면 전환이 끝난 직후
+   같은 그림의 진짜 칸으로 소리 없이 되돌려, 무한히 이어지는 것처럼 보인다.
+   쉬는 자리는 언제나 1..total이므로 한 칸 이동은 트랙을 벗어나지 않는다. */
 function stepRightRailBanner(direction, event) {
     event?.preventDefault();
     event?.stopPropagation();
-    const step = Number(direction || 0);
-    selectRightRailBanner(activeBannerSlideIndex + step, step);
+    const step = Number(direction || 0) < 0 ? -1 : 1;
+    const total = bannerRenderedCount;
+    if (!Number(direction) || total < 2 || !getBannerTrack()) return;
+
+    window.clearTimeout(bannerSettleTimer);
+    bannerSettleTimer = null;
+    bannerTrackPosition += step;
+    activeBannerSlideIndex = (activeBannerSlideIndex + step + total) % total;
+    setBannerTrackPosition(bannerTrackPosition);
+    syncBannerIndicator();
+
+    const landedOnClone = bannerTrackPosition === 0 || bannerTrackPosition === total + 1;
+    if (landedOnClone) {
+        bannerSettleTimer = window.setTimeout(() => {
+            bannerTrackPosition = activeBannerSlideIndex + 1;
+            setBannerTrackPosition(bannerTrackPosition, { animate: false });
+            bannerSettleTimer = null;
+        }, prefersReducedMotion() ? 0 : BANNER_SLIDE_DURATION);
+    }
+}
+
+/* 점을 눌러 멀리 있는 배너로 건너뛴다. 여러 칸을 한 번에 지나가므로
+   복제 칸을 거치지 않고 진짜 칸으로 곧장 미끄러진다. */
+function selectRightRailBanner(index) {
+    const total = bannerRenderedCount;
+    if (total < 2 || !getBannerTrack()) return;
+    const target = ((Number(index) || 0) % total + total) % total;
+    if (target === activeBannerSlideIndex) return;
+
+    window.clearTimeout(bannerSettleTimer);
+    bannerSettleTimer = null;
+    activeBannerSlideIndex = target;
+    bannerTrackPosition = target + 1;
+    setBannerTrackPosition(bannerTrackPosition);
+    syncBannerIndicator();
+    restartBannerRotationIfIdle();
+}
+
+function restartBannerRotationIfIdle() {
+    if (bannerSwipePointerId !== null) return;
+    startBannerRotation();
 }
 
 function startBannerSwipe(event) {
     if (event.isPrimary === false || event.button > 0) return;
-    if (getBannerSlidesByPlacement('right_rail').length < 2) return;
+    if (bannerRenderedCount < 2) return;
     const stage = event.currentTarget;
     bannerSwipePointerId = event.pointerId;
     bannerSwipeStartX = event.clientX;
     bannerSwipeStartY = event.clientY;
     bannerSwipeDeltaX = 0;
+    // 복제 칸으로 되돌리는 예약이 남아 있으면 먼저 확정해 놓고 잡는다.
+    if (bannerSettleTimer) {
+        window.clearTimeout(bannerSettleTimer);
+        bannerSettleTimer = null;
+        bannerTrackPosition = activeBannerSlideIndex + 1;
+        setBannerTrackPosition(bannerTrackPosition, { animate: false });
+    }
     try {
         stage.setPointerCapture?.(event.pointerId);
     } catch {
@@ -684,23 +752,33 @@ function moveBannerSwipe(event) {
     if (event.pointerId !== bannerSwipePointerId) return;
     const deltaX = event.clientX - bannerSwipeStartX;
     const deltaY = event.clientY - bannerSwipeStartY;
-    if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 8) return;
+    // 세로로 먼저 움직였으면 페이지 스크롤이므로 가로 끌기를 포기한다.
+    if (!bannerSwipeDeltaX && Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 10) {
+        bannerSwipePointerId = null;
+        setBannerTrackPosition(bannerTrackPosition);
+        event.currentTarget.classList.remove('is-swiping');
+        restartBannerRotationIfIdle();
+        return;
+    }
     bannerSwipeDeltaX = deltaX;
-    if (Math.abs(deltaX) < 6) return;
-    event.preventDefault();
-    const stage = event.currentTarget;
-    stage.classList.add('is-swiping');
-    stage.style.transform = `translateX(${deltaX * 0.38}px)`;
-    stage.style.opacity = String(Math.max(0.72, 1 - Math.abs(deltaX) / 520));
+    if (Math.abs(deltaX) < 3) return;
+    if (event.cancelable) event.preventDefault();
+    event.currentTarget.classList.add('is-swiping');
+
+    // 양 끝이 없는 무한 트랙이므로 손가락을 1:1로 따라간다.
+    setBannerTrackPosition(bannerTrackPosition, { animate: false, dragOffset: deltaX });
 }
 
 function finishBannerSwipe(event, cancelled = false) {
     if (event.pointerId !== bannerSwipePointerId) return;
     const stage = event.currentTarget;
+    const width = stage.getBoundingClientRect().width || 1;
     const deltaY = event.clientY - bannerSwipeStartY;
+    // 화면 폭의 18%를 넘겼거나 44px 이상 끌었으면 다음 장으로 넘어간 것으로 본다.
+    const passedThreshold = Math.abs(bannerSwipeDeltaX) >= Math.min(44, width * 0.18);
     const shouldMove = !cancelled
-        && Math.abs(bannerSwipeDeltaX) >= 44
-        && Math.abs(bannerSwipeDeltaX) > Math.abs(deltaY) * 1.15;
+        && passedThreshold
+        && Math.abs(bannerSwipeDeltaX) > Math.abs(deltaY);
     try {
         if (stage.hasPointerCapture?.(event.pointerId)) {
             stage.releasePointerCapture(event.pointerId);
@@ -709,17 +787,18 @@ function finishBannerSwipe(event, cancelled = false) {
         // 포인터가 브라우저에서 먼저 취소된 경우에도 정리 흐름은 계속한다.
     }
     stage.classList.remove('is-swiping');
-    stage.style.removeProperty('transform');
-    stage.style.removeProperty('opacity');
     bannerSwipePointerId = null;
 
     if (shouldMove) {
-        suppressBannerLinkUntil = Date.now() + 550;
+        // 끌어서 넘긴 직후의 클릭은 링크 이동이 아니라 제스처의 잔상이다.
+        suppressBannerLinkUntil = Date.now() + 400;
         stepRightRailBanner(bannerSwipeDeltaX < 0 ? 1 : -1, event);
-        return;
+    } else {
+        if (Math.abs(bannerSwipeDeltaX) > 6) suppressBannerLinkUntil = Date.now() + 250;
+        setBannerTrackPosition(bannerTrackPosition);
     }
     bannerSwipeDeltaX = 0;
-    startBannerRotation();
+    restartBannerRotationIfIdle();
 }
 
 function allowBannerLinkClick(event) {
@@ -733,66 +812,220 @@ function renderRightRailInquiryFallback() {
     const container = document.getElementById('right-rail-ad-content');
     if (!container) return;
     stopBannerRotation();
+    window.clearTimeout(bannerSettleTimer);
+    bannerSettleTimer = null;
+    bannerRenderedCount = 0;
+    container.onmouseenter = null;
+    container.onmouseleave = null;
 
     container.innerHTML = `<button class="rail-cta rail-ad-fallback" type="button"
         onclick="openBannerInquiryFromRail()">홍보 신청하기</button>`;
 }
 
-function renderRightRailAd({ restartRotation = true, transitionDirection = 0 } = {}) {
+/* 슬라이드 한 장의 마크업. isClone은 앞뒤로 덧대는 복제본 표시로,
+   보조기기에서는 감추고 지표 계산에서도 제외한다. */
+function renderBannerSlide(slide, index, { isClone = false } = {}) {
+    const useMobileBanner = document.documentElement.dataset.view === 'mobile';
+    const src = useMobileBanner ? slide.mobileSrc : slide.src;
+    if (!src) return '';
+    const alt = isClone ? '' : escapeHtml(slide.altText || slide.name || '학내 홍보 이미지');
+    /* 레일은 배너 원본(4:5)보다 훨씬 길쭉하다. 원본을 잘라 채우면 좌우가
+       3분의 2쯤 날아가므로, 같은 그림을 흐리게 깐 배경으로 레일을 채우고
+       그 위에 배너를 온전한 비율로 얹는다. 남색 여백이 남지 않는다. */
+    const backdrop = `<span class="rail-ad-backdrop" aria-hidden="true"
+            style="background-image:url('${escapeHtml(src)}')"></span>`;
+    // 트랙 밖 슬라이드는 lazy로 두면 처음 넘길 때 한 프레임 비므로 모두 즉시 받는다.
+    // 배너는 최대 5장이라 부담이 크지 않다.
+    const image = `<img class="rail-ad-image" src="${escapeHtml(src)}" alt="${alt}"
+            draggable="false" onerror="handleBannerImageError(event)">`;
+    const body = slide.linkUrl
+        ? `<a class="rail-ad-link rail-ad-image-link" href="${escapeHtml(slide.linkUrl)}" target="_blank"
+                rel="noopener noreferrer" draggable="false"
+                tabindex="${isClone ? '-1' : '0'}"
+                onclick="return allowBannerLinkClick(event)">${backdrop}${image}</a>`
+        : `${backdrop}${image}`;
+    return `<div class="rail-ad-slide" data-index="${index}" data-clone="${isClone}">${body}</div>`;
+}
+
+function handleBannerImageError(event) {
+    // 이미지 하나가 깨졌다고 캐러셀 전체를 버리지 않는다. 남은 배너가
+    // 하나도 없을 때만 홍보 신청 안내로 떨어진다.
+    const slide = event?.target?.closest('.rail-ad-slide');
+    if (!slide) return renderRightRailInquiryFallback();
+    slide.classList.add('is-broken');
+    const alive = document.querySelectorAll('#right-rail-ad-content .rail-ad-slide:not(.is-broken)');
+    if (alive.length === 0) renderRightRailInquiryFallback();
+}
+
+function renderRightRailAd({ restartRotation = true } = {}) {
     const container = document.getElementById('right-rail-ad-content');
     if (!container) return;
     const slides = getBannerSlidesByPlacement('right_rail').slice(0, 5);
-    if (activeBannerSlideIndex >= slides.length) activeBannerSlideIndex = 0;
-    const slide = slides[activeBannerSlideIndex];
-
-    if (!slide) {
-        renderRightRailInquiryFallback();
-        return;
-    }
-
     const useMobileBanner = document.documentElement.dataset.view === 'mobile';
-    const bannerImageSrc = useMobileBanner
-        ? slide.mobileSrc
-        : slide.src;
-    if (!bannerImageSrc) {
+    const usable = slides.filter(slide => (useMobileBanner ? slide.mobileSrc : slide.src));
+
+    if (!usable.length) {
         renderRightRailInquiryFallback();
         return;
     }
-    const image = bannerImageSrc
-        ? `<img class="rail-ad-image" src="${escapeHtml(bannerImageSrc)}" alt="${escapeHtml(slide.altText || slide.name || '학내 홍보 이미지')}"
-                draggable="false" onerror="renderRightRailInquiryFallback()">`
-        : '';
-    const controls = slides.length > 1 ? `
+
+    window.clearTimeout(bannerSettleTimer);
+    bannerSettleTimer = null;
+    bannerRenderedCount = usable.length;
+    if (activeBannerSlideIndex >= usable.length) activeBannerSlideIndex = 0;
+
+    const many = usable.length > 1;
+    // 무한 루프를 위해 앞에는 마지막 장, 뒤에는 첫 장의 복제본을 덧댄다.
+    const trackSlides = many
+        ? [
+            renderBannerSlide(usable[usable.length - 1], usable.length - 1, { isClone: true }),
+            ...usable.map((slide, index) => renderBannerSlide(slide, index)),
+            renderBannerSlide(usable[0], 0, { isClone: true })
+        ].join('')
+        : renderBannerSlide(usable[0], 0);
+
+    const controls = many ? `
         <div class="rail-ad-controls" role="group" aria-label="배너 넘기기">
-            <button type="button" aria-label="이전 배너" title="이전 배너"
-                    onclick="stepRightRailBanner(-1, event)">&lt;</button>
-            <span class="rail-ad-count">${activeBannerSlideIndex + 1} / ${slides.length}</span>
-            <button type="button" aria-label="다음 배너" title="다음 배너"
-                    onclick="stepRightRailBanner(1, event)">&gt;</button>
+            <button class="rail-ad-arrow is-prev" type="button" aria-label="이전 배너" title="이전 배너"
+                    onclick="stepRightRailBanner(-1, event); restartBannerRotationIfIdle()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M15 5l-7 7 7 7"/></svg>
+            </button>
+            <button class="rail-ad-arrow is-next" type="button" aria-label="다음 배너" title="다음 배너"
+                    onclick="stepRightRailBanner(1, event); restartBannerRotationIfIdle()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+            </button>
+        </div>
+        <div class="rail-ad-status">
+            <div class="rail-ad-dots" role="tablist" aria-label="배너 선택">
+                ${usable.map((slide, index) => `
+                    <button class="rail-ad-dot" type="button" role="tab" data-index="${index}"
+                            aria-label="${index + 1}번째 배너 보기"
+                            onclick="selectRightRailBanner(${index})"></button>
+                `).join('')}
+            </div>
+            <span class="rail-ad-count" aria-live="off"></span>
         </div>
     ` : '';
-    const imageContent = slide.linkUrl
-        ? `<a class="rail-ad-link rail-ad-image-link" href="${escapeHtml(slide.linkUrl)}" target="_blank"
-                rel="noopener noreferrer" draggable="false"
-                onclick="return allowBannerLinkClick(event)">${image}</a>`
-        : image;
-    const transitionClass = transitionDirection < 0
-        ? ' is-entering-left'
-        : (transitionDirection > 0 ? ' is-entering-right' : '');
-    const content = `
-        <div class="rail-ad-image-stage${transitionClass}"
-             onpointerdown="startBannerSwipe(event)"
-             onpointermove="moveBannerSwipe(event)"
-             onpointerup="finishBannerSwipe(event)"
-             onpointercancel="finishBannerSwipe(event, true)">
-            ${imageContent}
-            ${controls}
+
+    container.innerHTML = `
+        <div class="rail-ad-viewport">
+            <div class="rail-ad-stage"${many ? `
+                 onpointerdown="startBannerSwipe(event)"
+                 onpointermove="moveBannerSwipe(event)"
+                 onpointerup="finishBannerSwipe(event)"
+                 onpointercancel="finishBannerSwipe(event, true)"` : ''}>
+                <div class="rail-ad-track">${trackSlides}</div>
+                ${controls}
+            </div>
         </div>
     `;
-    container.innerHTML = `<div class="rail-ad-viewport">${content}</div>`;
-    container.onmouseenter = stopBannerRotation;
-    container.onmouseleave = startBannerRotation;
-    if (restartRotation) startBannerRotation();
+
+    if (many) {
+        bannerTrackPosition = activeBannerSlideIndex + 1;
+        setBannerTrackPosition(bannerTrackPosition, { animate: false });
+        syncBannerIndicator();
+        container.onmouseenter = stopBannerRotation;
+        container.onmouseleave = restartBannerRotationIfIdle;
+        if (restartRotation) startBannerRotation();
+    } else {
+        stopBannerRotation();
+        container.onmouseenter = null;
+        container.onmouseleave = null;
+    }
+}
+
+// ========================================
+// 🧾 사이트 푸터 (링크 그리드 · 수집 신선도 · 법적 고지)
+// ========================================
+
+// 마지막 수집이 이 시간을 넘기면 "동기화 지연"으로 본다.
+const FOOTER_SYNC_STALE_HOURS = 6;
+let footerAdminLinkNode = null;
+
+function formatSyncTimestamp(value) {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    const pad = number => String(number).padStart(2, '0');
+    return `${date.getFullYear()}.${pad(date.getMonth() + 1)}.${pad(date.getDate())}`
+        + ` ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+/* 색만으로 상태를 구분하지 않는다. 문구와 아이콘이 함께 바뀐다. */
+function applyFooterSyncState({ state, label, detail }) {
+    const box = document.getElementById('footer-sync');
+    const labelEl = document.getElementById('footer-sync-label');
+    const detailEl = document.getElementById('footer-sync-detail');
+    if (!box || !labelEl || !detailEl) return;
+    box.dataset.state = state;
+    labelEl.textContent = label;
+    detailEl.textContent = detail;
+
+    const icon = box.querySelector('.footer-sync-icon path');
+    if (!icon) return;
+    const paths = {
+        ok: 'M20 11a8 8 0 0 0-14-4.9L4 8m0-4v4h4m-4 5a8 8 0 0 0 14 4.9l2-1.9m0 4v-4h-4',
+        stale: 'M12 7v5l3 2m6-2a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z',
+        failed: 'M12 9v4m0 4h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z'
+    };
+    icon.setAttribute('d', paths[state] || paths.ok);
+}
+
+async function refreshFooterSyncStatus() {
+    if (!document.getElementById('footer-sync')) return;
+    try {
+        const result = await apiRequest('/api/sync-status', { method: 'GET' });
+        const count = Number(result?.noticeCount) || 0;
+        const stamp = result?.lastSyncedAt ? new Date(result.lastSyncedAt) : null;
+
+        if (!stamp || Number.isNaN(stamp.getTime())) {
+            applyFooterSyncState({
+                state: 'failed',
+                label: '동기화 실패',
+                detail: '최근 수집 기록을 찾지 못했습니다'
+            });
+            return;
+        }
+
+        const hoursSince = (Date.now() - stamp.getTime()) / 3600000;
+        const stale = hoursSince > FOOTER_SYNC_STALE_HOURS;
+        applyFooterSyncState({
+            state: stale ? 'stale' : 'ok',
+            label: stale ? '동기화 지연' : '최신 상태',
+            detail: getLayoutMode() === 'mobile'
+                ? `${formatSyncTimestamp(stamp)} 동기화`
+                : `마지막 동기화 ${formatSyncTimestamp(stamp)} · 수집 공지 ${count}건`
+        });
+    } catch {
+        applyFooterSyncState({
+            state: 'failed',
+            label: '동기화 실패',
+            detail: '수집 상태를 불러오지 못했습니다'
+        });
+    }
+}
+
+/* 관리자 진입점은 모바일에서 숨기는 게 아니라 DOM에서 아예 뺀다.
+   데스크톱으로 돌아오면 보관해 둔 노드를 그대로 다시 붙인다. */
+function syncFooterAdminLink() {
+    const legal = document.querySelector('.site-footer-legal');
+    if (!legal) return;
+    const existing = document.getElementById('footer-admin-link');
+
+    if (getLayoutMode() === 'mobile') {
+        if (existing) {
+            footerAdminLinkNode = existing;
+            existing.remove();
+        }
+        return;
+    }
+    if (!existing && footerAdminLinkNode) legal.appendChild(footerAdminLinkNode);
+}
+
+function initializeFooter() {
+    const year = document.getElementById('footer-year');
+    if (year) year.textContent = String(new Date().getFullYear());
+    syncFooterAdminLink();
+    refreshFooterSyncStatus();
 }
 
 // ========================================
@@ -1299,34 +1532,32 @@ function renderBannerAdminInfo() {
 // 🔍 필터링
 // ========================================
 
+/* 필터 여닫기는 '상세 필터' 바 하나로 통일한다. 모바일에서는 이 바가
+   빠른 필터 줄까지 함께 펼친다. 손잡이가 둘로 나뉘어 있으면 무엇이 무엇을
+   여는지 알기 어렵고 검색창 아래에 정체불명의 탭이 남는다. */
+function setFilterPanelOpen(open) {
+    const panel = document.getElementById('filter-panel');
+    const bar = document.getElementById('filter-toggle-bar');
+    const chevron = document.getElementById('filter-chevron');
+    const quickFilters = document.getElementById('notice-quick-filters');
+    if (!panel) return;
+
+    panel.classList.toggle('open', open);
+    bar?.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (chevron) chevron.style.transform = open ? 'rotate(180deg)' : '';
+    quickFilters?.classList.toggle('is-mobile-open', open);
+    if (open) buildHostButtons();
+}
+
 function toggleFilterPanel() {
-    let filterPanelOpen = document.getElementById('filter-panel').classList.contains('open');
-    filterPanelOpen = !filterPanelOpen;
-    document.getElementById('filter-panel').classList.toggle('open', filterPanelOpen);
-    document.getElementById('filter-chevron').style.transform = filterPanelOpen ? 'rotate(180deg)' : '';
-    if (filterPanelOpen) buildHostButtons();
+    const open = !document.getElementById('filter-panel')?.classList.contains('open');
+    setFilterPanelOpen(open);
 }
 
 function closeFilterPanel() {
-    const panel = document.getElementById('filter-panel');
-    const chevron = document.getElementById('filter-chevron');
-    panel?.classList.remove('open');
-    if (chevron) chevron.style.transform = '';
+    setFilterPanelOpen(false);
     document.getElementById('filter-toggle-bar')
         ?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-}
-
-function toggleMobileQuickFilters() {
-    const filters = document.getElementById('notice-quick-filters');
-    const toggle = document.getElementById('mobile-special-filter-toggle');
-    if (!filters || !toggle) return;
-    const open = !filters.classList.contains('is-mobile-open');
-    filters.classList.toggle('is-mobile-open', open);
-    toggle.classList.toggle('is-open', open);
-    toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
-    toggle.querySelector('.sr-only').textContent = open
-        ? '빠른 필터 접기'
-        : '빠른 필터 펼치기';
 }
 
 function buildHostButtons() {
@@ -1556,10 +1787,10 @@ function updateFilterChips() {
         if (!active) return;
         hasActive = true;
         const names = {
-            urgent: '마감임박',
+            urgent: '마감 임박',
             reward: '리워드 있음',
             action: '신청 필요',
-            past: '지난 공지 보기'
+            past: '마감'
         };
         const chip = document.createElement('div');
         chip.className = 'filter-chip';
@@ -1899,7 +2130,6 @@ function updateDetailImage() {
     const src = detailImageArray[detailImageIndex];
     if (!heroImg || !src) return;
     heroImg.src = src;
-    heroImg.onclick = () => openImageViewer(detailImageIndex);
     const hasMultiple = detailImageArray.length > 1;
     if (previous) previous.hidden = !hasMultiple;
     if (next) next.hidden = !hasMultiple;
@@ -1910,6 +2140,13 @@ function updateDetailImage() {
     document.querySelectorAll('#detail-gallery .gallery-img').forEach((image, index) => {
         image.classList.toggle('active', index === detailImageIndex);
     });
+}
+
+// 상세 화면의 "크게 보기" 버튼 전용 진입점. 버튼을 눌렀다는 뜻이 분명할 때만 연다.
+function openDetailImageViewer(event) {
+    event?.preventDefault();
+    event?.stopPropagation();
+    openImageViewer(detailImageIndex);
 }
 
 function openImageViewer(index) {
@@ -2354,9 +2591,9 @@ async function applyPendingNoticeSplit(placement) {
         return;
     }
     if (!hadWorkspace) {
-        // 첫 블록은 항상 왼쪽에 반고정하고, 오른쪽은 기존 공지 목록 흐름을 유지한다.
-        // 어느 쪽 추가 표식에서 시작했든 결과 구조는 같아야 사용자가 길을 잃지 않는다.
-        compareDockSide = 'left';
+        // 첫 블록은 놓은 쪽에 붙는다. 오른쪽 표적에 놓았는데 왼쪽에 들어가면
+        // 사용자가 방금 한 동작과 결과가 어긋난다.
+        compareDockSide = placement;
         compareLayoutMode = 'stack';
         compareBlocks.push(id);
     } else if (placement === 'left') {
@@ -2962,6 +3199,7 @@ document.addEventListener('DOMContentLoaded', async function () {
     applyViewModule(getLayoutMode());
     updateBellState();
     startRailClock();
+    initializeFooter();
 
     await Promise.all([loadData(), loadCategories()]);
     const initialNoticePage = restoreNoticeListStateFromUrl();

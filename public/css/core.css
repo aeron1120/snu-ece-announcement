@@ -59,42 +59,114 @@ body {
 
 .page-shell { width: 100%; margin: 0 auto; }
 .page-main { width: 100%; max-width: 1400px; margin: 0 auto; padding: 40px; }
+/* ---------- 사이트 푸터 ----------
+   세 영역(링크 그리드 / 동기화 상태 / 법적 고지)을 그리드 영역 이름으로 배치한다.
+   모바일에서 순서를 바꿔야 하므로 flex order 대신 영역 재배치를 쓴다. */
 .site-footer {
+    display: grid;
+    grid-template-areas: "links" "sync" "legal";
     margin-top: 72px;
-    padding: 34px 4px 10px;
+    /* 아래 여백은 푸터가 전부 갖는다. page-main의 바닥 패딩과 겹쳐
+       어중간한 합이 나오지 않도록 0으로 두고 여기서만 정한다. */
+    padding: 34px 4px 0;
     color: #8a919d;
     border-top: 1px solid var(--border-soft);
     font-size: 12px;
     line-height: 1.7;
 }
-.site-footer-links {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 5px 0;
-    margin-bottom: 13px;
+.site-footer-grid {
+    display: grid;
+    grid-area: links;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    align-items: stretch;
+    gap: 24px 20px;
 }
-.site-footer-links a,
-.site-footer-links button {
+.footer-column { min-width: 0; }
+.footer-column-title {
+    margin: 0 0 12px;
+    color: var(--text-main);
+    font-size: 13px;
+    font-weight: 800;
+    letter-spacing: -0.1px;
+}
+.footer-link-list { margin: 0; padding: 0; list-style: none; }
+.footer-link-list li { margin: 0; }
+.footer-link-list a,
+.footer-link-list button,
+.footer-link-list .footer-link-muted {
     display: inline-flex;
     align-items: center;
-    min-height: 28px;
-    padding: 0 13px;
-    color: #747c89;
+    gap: 5px;
+    min-height: 26px;
+    padding: 3px 0;
+    color: #6f7885;
     background: transparent;
     border: 0;
-    border-right: 1px solid #d8dce2;
     border-radius: 0;
     font: inherit;
+    font-size: 13px;
     font-weight: 600;
+    text-align: left;
     text-decoration: none;
     cursor: pointer;
+    transition: color 0.15s ease;
 }
-.site-footer-links a:first-child { padding-left: 0; }
-.site-footer-links a:last-child { border-right: 0; }
-.site-footer-links a:hover,
-.site-footer-links button:hover { color: var(--primary); }
-.site-footer p { margin: 2px 0; }
+.footer-link-list a:hover,
+.footer-link-list button:hover { color: var(--primary); }
+.footer-link-list a:focus-visible,
+.footer-link-list button:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+/* 아직 문서가 없는 항목. 색만으로 구분되지 않도록 title로도 알린다. */
+.footer-link-muted { color: #b3b9c2; cursor: default; }
+.footer-external-icon { width: 11px; height: 11px; flex-shrink: 0; opacity: 0.7; }
+
+/* 영역 2 — 수집 신선도 */
+.site-footer-sync {
+    display: flex;
+    grid-area: sync;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px 8px;
+    margin-top: 26px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border-soft);
+    color: #6f7885;
+    font-size: 12px;
+}
+.footer-sync-icon { width: 14px; height: 14px; flex-shrink: 0; }
+.footer-sync-label { font-weight: 700; }
+.footer-sync-detail { font-variant-numeric: tabular-nums; }
+.site-footer-sync[data-state="stale"] .footer-sync-icon,
+.site-footer-sync[data-state="stale"] .footer-sync-label { color: #8a6d1f; }
+.site-footer-sync[data-state="failed"] .footer-sync-icon,
+.site-footer-sync[data-state="failed"] .footer-sync-label { color: var(--danger); }
+
+/* 영역 3 — 면책과 카피라이트 */
+.site-footer-legal {
+    display: flex;
+    grid-area: legal;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 16px;
+    margin-top: 16px;
+    padding: 14px 0 30px;
+    border-top: 1px solid var(--border-soft);
+}
+.footer-legal-text { min-width: 0; }
+.site-footer p { margin: 2px 0; font-size: 12px; }
+.footer-admin-link {
+    flex-shrink: 0;
+    padding: 5px 10px;
+    color: #a2a9b4;
+    background: transparent;
+    border: 1px solid var(--border);
+    font-size: 11px;
+    font-weight: 600;
+    text-decoration: none;
+    white-space: nowrap;
+    transition: color 0.15s ease, border-color 0.15s ease;
+}
+.footer-admin-link:hover { color: #6f7885; border-color: #c9ced6; }
+.footer-admin-link:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 
 /* ---------- 좌우 고정 레일 (공통 외형) ----------
    위치 고정과 표시 여부는 뷰별 CSS가 정한다. 여기에는 색·간격만 둔다. */
@@ -211,40 +283,41 @@ body {
     flex-direction: column;
     overflow: hidden;
 }
-.rail-ad-image-stage {
+/* 무대는 레일이 남긴 세로 공간을 전부 가져간다. 비율로 높이를 묶어 두면
+   레일 아래쪽이 남색으로 비므로, 여기서는 높이를 제한하지 않는다. */
+.rail-ad-stage {
     position: relative;
     width: 100%;
-    aspect-ratio: 4 / 5;
-    flex: 0 0 auto;
+    height: 100%;
+    min-height: 0;
+    flex: 1 1 auto;
     overflow: hidden;
     touch-action: pan-y;
     cursor: grab;
     user-select: none;
-    transition: opacity 0.22s ease, transform 0.22s cubic-bezier(0.4, 0, 1, 1);
 }
-.rail-ad-image-stage.is-swiping {
-    cursor: grabbing;
-    transition: none;
-    will-change: transform, opacity;
+.rail-ad-stage.is-swiping { cursor: grabbing; }
+/* 슬라이드를 가로로 늘어놓고 트랙만 움직인다. 트랙 폭은 무대와 같으므로
+   translateX(-100%) 한 번이 정확히 한 장 분량이 된다. */
+.rail-ad-track {
+    display: flex;
+    width: 100%;
+    height: 100%;
+    transition-property: transform;
+    transition-duration: 460ms;
+    transition-timing-function: cubic-bezier(0.32, 0.72, 0.24, 1);
+    will-change: transform;
 }
-.rail-ad-image-stage.is-leaving-left { opacity: 0; transform: translateX(-42px); }
-.rail-ad-image-stage.is-leaving-right { opacity: 0; transform: translateX(42px); }
-.rail-ad-image-stage.is-entering-right {
-    animation: rail-banner-enter-right 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
+.rail-ad-slide {
+    position: relative;
+    flex: 0 0 100%;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
 }
-.rail-ad-image-stage.is-entering-left {
-    animation: rail-banner-enter-left 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-@keyframes rail-banner-enter-right {
-    from { opacity: 0; transform: translateX(42px); }
-    to { opacity: 1; transform: translateX(0); }
-}
-@keyframes rail-banner-enter-left {
-    from { opacity: 0; transform: translateX(-42px); }
-    to { opacity: 1; transform: translateX(0); }
-}
+.rail-ad-slide.is-broken { visibility: hidden; }
 @media (prefers-reduced-motion: reduce) {
-    .rail-ad-image-stage { animation: none; transition: none; }
+    .rail-ad-track { transition-duration: 0ms !important; }
 }
 .rail-ad-item + .rail-ad-item { margin-top: 22px; padding-top: 22px; border-top: 1px solid rgba(255,255,255,0.18); }
 .ad-rail h2 {
@@ -273,14 +346,30 @@ body {
 }
 .rail-cta:hover { background: var(--rail-text); color: var(--rail-bg); }
 .rail-ad-link { display: block; width: 100%; color: inherit; text-decoration: none; }
-.rail-ad-image-link { height: 100%; }
+.rail-ad-image-link { position: relative; display: block; width: 100%; height: 100%; }
+/* 레일을 끝까지 메우는 흐린 배경. 잘려도 무방한 층이라 cover로 채운다. */
+.rail-ad-backdrop {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    display: block;
+    background-position: center;
+    background-size: cover;
+    background-repeat: no-repeat;
+    filter: blur(26px) saturate(1.15) brightness(0.86);
+    transform: scale(1.25);
+    pointer-events: none;
+}
+/* 배너 원본은 비율을 지켜 통째로 보인다. */
 .rail-ad-image {
+    position: relative;
+    z-index: 1;
     display: block;
     width: 100%;
     max-width: none;
     height: 100%;
     margin: 0;
-    object-fit: cover;
+    object-fit: contain;
     background: transparent;
     border: 0;
     outline: 0;
@@ -290,50 +379,89 @@ body {
     position: absolute;
     inset: 0;
     z-index: 3;
-    display: grid;
-    grid-template-columns: 34px 1fr 34px;
+    display: flex;
     align-items: center;
-    gap: 8px;
-    margin: 0;
+    justify-content: space-between;
     padding: 0 8px;
     pointer-events: none;
 }
-.rail-ad-controls button {
+.rail-ad-arrow {
     display: grid;
     width: 34px;
     height: 34px;
     padding: 0;
     place-items: center;
     color: var(--rail-text);
-    background: rgba(12, 34, 78, 0.64);
-    border: 1px solid rgba(255,255,255,0.72);
+    background: rgba(12, 34, 78, 0.52);
+    border: 1px solid rgba(255,255,255,0.6);
     font: inherit;
-    font-size: 18px;
     cursor: pointer;
     pointer-events: auto;
+    opacity: 0;
     backdrop-filter: blur(5px);
-    transition: color 0.15s ease, background-color 0.15s ease, transform 0.15s ease;
+    transition: color 0.16s ease, background-color 0.16s ease,
+        opacity 0.2s ease, transform 0.16s ease;
 }
-.rail-ad-controls button:hover,
-.rail-ad-controls button:focus-visible {
+.rail-ad-arrow svg { width: 17px; height: 17px; }
+/* 화살표는 평소엔 숨어 있다가 가리키거나 초점이 갈 때만 나타난다.
+   터치 기기에는 hover가 없으므로 항상 보이게 둔다. */
+.rail-ad-stage:hover .rail-ad-arrow,
+.rail-ad-arrow:focus-visible { opacity: 1; }
+@media (hover: none) {
+    .rail-ad-arrow { opacity: 1; }
+}
+.rail-ad-arrow:hover,
+.rail-ad-arrow:focus-visible {
     color: var(--rail-bg);
     background: var(--rail-text);
     outline: none;
 }
-.rail-ad-controls button:active { transform: scale(0.94); }
-.rail-ad-controls button:last-child { grid-column: 3; }
-.rail-ad-count {
+.rail-ad-arrow:active { transform: scale(0.94); }
+.rail-ad-status {
     position: absolute;
-    left: 50%;
-    bottom: 8px;
+    right: 0;
+    bottom: 10px;
+    left: 0;
+    z-index: 3;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 9px;
+    padding: 0 10px;
+    pointer-events: none;
+}
+.rail-ad-dots {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 9px;
+    background: rgba(12, 34, 78, 0.55);
+    border-radius: 999px;
+    pointer-events: auto;
+    backdrop-filter: blur(6px);
+}
+.rail-ad-dot {
+    width: 7px;
+    height: 7px;
+    padding: 0;
+    background: rgba(255, 255, 255, 0.42);
+    border: 0;
+    border-radius: 50%;
+    cursor: pointer;
+    transition: width 0.24s ease, background-color 0.24s ease;
+}
+.rail-ad-dot.is-active { width: 18px; background: #fff; border-radius: 999px; }
+.rail-ad-dot:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.rail-ad-count {
     padding: 3px 8px;
     color: #fff;
-    background: rgba(12, 34, 78, 0.68);
+    background: rgba(12, 34, 78, 0.55);
+    border-radius: 999px;
     font-size: 10px;
+    font-weight: 700;
     text-align: center;
     font-variant-numeric: tabular-nums;
-    transform: translateX(-50%);
-    backdrop-filter: blur(5px);
+    backdrop-filter: blur(6px);
 }
 .brand-links a:focus-visible,
 .brand-links button:focus-visible,
@@ -430,37 +558,82 @@ body {
 }
 .category-tab:focus-visible { outline: 2px solid var(--primary); outline-offset: -4px; }
 
+/* 빠른 필터 — 여러 개를 동시에 켤 수 있는 토글이라 알약 모양을 쓴다.
+   켜진 상태를 색만으로 알리지 않도록 체크 표시가 함께 펼쳐진다. */
 .notice-quick-filters {
     display: flex;
     align-items: center;
     justify-content: flex-start;
-    gap: 6px;
+    gap: 7px;
     margin: -12px 0 16px;
     flex-wrap: wrap;
 }
 .notice-quick-filters button {
-    min-height: 30px;
-    padding: 0 10px;
-    color: #4c586d;
+    display: inline-flex;
+    align-items: center;
+    min-height: 34px;
+    padding: 0 14px;
+    color: #4a5567;
     background: #fff;
     border: 1px solid var(--border);
-    border-radius: 15px;
+    border-radius: 17px;
+    box-shadow: 0 1px 2px rgba(22, 45, 92, 0.05);
     font: inherit;
-    font-size: 11.5px;
+    font-size: 12.5px;
     font-weight: 700;
+    letter-spacing: -0.1px;
+    white-space: nowrap;
     cursor: pointer;
-    transition: color 0.16s ease, background-color 0.16s ease,
-        border-color 0.16s ease, transform 0.16s ease, opacity 0.16s ease;
+    transition: color 190ms cubic-bezier(0.33, 1, 0.68, 1),
+        background-color 190ms cubic-bezier(0.33, 1, 0.68, 1),
+        border-color 190ms cubic-bezier(0.33, 1, 0.68, 1),
+        box-shadow 190ms cubic-bezier(0.33, 1, 0.68, 1),
+        transform 150ms cubic-bezier(0.33, 1, 0.68, 1),
+        opacity 0.16s ease;
+}
+/* 켜졌을 때만 폭이 열리는 체크. 끌 때도 같은 곡선으로 접힌다. */
+.notice-quick-filters button::before {
+    content: '✓';
+    width: 0;
+    margin-right: 0;
+    overflow: hidden;
+    opacity: 0;
+    font-size: 11px;
+    font-weight: 800;
+    transition: width 190ms cubic-bezier(0.33, 1, 0.68, 1),
+        margin-right 190ms cubic-bezier(0.33, 1, 0.68, 1),
+        opacity 150ms ease;
 }
 .notice-quick-filters button:hover {
     color: var(--primary);
-    border-color: var(--primary);
+    background: var(--primary-light);
+    border-color: #b8c8e6;
+    box-shadow: 0 3px 8px rgba(22, 45, 92, 0.1);
     transform: translateY(-1px);
 }
 .notice-quick-filters button.active {
     color: #fff;
     background: var(--primary);
     border-color: var(--primary);
+    /* 위쪽 안쪽 하이라이트로 살짝 볼록한 명암을 준다. */
+    box-shadow: 0 3px 9px rgba(31, 63, 143, 0.26),
+        inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+.notice-quick-filters button.active::before { width: 11px; margin-right: 5px; opacity: 1; }
+.notice-quick-filters button.active:hover {
+    background: var(--primary-hover);
+    border-color: var(--primary-hover);
+    box-shadow: 0 4px 11px rgba(31, 63, 143, 0.3),
+        inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+.notice-quick-filters button:active {
+    transform: translateY(0) scale(0.97);
+    box-shadow: 0 1px 2px rgba(22, 45, 92, 0.08);
+}
+.notice-quick-filters button:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) {
+    .notice-quick-filters button,
+    .notice-quick-filters button::before { transition: none; }
 }
 .rail-ad-fallback {
     margin: 22px;
@@ -546,7 +719,6 @@ body {
     margin-bottom: 28px;
 }
 .search-wrapper > .notice-quick-filters { order: -1; }
-.mobile-special-filter-toggle { display: none; }
 .search-container {
     display: flex;
     align-items: center;
@@ -1169,73 +1341,57 @@ body.notice-dragging .notice-hover-preview { display: none !important; }
 }
 .notice-base-block { min-width: 0; }
 
+/* 공지를 집어 들면 화면 위쪽에 뜨는 놓기 표적.
+   화면 한가운데를 가로막지 않으므로 목록 아래쪽 공지를 끌어도 카드가 가려지지 않고,
+   스크롤 위치와 무관하게 항상 같은 자리에 있다. 글자는 두지 않고 도형으로만 알린다. */
 .split-drop-overlay {
     position: fixed;
     z-index: 1900;
-    top: 50%;
-    left: max(calc(var(--rail-width) + 14px), calc((100vw - 1400px) / 2 + 14px));
-    right: max(calc(var(--rail-width) + 14px), calc((100vw - 1400px) / 2 + 14px));
-    display: grid;
-    grid-template-columns: 92px minmax(160px, 1fr) 92px;
-    gap: 0;
-    height: min(360px, calc(100vh - 180px));
+    top: 16px;
+    left: 0;
+    right: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
     margin: 0;
     padding: 0;
     opacity: 0;
     pointer-events: none;
-    transform: translateY(-50%);
-    transition: opacity 0.14s ease;
+    transform: translateY(-8px);
+    transition: opacity 0.16s ease, transform 0.16s cubic-bezier(0.33, 1, 0.68, 1);
 }
 .split-drop-overlay[hidden] { display: none; }
-.split-drop-overlay.visible { opacity: 1; pointer-events: none; }
-.split-drop-zone.is-left { grid-column: 1; }
-.split-drop-zone.is-right { grid-column: 3; }
+.split-drop-overlay.visible { opacity: 1; transform: translateY(0); pointer-events: none; }
 .split-drop-zone {
-    position: relative;
-    min-width: 0;
-    min-height: 0;
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    color: #596273;
-    background: rgba(241, 243, 247, 0.9);
-    border: 1px dashed #8f98a8;
-    border-radius: 10px;
-    box-shadow: 0 10px 28px rgba(19, 42, 86, 0.1);
-    backdrop-filter: blur(5px);
+    display: grid;
+    width: 62px;
+    height: 48px;
+    padding: 0;
+    place-items: center;
+    color: #5b6577;
+    background: rgba(255, 255, 255, 0.94);
+    border: 1px solid #ccd3de;
+    border-radius: 12px;
+    box-shadow: 0 6px 20px rgba(19, 42, 86, 0.14);
+    backdrop-filter: blur(6px);
     font: inherit;
     cursor: copy;
     pointer-events: auto;
-    transition: background-color 0.12s ease, color 0.12s ease;
+    transition: color 0.14s ease, background-color 0.14s ease,
+        border-color 0.14s ease, box-shadow 0.14s ease, transform 0.14s ease;
 }
+.split-drop-glyph { width: 26px; height: 26px; }
 .split-drop-zone.active {
-    color: var(--primary);
-    background: rgba(224, 233, 249, 0.96);
+    color: #fff;
+    background: var(--primary);
     border-color: var(--primary);
-    box-shadow: 0 12px 34px rgba(29, 72, 153, 0.2);
+    box-shadow: 0 8px 22px rgba(29, 72, 153, 0.34);
+    transform: translateY(1px) scale(1.06);
 }
-.split-drop-plus {
-    display: grid;
-    width: 44px;
-    height: 44px;
-    place-items: center;
-    color: currentColor;
-    background: rgba(255, 255, 255, 0.84);
-    border: 1px dashed currentColor;
-    border-radius: 50%;
-    font-size: 28px;
-    font-weight: 300;
-    line-height: 1;
-}
-.split-drop-zone strong {
-    max-width: 72px;
-    font-size: 11px;
-    line-height: 1.45;
-    text-align: center;
-    word-break: keep-all;
+@media (prefers-reduced-motion: reduce) {
+    .split-drop-overlay,
+    .split-drop-zone { transition: none; }
 }
 
 .compare-space.is-notice-drop-active .compare-col-controls {
@@ -1311,6 +1467,11 @@ body.notice-dragging .notice-hover-preview { display: none !important; }
     grid-template-areas: "blocks base";
     align-items: start;
     gap: 28px;
+}
+/* 오른쪽 표적에 놓았으면 공지도 오른쪽에 선다. 영역 이름만 맞바꾸므로
+   DOM 순서는 그대로고 탭 순서도 흐트러지지 않는다. */
+.spatial-workspace.is-split[data-blocks="1"][data-dock="right"] {
+    grid-template-areas: "base blocks";
 }
 .spatial-workspace.is-split[data-blocks="1"] .compare-space {
     grid-area: blocks;
@@ -1788,7 +1949,33 @@ body.reordering-compare-block .compare-trash-zone {
 .detail-hero img {
     width: 100%; max-height: 520px; object-fit: contain;
     background: #f4f5f7; border: 1px solid var(--border); display: block;
+    /* 사진 자체는 더 이상 클릭 대상이 아니다. 확대는 '크게 보기' 버튼으로만 연다. */
+    cursor: default;
 }
+.detail-image-zoom {
+    position: absolute;
+    right: 14px;
+    bottom: 12px;
+    z-index: 2;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 34px;
+    padding: 0 12px;
+    color: #fff;
+    background: rgba(8, 19, 42, 0.72);
+    border: 1px solid rgba(255,255,255,0.38);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    backdrop-filter: blur(5px);
+    transition: background-color 0.16s ease, transform 0.16s ease;
+}
+.detail-image-zoom svg { width: 15px; height: 15px; }
+.detail-image-zoom:hover { background: rgba(30, 72, 155, 0.92); transform: translateY(-1px); }
+.detail-image-zoom:active { transform: translateY(0) scale(0.97); }
+.detail-image-zoom:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 .detail-image-nav {
     position: absolute;
     top: 50%;
@@ -1811,7 +1998,8 @@ body.reordering-compare-block .compare-trash-zone {
 .detail-image-nav.next { right: 14px; }
 .detail-image-counter {
     position: absolute;
-    right: 14px;
+    /* 오른쪽 아래는 '크게 보기' 버튼 자리이므로 장수 표시는 왼쪽으로 옮긴다. */
+    left: 14px;
     bottom: 12px;
     z-index: 2;
     padding: 5px 9px;

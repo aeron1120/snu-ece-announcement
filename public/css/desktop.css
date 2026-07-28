@@ -106,10 +106,9 @@ html[data-view="desktop"] .spatial-workspace.is-split[data-blocks="1"] .notice-b
         width: var(--compact-ad-rail-width);
     }
 
-    html[data-view="desktop"] .split-drop-overlay {
-        left: 14px;
-        right: calc(var(--compact-ad-rail-width) + 14px);
-    }
+    /* 놓기 표적은 화면 위 가운데에 작게 뜨므로 레일 폭을 따로 뺄 필요가 없다. */
 
-    html[data-view="desktop"] .rail-ad-image { width: 100%; height: 100%; object-fit: cover; }
+    /* 폭이 줄어든 데스크톱에서도 레일 전체를 채운다. 원본 비율은 유지하고
+       모자란 자리는 흐린 배경 층이 메운다. */
+    html[data-view="desktop"] .rail-ad-image { width: 100%; height: 100%; object-fit: contain; }
 }
