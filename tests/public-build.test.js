@@ -249,9 +249,14 @@ test('mobile cards stay compact, keep paging, and disable notice comparison drag
     assert.doesNotMatch(html, /class="search-brand"/);
     assert.match(html, /class="detail-back"[^>]*>← 이전</);
     assert.match(mobileCss, /\.card\s*\{[^}]*height:\s*auto;[^}]*aspect-ratio:\s*0\.72/s);
+    assert.match(mobileCss, /\.card\s*\{[^}]*border-radius:\s*0;[^}]*box-shadow:/s);
+    assert.match(mobileCss, /\.card\.card-urgent\s*\{[^}]*border:\s*2px solid #c0392b/s);
     assert.match(mobileCss, /\.card-img-preview\s*\{[^}]*object-fit:\s*cover/s);
     assert.match(mobileCss, /\.notice-pagination\s*\{[^}]*display:\s*flex/s);
     assert.match(mobileCss, /\.card-block-controls,[\s\S]*\.compare-space,[\s\S]*display:\s*none !important/s);
+    assert.match(html, /id="mobile-special-filter-toggle"[\s\S]*toggleMobileQuickFilters/);
+    assert.match(mobileCss, /\.notice-quick-filters\.is-mobile-open\s*\{\s*display:\s*grid;/s);
+    assert.match(mobileCss, /button:active:not\(:disabled\),[\s\S]*transform:\s*translateY\(1px\) scale\(0\.97\)/s);
     assert.match(renderCards, /const comparisonEnabled = getLayoutMode\(\) === 'desktop'/);
     assert.match(renderCards, /const blockControlsHtml = comparisonEnabled/);
     assert.match(renderCards, /splitHandle\?\.addEventListener/);
@@ -304,9 +309,9 @@ test('notice blocks use six-dot handles and expose only left/right split targets
     assert.match(css, /\.spatial-workspace\.is-split\[data-blocks="1"\] \.compare-space\s*\{[^}]*position:\s*sticky/s);
     assert.match(css, /\.spatial-workspace\.is-split\[data-blocks="1"\] \.notice-base-block > \.grid\s*\{[^}]*grid-template-columns:\s*repeat\(2,/s);
     assert.match(css, /\.compare-space\.is-notice-drop-active \.compare-empty-slot\s*\{[^}]*display:\s*flex;/s);
-    assert.match(css, /\.compare-col-controls\s*\{[^}]*position:\s*absolute;[^}]*left:\s*-54px;[^}]*opacity:\s*0;/s);
+    assert.match(css, /\.compare-col-controls\s*\{[^}]*position:\s*absolute;[^}]*left:\s*-44px;[^}]*opacity:\s*0;/s);
     assert.match(css, /\.compare-col:hover > \.compare-col-controls[\s\S]*opacity:\s*1;/);
-    assert.match(css, /\.compare-col\s*\{[^}]*background:\s*transparent;[^}]*border:\s*0;[^}]*box-shadow:\s*none;/s);
+    assert.match(css, /\.compare-col\s*\{[^}]*background:\s*#fff;[^}]*border:\s*1px solid #e4e8ef;[^}]*box-shadow:\s*0 10px 28px/s);
     assert.match(css, /\.compare-col-content\s*\{[^}]*max-height:\s*none;[^}]*background:\s*transparent;[^}]*border:\s*0;/s);
     assert.match(css, /\.compare-col-body\s*\{[^}]*max-height:\s*440px;[^}]*overflow:\s*hidden/s);
     assert.match(css, /\.compare-col\.is-expanded \.compare-col-body\s*\{[^}]*max-height:\s*none/s);
@@ -534,7 +539,7 @@ test('the contact modal is an anonymous feedback box, not admin contact info', a
     assert.doesNotMatch(feedbackRoute, /req\.ip|x-forwarded-for|headers\['user-agent'\]/i);
 });
 
-test('AI summaries disclose their limits and can be reported for admin review', async () => {
+test('AI summaries keep reporting support without a permanent mismatch prompt', async () => {
     const html = await readFile('index.html', 'utf8');
     const app = await readFile('js/core.js', 'utf8');
     const server = await readFile('server/server.js', 'utf8');
@@ -546,7 +551,7 @@ test('AI summaries disclose their limits and can be reported for admin review', 
     assert.match(html, />AI 3줄 요약</);
     assert.doesNotMatch(html, /Gemini AI 3줄 요약/);
     assert.doesNotMatch(html, /원문 확인 필수/);
-    assert.match(html, /요약이 원문과 다릅니다/);
+    assert.doesNotMatch(html, /요약이 원문과 다릅니다/);
     assert.match(html, /aria-label="서울대학교 관련 링크"[\s\S]*href="\.\/service-guide\.html">서비스 안내/);
     const inquiryLinks = html.slice(
         html.indexOf('<nav class="brand-links inquiry-links"'),

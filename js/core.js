@@ -697,8 +697,12 @@ function renderRightRailAd({ restartRotation = true, transitionDirection = 0 } =
 
     const useMobileBanner = document.documentElement.dataset.view === 'mobile';
     const bannerImageSrc = useMobileBanner
-        ? (slide.mobileSrc || slide.src)
-        : (slide.src || slide.mobileSrc);
+        ? slide.mobileSrc
+        : slide.src;
+    if (!bannerImageSrc) {
+        renderRightRailInquiryFallback();
+        return;
+    }
     const image = bannerImageSrc
         ? `<img class="rail-ad-image" src="${escapeHtml(bannerImageSrc)}" alt="${escapeHtml(slide.altText || slide.name || '학내 홍보 이미지')}" onerror="renderRightRailInquiryFallback()">`
         : '';
@@ -1160,7 +1164,7 @@ async function submitFeedback() {
 async function reportSummaryMismatch(id, button) {
     const noticeId = String(id || '').trim();
     if (!noticeId || button?.disabled) return;
-    const originalLabel = button?.textContent || '요약이 원문과 다릅니다';
+    const originalLabel = button?.textContent || '요약 오류 신고';
     if (button) {
         button.disabled = true;
         button.textContent = '전달 중…';
@@ -1300,6 +1304,28 @@ function toggleFilterPanel() {
     document.getElementById('filter-panel').classList.toggle('open', filterPanelOpen);
     document.getElementById('filter-chevron').style.transform = filterPanelOpen ? 'rotate(180deg)' : '';
     if (filterPanelOpen) buildHostButtons();
+}
+
+function closeFilterPanel() {
+    const panel = document.getElementById('filter-panel');
+    const chevron = document.getElementById('filter-chevron');
+    panel?.classList.remove('open');
+    if (chevron) chevron.style.transform = '';
+    document.getElementById('filter-toggle-bar')
+        ?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function toggleMobileQuickFilters() {
+    const filters = document.getElementById('notice-quick-filters');
+    const toggle = document.getElementById('mobile-special-filter-toggle');
+    if (!filters || !toggle) return;
+    const open = !filters.classList.contains('is-mobile-open');
+    filters.classList.toggle('is-mobile-open', open);
+    toggle.classList.toggle('is-open', open);
+    toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    toggle.querySelector('.sr-only').textContent = open
+        ? '빠른 필터 접기'
+        : '빠른 필터 펼치기';
 }
 
 function buildHostButtons() {
@@ -2667,8 +2693,6 @@ function renderCompareSpace(blockIds = compareBlocks) {
                         <h4 class="compare-col-label">AI 3줄 요약</h4>
                     </div>
                     <ul class="compare-col-summary">${summary}</ul>
-                    <button class="summary-mismatch-button" type="button"
-                            onclick="reportSummaryMismatch('${safeId}', this)">요약이 원문과 다릅니다</button>
                     <h4 class="compare-col-label">공지 원문</h4>
                     <div class="compare-col-content">${linkify(notice.content || '')}</div>
                     <button class="compare-col-open" type="button" onclick="openDetail('${safeId}')">전체 공지 열기 →</button>

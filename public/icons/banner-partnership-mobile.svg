@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 675" role="img" aria-labelledby="title desc">
+  <title id="title">학내 홍보 신청 모바일 배너</title>
+  <desc id="desc">모바일 가로 화면에 맞춘 학내 홍보 신청 안내</desc>
+  <rect width="1200" height="675" fill="#132959"/>
+  <rect x="30" y="30" width="1140" height="615" fill="none" stroke="#fff" stroke-width="3"/>
+  <text x="76" y="112" fill="#b8c9ec" font-family="Arial, sans-serif" font-size="24" font-weight="700">PARTNERSHIP</text>
+  <text x="76" y="250" fill="#fff" font-family="Arial, sans-serif" font-size="82" font-weight="800">YOUR NEWS, OUR SPACE.</text>
+  <text x="76" y="330" fill="#d7e1f5" font-family="Arial, sans-serif" font-size="32">학내 홍보를 신청하세요.</text>
+  <rect x="76" y="388" width="280" height="72" fill="#fff"/>
+  <text x="216" y="435" fill="#17337a" font-family="Arial, sans-serif" font-size="27" font-weight="700" text-anchor="middle">문의하기 →</text>
+  <g transform="translate(860 315)" fill="none" stroke="#9eb5e6" stroke-width="14">
+    <rect width="190" height="220"/>
+    <path d="M38 62h114M38 112h114M38 162h72"/>
+  </g>
+  <text x="76" y="590" fill="#9eb5e6" font-family="Arial, sans-serif" font-size="20">MOBILE BANNER 03</text>
+</svg>

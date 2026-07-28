@@ -84,6 +84,8 @@ test('banner payload accepts only known placements and web links', () => {
         owner: '학생 동아리',
         status: 'approved',
         placement: 'right_rail',
+        src: 'data:image/png;base64,desktop',
+        mobileSrc: 'data:image/png;base64,mobile',
         linkUrl: 'https://example.com/join',
         altText: '가입 안내 포스터',
         description: '학생 대상 서비스',
@@ -129,6 +131,15 @@ test('banner payload enforces text limits and requires text or image', () => {
         () => normalizeBannerPayload({ placement: 'right_rail', owner: '학생회' }),
         /텍스트 또는 이미지/
     );
+    assert.throws(
+        () => normalizeBannerPayload({
+            placement: 'right_rail',
+            owner: '학생회',
+            text: '홍보',
+            src: 'data:image/png;base64,desktop'
+        }),
+        /데스크탑과 모바일 이미지/
+    );
 });
 
 test('right rail accepts at most five active banners', async t => {
@@ -147,7 +158,9 @@ test('right rail accepts at most five active banners', async t => {
             text: 'sixth banner',
             owner: '학생회',
             status: 'approved',
-            placement: 'right_rail'
+            placement: 'right_rail',
+            src: 'data:image/png;base64,desktop',
+            mobileSrc: 'data:image/png;base64,mobile'
         })),
         /최대 5개/
     );

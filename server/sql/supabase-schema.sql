@@ -295,7 +295,7 @@ values
   ('학사', 'academic', true),
   ('기회', 'opportunity', true),
   ('혜택', 'benefit', true),
-  ('자치·행사', 'community', true)
+  ('행사', 'community', true)
 on conflict (slug) do update
 set name = excluded.name,
     is_active = true,

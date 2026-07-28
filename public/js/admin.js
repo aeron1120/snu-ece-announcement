@@ -2086,6 +2086,13 @@ async function updateBannerSlide(slideId) {
         alert('홍보 제목 또는 이미지를 입력해주세요.');
         return;
     }
+    const nextDesktopImage = imageSrc || (removeExistingImage ? null : (prevSlide.src || null));
+    const nextMobileImage = mobileImageSrc
+        || (removeExistingMobileImage ? null : (prevSlide.mobileSrc || null));
+    if (!nextDesktopImage || !nextMobileImage) {
+        alert('데스크탑과 모바일 배너 이미지를 각각 등록해주세요.');
+        return;
+    }
 
     try {
         const result = await apiRequest(`/api/banner-slides/${slideId}`, {
@@ -2096,8 +2103,8 @@ async function updateBannerSlide(slideId) {
                 text: newText || prevSlide.text || '이미지 배너',
                 textColor: newColor,
                 bgStyle: prevSlide.bgStyle || 'background: #ffffff;',
-                src: imageSrc || (removeExistingImage ? null : (prevSlide.src || null)),
-                mobileSrc: mobileImageSrc || (removeExistingMobileImage ? null : (prevSlide.mobileSrc || prevSlide.src || null)),
+                src: nextDesktopImage,
+                mobileSrc: nextMobileImage,
                 order: Number(prevSlide.order) || 0,
                 placement: prevSlide.placement || 'header',
                 description: descriptionInput ? descriptionInput.value.trim() : (prevSlide.description || ''),

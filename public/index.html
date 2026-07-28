@@ -50,7 +50,10 @@
 
     <aside class="site-rail brand-rail rail-left" id="left-brand-rail" aria-label="학교 바로가기"
            draggable="false" ondragstart="return false">
-        <button type="button" class="drawer-close-btn mobile-only" aria-label="메뉴 닫기" onclick="closeMobileDrawer()">×</button>
+        <button type="button" class="drawer-close-btn mobile-only" aria-label="메뉴에서 돌아가기"
+                onclick="closeMobileDrawer()">
+            <span aria-hidden="true">←</span><span>돌아가기</span>
+        </button>
         <!-- 엠블럼을 누르면 상세·필터 주소를 지우고 홈을 완전히 새로 불러온다. -->
         <button type="button" class="brand-logo-btn" id="brand-logo-btn" title="홈으로 돌아가기"
                 aria-label="SNU ECE 공지방 홈으로 돌아가기" onclick="goHomeAndReload()">
@@ -101,13 +104,6 @@
     </div>
 </nav>
 
-<div class="notice-quick-filters" id="notice-quick-filters" aria-label="공지 빠른 필터">
-    <button type="button" data-quick-filter="urgent" onclick="toggleQuickNoticeFilter('urgent')">마감임박</button>
-    <button type="button" data-quick-filter="reward" onclick="toggleQuickNoticeFilter('reward')">리워드 있음</button>
-    <button type="button" data-quick-filter="action" onclick="toggleQuickNoticeFilter('action')">신청 필요</button>
-    <button type="button" data-quick-filter="past" onclick="toggleQuickNoticeFilter('past')">지난 공지 보기</button>
-</div>
-
 <div class="search-wrapper">
     <!-- 검색바. 대상 학번은 상세 필터에서만 조정한다. -->
     <div class="search-container" role="search">
@@ -121,6 +117,23 @@
                 </svg>
             </button>
         </label>
+    </div>
+
+    <button type="button" class="mobile-special-filter-toggle mobile-only"
+            id="mobile-special-filter-toggle" aria-expanded="false"
+            aria-controls="notice-quick-filters" onclick="toggleMobileQuickFilters()">
+        <span class="sr-only">빠른 필터 펼치기</span>
+        <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2"
+             viewBox="0 0 24 24" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" d="m6 9 6 6 6-6"/>
+        </svg>
+    </button>
+
+    <div class="notice-quick-filters" id="notice-quick-filters" aria-label="공지 빠른 필터">
+        <button type="button" data-quick-filter="urgent" onclick="toggleQuickNoticeFilter('urgent')">마감임박</button>
+        <button type="button" data-quick-filter="reward" onclick="toggleQuickNoticeFilter('reward')">리워드 있음</button>
+        <button type="button" data-quick-filter="action" onclick="toggleQuickNoticeFilter('action')">신청 필요</button>
+        <button type="button" data-quick-filter="past" onclick="toggleQuickNoticeFilter('past')">지난 공지 보기</button>
     </div>
 
     <!-- 고급 필터 토글 바 -->
@@ -207,6 +220,14 @@
 
         <div class="filter-panel-footer">
             <button class="btn btn-outline btn-small" onclick="resetAllFilters()">필터 전체 초기화</button>
+            <button class="btn btn-outline btn-small mobile-only filter-panel-close"
+                    type="button" onclick="closeFilterPanel()" aria-label="상세 필터 닫기">
+                필터 닫기
+                <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5"
+                     viewBox="0 0 24 24" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="m18 15-6-6-6 6"/>
+                </svg>
+            </button>
         </div>
     </div>
 </div>
@@ -295,8 +316,6 @@
             <h4>AI 3줄 요약</h4>
         </div>
         <ul id="detail-summary"></ul>
-        <button class="summary-mismatch-button" type="button"
-                onclick="reportSummaryMismatch(currentViewId, this)">요약이 원문과 다릅니다</button>
     </div>
     <div class="gallery-container" id="detail-gallery" style="display: none;"></div>
     <div class="original-text-box">

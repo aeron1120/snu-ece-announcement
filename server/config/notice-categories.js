@@ -19,7 +19,7 @@ export const CANONICAL_NOTICE_CATEGORIES = Object.freeze([
     }),
     Object.freeze({
         key: 'COMMUNITY',
-        name: '자치·행사',
+        name: '행사',
         slug: 'community',
         definition: '학생 자치, 학내 행사, 시설·출입·교통 등 공동체와 캠퍼스 생활에 관한 공지'
     })

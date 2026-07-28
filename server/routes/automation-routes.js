@@ -152,7 +152,7 @@ export function createAutomationRouter({
 
     router.post('/api/admin/category-candidates/:id/approve', requireAdmin, async (req, res) => {
         res.status(409).json({
-            error: '공지 주제는 학사·기회·혜택·자치·행사 네 범주로 고정되어 있습니다. 기존 범주에 병합해주세요.'
+            error: '공지 주제는 학사·기회·혜택·행사 네 범주로 고정되어 있습니다. 기존 범주에 병합해주세요.'
         });
     });
 

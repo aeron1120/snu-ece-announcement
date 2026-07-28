@@ -140,7 +140,7 @@ const defaultBannerSlides = [
         bgStyle: 'background: #1f3f8f;',
         textColor: '#ffffff',
         src: '/icons/banner-campus.svg',
-        mobileSrc: '/icons/banner-campus.svg',
+        mobileSrc: '/icons/banner-campus-mobile.svg',
         order: 0,
         placement: 'right_rail',
         linkUrl: '',
@@ -158,7 +158,7 @@ const defaultBannerSlides = [
         bgStyle: 'background: #ffffff;',
         textColor: '#17337a',
         src: '/icons/banner-recruit.svg',
-        mobileSrc: '/icons/banner-recruit.svg',
+        mobileSrc: '/icons/banner-recruit-mobile.svg',
         order: 1,
         placement: 'right_rail',
         linkUrl: '',
@@ -176,7 +176,7 @@ const defaultBannerSlides = [
         bgStyle: 'background: #132959;',
         textColor: '#ffffff',
         src: '/icons/banner-partnership.svg',
-        mobileSrc: '/icons/banner-partnership.svg',
+        mobileSrc: '/icons/banner-partnership-mobile.svg',
         order: 2,
         placement: 'right_rail',
         linkUrl: '',
@@ -471,7 +471,7 @@ function createDefaultBannerFileRows() {
         bgStyle: slide.bgStyle,
         textColor: slide.textColor,
         src: slide.src,
-        mobileSrc: slide.mobileSrc || slide.src,
+        mobileSrc: slide.mobileSrc || null,
         order: Number.isFinite(Number(slide.order)) ? Number(slide.order) : index,
         placement: slide.placement || 'header',
         linkUrl: slide.linkUrl || '',
@@ -595,6 +595,9 @@ function normalizeBannerPayload(body = {}) {
     }
     if (!payload.text && !payload.src) {
         throw new TypeError('배너 텍스트 또는 이미지는 필수입니다.');
+    }
+    if (payload.placement === 'right_rail' && (!payload.src || !payload.mobileSrc)) {
+        throw new TypeError('오른쪽 홍보에는 데스크탑과 모바일 이미지를 각각 등록해야 합니다.');
     }
     return payload;
 }
@@ -959,7 +962,7 @@ async function ensureDefaultData() {
             bg_style: slide.bgStyle,
             text_color: slide.textColor,
             image_url: slide.src,
-            mobile_image_url: slide.mobileSrc || slide.src,
+            mobile_image_url: slide.mobileSrc || null,
             order: slide.order,
             placement: slide.placement || 'header',
             link_url: slide.linkUrl || '',
@@ -1659,7 +1662,7 @@ async function createBannerSlide(payload) {
             bgStyle: String(payload.bgStyle || '').trim(),
             textColor: String(payload.textColor || '').trim(),
             src: payload.src || null,
-            mobileSrc: payload.mobileSrc || payload.src || null,
+            mobileSrc: payload.mobileSrc || null,
             order: Number(payload.order) || 0,
             createdAt: new Date().toISOString(),
             expiresAt: payload.expiresAt || sevenDaysLater.toISOString(),
@@ -1690,7 +1693,7 @@ async function createBannerSlide(payload) {
             bg_style: String(payload.bgStyle || '').trim(),
             text_color: String(payload.textColor || '').trim(),
             image_url: payload.src || null,
-            mobile_image_url: payload.mobileSrc || payload.src || null,
+            mobile_image_url: payload.mobileSrc || null,
             order: Number(payload.order) || 0,
             ends_at: payload.expiresAt || sevenDaysLater.toISOString(),
             placement: 'right_rail',
@@ -1929,7 +1932,7 @@ function toClientBannerSlide(row) {
         bgStyle: row.bg_style || row.bgStyle || '',
         textColor: row.text_color || row.textColor || '',
         src: row.image_url || row.src || null,
-        mobileSrc: row.mobile_image_url || row.mobileSrc || row.image_url || row.src || null,
+        mobileSrc: row.mobile_image_url || row.mobileSrc || null,
         order: Number(row.order) || 0,
         expiresAt: row.ends_at || row.expires_at || row.expiresAt || null,
         placement: row.placement || 'header',
