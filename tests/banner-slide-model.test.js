@@ -28,7 +28,7 @@ test('legacy banner rows default to header and preserve new metadata', () => {
             src: null,
             order: 2,
             link_url: 'https://example.com/ad',
-            alt_text: '학생 할인 광고',
+            alt_text: '학생 할인 학내 홍보',
             description: '이번 달 혜택'
         }),
         {
@@ -42,7 +42,7 @@ test('legacy banner rows default to header and preserve new metadata', () => {
             expiresAt: null,
             placement: 'header',
             linkUrl: 'https://example.com/ad',
-            altText: '학생 할인 광고',
+            altText: '학생 할인 학내 홍보',
             description: '이번 달 혜택',
             type: 'council',
             owner: 'SNU ECE 학생회',
@@ -77,7 +77,7 @@ test('banner updates omit an empty expiry so the stored value is preserved', () 
 
 test('banner payload accepts only known placements and web links', () => {
     const payload = normalizeBannerPayload({
-        name: '세로 광고',
+        name: '세로 학내 홍보',
         text: '가입 안내',
         type: 'club',
         owner: '학생 동아리',

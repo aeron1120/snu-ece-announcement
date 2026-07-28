@@ -107,8 +107,8 @@ html[data-view="mobile"] .notice-sort-chips button {
 }
 
 /* ---------- 공지 목록 ---------- */
-html[data-view="mobile"] .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-html[data-view="mobile"] .card { height: 360px; }
+html[data-view="mobile"] .grid { grid-template-columns: 1fr; gap: 10px; }
+html[data-view="mobile"] .card { height: 390px; }
 html[data-view="mobile"] .card-poster { flex-basis: 150px; height: 150px; padding: 16px; }
 html[data-view="mobile"] .card-poster-title { font-size: 18px; line-height: 1.35; }
 html[data-view="mobile"] .card-body { padding: 12px; }
@@ -199,6 +199,20 @@ html[data-view="mobile"] .split-drop-zone {
 html[data-view="mobile"] .split-drop-zone strong {
     max-width: 90px;
     text-align: center;
+}
+
+@media (max-width: 420px) {
+    html[data-view="mobile"] .category-tabs-inner {
+        width: 100%;
+        justify-content: space-between;
+        gap: 0;
+        padding: 0 10px;
+    }
+    html[data-view="mobile"] .category-tab {
+        min-width: 0;
+        font-size: 13px;
+        letter-spacing: -0.04em;
+    }
 }
 html[data-view="mobile"] .compare-space-actions { width: 100%; justify-content: space-between; }
 html[data-view="mobile"] .detail-actions { flex-direction: column; }

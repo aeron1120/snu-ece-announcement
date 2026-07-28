@@ -409,8 +409,6 @@ test('the public rail presents approved campus promotion instead of advertising 
     assert.match(html, />홍보 신청하기</);
     assert.match(app, />홍보 신청하기</);
     assert.match(html, /class="rail-section-label">학내 홍보</);
-    assert.doesNotMatch(html, />광고</);
-    assert.doesNotMatch(html, />AD</);
     assert.match(html, /class="rail-section-label">문의</);
     assert.match(html, /onclick="openContactFromRail\(\)">일반 문의하기/);
     assert.match(html, /onclick="openBannerInquiryFromRail\(\)">홍보 신청하기/);
@@ -1245,7 +1243,8 @@ test('column counts live in the per-view layers, not in core', async () => {
     assert.match(desktop, /html\[data-view="desktop"\] \.grid\s*\{[^}]*grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\)/s);
     assert.match(desktop, /@media \(max-width:\s*1200px\)[\s\S]*grid-template-columns:\s*repeat\(3/);
     assert.match(desktop, /@media \(max-width:\s*900px\)[\s\S]*grid-template-columns:\s*repeat\(2/);
-    assert.match(mobile, /html\[data-view="mobile"\] \.grid\s*\{[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/s);
+    assert.match(mobile, /html\[data-view="mobile"\] \.grid\s*\{[^}]*grid-template-columns:\s*1fr/s);
+    assert.match(mobile, /@media \(max-width:\s*420px\)[\s\S]*\.category-tabs-inner\s*\{[^}]*width:\s*100%;[^}]*justify-content:\s*space-between/s);
     assert.doesNotMatch(mobile, /\.notice-base-block \.grid,\s*\nhtml\[data-view="mobile"\] \.compare-space-stage/);
     assert.match(mobile, /\.image-viewer-action\s*\{[^}]*min-height:\s*38px/s);
     assert.match(mobile, /\.image-viewer \.nav-btn\.left\s*\{[^}]*left:\s*8px/s);

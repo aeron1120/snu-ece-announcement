@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 대형 데스크톱에 학교 아이덴티티형 왼쪽 레일과 관리자 등록형 오른쪽 세로 광고를 추가하고, 중앙 공지 목록을 빈 공간을 다음 카드가 채우는 다단 레이아웃으로 변경한다.
+**Goal:** 대형 데스크톱에 학교 아이덴티티형 왼쪽 레일과 관리자 등록형 오른쪽 세로 학내 홍보를 추가하고, 중앙 공지 목록을 빈 공간을 다음 카드가 채우는 다단 레이아웃으로 변경한다.
 
-**Architecture:** 기존 `banner_slides` 모델에 표시 위치와 광고 메타데이터를 추가하되 필드가 없는 기존 데이터는 `header`로 정규화한다. 메인 페이지는 브랜드 레일·중앙 콘텐츠·광고 레일의 3열 셸을 사용하고, 1880px 미만에서는 중앙 콘텐츠만 남긴다. 공지 순서와 카드 동작은 그대로 유지하면서 CSS multi-column으로 시각적 빈 공간만 제거한다.
+**Architecture:** 기존 `banner_slides` 모델에 표시 위치와 학내 홍보 메타데이터를 추가하되 필드가 없는 기존 데이터는 `header`로 정규화한다. 메인 페이지는 브랜드 레일·중앙 콘텐츠·학내 홍보 레일의 3열 셸을 사용하고, 1880px 미만에서는 중앙 콘텐츠만 남긴다. 공지 순서와 카드 동작은 그대로 유지하면서 CSS multi-column으로 시각적 빈 공간만 제거한다.
 
 **Tech Stack:** Node.js 22+, Express 4, Supabase PostgreSQL, Vanilla JavaScript, HTML, CSS, Node.js 내장 테스트 러너, Cloudflare Pages 정적 빌드
 
@@ -13,8 +13,8 @@
 - 기존 상단 배너 슬라이더를 유지한다.
 - `placement`가 없는 기존 배너는 반드시 `header`로 처리한다.
 - `placement` 허용값은 `header`, `right_rail` 두 개뿐이다.
-- 광고 링크는 `http:` 또는 `https:` URL만 허용한다.
-- 이름은 50자, 배너 텍스트는 100자, 광고 설명은 240자, 대체 텍스트는 160자로 제한한다.
+- 학내 홍보 링크는 `http:` 또는 `https:` URL만 허용한다.
+- 이름은 50자, 배너 텍스트는 100자, 학내 홍보 설명은 240자, 대체 텍스트는 160자로 제한한다.
 - 만료일을 생략하면 저장 시점부터 7일 뒤로 설정하고, 입력한 만료일은 유효한 미래 날짜여야 한다.
 - 오른쪽 레일에는 만료되지 않고 삭제되지 않은 `right_rail` 항목 중 `order`가 가장 작은 한 건만 표시한다.
 - 좌우 레일은 1880px 이상에서만 보이고 `position: sticky`로 동작한다.
@@ -25,7 +25,7 @@
 
 ---
 
-### Task 1: 배너 위치 및 광고 필드 정규화
+### Task 1: 배너 위치 및 학내 홍보 필드 정규화
 
 **Files:**
 - Create: `tests/banner-slide-model.test.js`
@@ -63,7 +63,7 @@ test('legacy banner rows default to header and preserve new metadata', () => {
             src: null,
             order: 2,
             link_url: 'https://example.com/ad',
-            alt_text: '학생 할인 광고',
+            alt_text: '학생 할인 학내 홍보',
             description: '이번 달 혜택'
         }),
         {
@@ -77,7 +77,7 @@ test('legacy banner rows default to header and preserve new metadata', () => {
             expiresAt: null,
             placement: 'header',
             linkUrl: 'https://example.com/ad',
-            altText: '학생 할인 광고',
+            altText: '학생 할인 학내 홍보',
             description: '이번 달 혜택'
         }
     );
@@ -85,7 +85,7 @@ test('legacy banner rows default to header and preserve new metadata', () => {
 
 test('banner payload accepts only known placements and web links', () => {
     const payload = normalizeBannerPayload({
-        name: '세로 광고',
+        name: '세로 학내 홍보',
         text: '가입 안내',
         placement: 'right_rail',
         linkUrl: 'https://example.com/join',
@@ -99,15 +99,15 @@ test('banner payload accepts only known placements and web links', () => {
     assert.equal(payload.expiresAt, '2999-08-31T14:59:59.000Z');
 
     assert.throws(
-        () => normalizeBannerPayload({ text: '광고', placement: 'footer' }),
+        () => normalizeBannerPayload({ text: '학내 홍보', placement: 'footer' }),
         /표시 위치/
     );
     assert.throws(
-        () => normalizeBannerPayload({ text: '광고', linkUrl: 'javascript:alert(1)' }),
+        () => normalizeBannerPayload({ text: '학내 홍보', linkUrl: 'javascript:alert(1)' }),
         /http 또는 https/
     );
     assert.throws(
-        () => normalizeBannerPayload({ text: '광고', expiresAt: 'not-a-date' }),
+        () => normalizeBannerPayload({ text: '학내 홍보', expiresAt: 'not-a-date' }),
         /만료일/
     );
 });
@@ -147,10 +147,10 @@ function normalizeBannerPayload(body = {}) {
         try {
             parsed = new URL(linkUrl);
         } catch {
-            throw new TypeError('광고 링크는 유효한 http 또는 https URL이어야 합니다.');
+            throw new TypeError('학내 홍보 링크는 유효한 http 또는 https URL이어야 합니다.');
         }
         if (!['http:', 'https:'].includes(parsed.protocol)) {
-            throw new TypeError('광고 링크는 http 또는 https URL이어야 합니다.');
+            throw new TypeError('학내 홍보 링크는 http 또는 https URL이어야 합니다.');
         }
     }
 
@@ -180,7 +180,7 @@ function normalizeBannerPayload(body = {}) {
     const limits = [
         ['name', 50, '이름'],
         ['text', 100, '배너 텍스트'],
-        ['description', 240, '광고 설명'],
+        ['description', 240, '학내 홍보 설명'],
         ['altText', 160, '대체 텍스트']
     ];
     for (const [field, max, label] of limits) {
@@ -275,7 +275,7 @@ git commit -m "feat: extend banner model for side rail ads"
 
 ---
 
-### Task 2: 상단 배너와 오른쪽 광고의 분리 렌더링
+### Task 2: 상단 배너와 오른쪽 학내 홍보의 분리 렌더링
 
 **Files:**
 - Modify: `tests/public-build.test.js`
@@ -348,10 +348,10 @@ Expected: FAIL because the rail IDs and placement render functions do not exist.
 
 ```html
     </main>
-    <aside class="site-rail ad-rail" id="right-ad-rail" aria-label="광고">
+    <aside class="site-rail ad-rail" id="right-ad-rail" aria-label="학내 홍보">
         <div id="right-rail-ad-content" aria-live="polite">
-            <span class="ad-label">AD</span>
-            <h2>배너 광고 문의</h2>
+            <span class="ad-label">PROMO</span>
+            <h2>배너 학내 홍보 문의</h2>
             <p>학생들에게 소식을 알릴 세로 배너를 등록해보세요.</p>
             <button class="rail-cta" type="button" onclick="openModal('contact-modal')">문의하기</button>
         </div>
@@ -377,8 +377,8 @@ function renderRightRailAd() {
 
     if (!slide) {
         container.innerHTML = `
-            <span class="ad-label">AD</span>
-            <h2>배너 광고 문의</h2>
+            <span class="ad-label">PROMO</span>
+            <h2>배너 학내 홍보 문의</h2>
             <p>학생들에게 소식을 알릴 세로 배너를 등록해보세요.</p>
             <button class="rail-cta" type="button" onclick="openModal('contact-modal')">문의하기</button>
         `;
@@ -386,12 +386,12 @@ function renderRightRailAd() {
     }
 
     const image = slide.src
-        ? `<img src="${escapeHtml(slide.src)}" alt="${escapeHtml(slide.altText || slide.name || '광고 이미지')}" onerror="this.hidden=true">`
+        ? `<img src="${escapeHtml(slide.src)}" alt="${escapeHtml(slide.altText || slide.name || '학내 홍보 이미지')}" onerror="this.hidden=true">`
         : '';
     const content = `
-        <span class="ad-label">AD</span>
+        <span class="ad-label">PROMO</span>
         ${image}
-        <h2>${escapeHtml(slide.text || slide.name || '광고')}</h2>
+        <h2>${escapeHtml(slide.text || slide.name || '학내 홍보')}</h2>
         ${slide.description ? `<p>${escapeHtml(slide.description)}</p>` : ''}
         ${slide.linkUrl ? '<span class="rail-cta">자세히 보기</span>' : ''}
     `;
@@ -447,7 +447,7 @@ body {
 }
 ```
 
-브랜드 레일은 `#17408b` 배경과 흰색 텍스트, 세로 링크를 사용한다. 광고 레일은 흰색 배경, `1px` 테두리, `AD` 라벨을 사용한다. 광고 이미지는 `width:100%`, `aspect-ratio:9/16`, `object-fit:cover`로 표시한다. 모든 링크와 버튼에 `:focus-visible` 외곽선을 제공한다.
+브랜드 레일은 `#17408b` 배경과 흰색 텍스트, 세로 링크를 사용한다. 학내 홍보 레일은 흰색 배경, `1px` 테두리, `PROMO` 라벨을 사용한다. 학내 홍보 이미지는 `width:100%`, `aspect-ratio:9/16`, `object-fit:cover`로 표시한다. 모든 링크와 버튼에 `:focus-visible` 외곽선을 제공한다.
 
 - [ ] **Step 6: 레일 렌더링 테스트 실행**
 
@@ -455,7 +455,7 @@ Run: `node --test tests/public-build.test.js`
 
 Expected: PASS.
 
-- [ ] **Step 7: 페이지 셸과 광고 렌더링 커밋**
+- [ ] **Step 7: 페이지 셸과 학내 홍보 렌더링 커밋**
 
 ```bash
 git add tests/public-build.test.js index.html js/app.js css/style.css
@@ -517,7 +517,7 @@ Expected: FAIL because the separate list IDs and placement-aware functions do no
     <div class="banner-slides-list" id="header-banner-slides-list"></div>
 </section>
 <section class="banner-placement-section" aria-labelledby="right-rail-manager-title">
-    <h4 id="right-rail-manager-title">오른쪽 세로 광고</h4>
+    <h4 id="right-rail-manager-title">오른쪽 세로 학내 홍보</h4>
     <div class="banner-slides-list" id="right-rail-slides-list"></div>
 </section>
 ```
@@ -529,7 +529,7 @@ Expected: FAIL because the separate list IDs and placement-aware functions do no
 ```js
 function renderBannerList() {
     renderBannerSection('header', '상단 배너');
-    renderBannerSection('right_rail', '오른쪽 세로 광고');
+    renderBannerSection('right_rail', '오른쪽 세로 학내 홍보');
 }
 ```
 
@@ -550,7 +550,7 @@ function toDateTimeLocalValue(value) {
 ```js
 const rightRailFields = placement === 'right_rail' ? `
     <textarea class="banner-input-description-${safeId}" maxlength="240"
-        placeholder="짧은 광고 설명">${escapeHtml(slide.description || '')}</textarea>
+        placeholder="짧은 학내 홍보 설명">${escapeHtml(slide.description || '')}</textarea>
     <input type="url" class="banner-input-link-${safeId}"
         value="${escapeHtml(slide.linkUrl || '')}" placeholder="https://...">
     <input type="text" class="banner-input-alt-${safeId}" maxlength="160"
@@ -573,7 +573,7 @@ const rightRailFields = placement === 'right_rail' ? `
 
 상단 배너 추가 폼에서는 설명·URL·대체 텍스트를 렌더링하지 않는다.
 
-- [ ] **Step 5: 생성·수정·정렬 요청에 위치와 광고 메타데이터 연결**
+- [ ] **Step 5: 생성·수정·정렬 요청에 위치와 학내 홍보 메타데이터 연결**
 
 `addNewBannerSlide(placement)`은 위치가 포함된 ID에서 값을 읽고 다음 body를 전송한다.
 
@@ -593,7 +593,7 @@ const rightRailFields = placement === 'right_rail' ? `
 }
 ```
 
-`updateBannerSlide(slideId)`은 기존 `prevSlide.placement || 'header'`, 이름, 만료일과 광고 필드를 보존하고 수정 입력값을 덮어쓴다. `datetime-local` 값은 요청 직전에 `new Date(value).toISOString()`으로 변환한다. `moveBanner(placement, idx, dir)`은 `getBannerSlidesByPlacement(placement)` 배열 안에서만 순서를 바꾸며, 서버 응답을 받은 뒤 전체 `bannerSlides`를 다시 저장한다. 생성·수정·삭제·정렬 후 상단 배너, 오른쪽 광고, 관리자 목록을 모두 재렌더링한다.
+`updateBannerSlide(slideId)`은 기존 `prevSlide.placement || 'header'`, 이름, 만료일과 학내 홍보 필드를 보존하고 수정 입력값을 덮어쓴다. `datetime-local` 값은 요청 직전에 `new Date(value).toISOString()`으로 변환한다. `moveBanner(placement, idx, dir)`은 `getBannerSlidesByPlacement(placement)` 배열 안에서만 순서를 바꾸며, 서버 응답을 받은 뒤 전체 `bannerSlides`를 다시 저장한다. 생성·수정·삭제·정렬 후 상단 배너, 오른쪽 학내 홍보, 관리자 목록을 모두 재렌더링한다.
 
 - [ ] **Step 6: 관리자 폼 스타일 및 모바일 줄바꿈 추가**
 
@@ -605,7 +605,7 @@ Run: `node --test tests/public-build.test.js`
 
 Expected: PASS.
 
-- [ ] **Step 8: 관리자 광고 관리 커밋**
+- [ ] **Step 8: 관리자 학내 홍보 관리 커밋**
 
 ```bash
 git add tests/public-build.test.js index.html js/app.js css/style.css
