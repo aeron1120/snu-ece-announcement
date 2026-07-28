@@ -180,12 +180,12 @@ test('the public page drops the top banner, the saved-posts feature, and the ref
     assert.match(css, /\.bell-toggle\[aria-pressed="true"\]\s*\{[^}]*filter:\s*none/s);
 });
 
-test('layout mode is chosen before first paint and persisted per browser', async () => {
+test('layout mode is chosen before first paint and follows the real viewport', async () => {
     const html = await readFile('index.html', 'utf8');
     const app = await readFile('js/core.js', 'utf8');
 
     // 인라인 부트스트랩이 CSS보다 먼저 data-view를 확정해야 화면이 깜빡이지 않는다.
-    const headScriptIndex = html.indexOf("localStorage.getItem('eceLayoutMode')");
+    const headScriptIndex = html.indexOf("window.matchMedia('(max-width: 820px)')");
     const coreCssIndex = html.indexOf('css/core.css');
     assert.ok(headScriptIndex > 0 && headScriptIndex < coreCssIndex);
 
@@ -193,9 +193,11 @@ test('layout mode is chosen before first paint and persisted per browser', async
     assert.match(html, /id="view-mode-toggle"[^>]*onclick="openDevicePreview\(\)"/);
     assert.match(app, /function setLayoutMode/);
     assert.match(app, /function openDevicePreview/);
-    assert.match(app, /localStorage\.setItem\('eceLayoutMode', next\)/);
-    // 데스크탑 모드는 좁은 기기에서도 데스크탑 폭을 강제해야 의미가 있다.
-    assert.match(app, /'width=1280'/);
+    assert.match(app, /function initializeResponsiveLayout/);
+    assert.match(app, /responsiveLayoutMedia\.addEventListener\('change', apply\)/);
+    assert.doesNotMatch(html, /localStorage\.getItem\('eceLayoutMode'\)/);
+    assert.doesNotMatch(app, /localStorage\.setItem\('eceLayoutMode'/);
+    assert.doesNotMatch(app, /'width=1280'/);
 });
 
 test('mobile mode opens a blurred phone preview instead of reflowing the desktop page', async () => {
@@ -1330,9 +1332,10 @@ test('column counts live in the per-view layers, not in core', async () => {
     const mobile = await readFile('css/mobile.css', 'utf8');
 
     assert.match(desktop, /html\[data-view="desktop"\] \.grid\s*\{[^}]*grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\)/s);
-    assert.match(desktop, /@media \(max-width:\s*1200px\)[\s\S]*grid-template-columns:\s*repeat\(3/);
-    assert.match(desktop, /@media \(max-width:\s*900px\)[\s\S]*grid-template-columns:\s*repeat\(2/);
+    assert.match(desktop, /@media \(max-width:\s*1500px\)[\s\S]*grid-template-columns:\s*repeat\(2/);
+    assert.doesNotMatch(desktop, /grid-template-columns:\s*repeat\(3/);
     assert.match(mobile, /html\[data-view="mobile"\] \.grid\s*\{[^}]*grid-template-columns:\s*1fr/s);
+    assert.match(mobile, /html\[data-view="mobile"\] \.category-tabs\s*\{[^}]*overflow-x:\s*hidden/s);
     assert.match(mobile, /@media \(max-width:\s*420px\)[\s\S]*\.category-tabs-inner\s*\{[^}]*width:\s*100%;[^}]*justify-content:\s*space-between/s);
     assert.doesNotMatch(mobile, /\.notice-base-block \.grid,\s*\nhtml\[data-view="mobile"\] \.compare-space-stage/);
     assert.match(mobile, /\.image-viewer-action\s*\{[^}]*min-height:\s*38px/s);

@@ -138,29 +138,38 @@ function handleNoticeCardArrowKey(event) {
     event.preventDefault();
 }
 
-function setLayoutMode(mode, { persist = true } = {}) {
+let responsiveLayoutMedia = null;
+
+function setLayoutMode(mode) {
     const next = mode === 'mobile' ? 'mobile' : 'desktop';
+    if (getLayoutMode() === next) return;
     document.documentElement.setAttribute('data-view', next);
 
-    // 데스크탑 모드는 좁은 기기에서도 데스크탑 폭을 그대로 보여줘야 의미가 있다.
     const viewport = document.getElementById('viewport-meta');
-    if (viewport) {
-        viewport.setAttribute('content', next === 'desktop'
-            ? 'width=1280'
-            : 'width=device-width, initial-scale=1.0');
-    }
-
-    if (persist) {
-        try { localStorage.setItem('eceLayoutMode', next); } catch { /* 저장 실패는 무시 */ }
-    }
+    if (viewport) viewport.setAttribute('content', 'width=device-width, initial-scale=1.0');
 
     updateLayoutToggleLabel();
     applyViewModule(next);
     renderRightRailAd();
+    if (document.body?.dataset.page === 'public' && document.getElementById('notice-grid')) {
+        renderNoticeCards();
+    }
 }
 
 function toggleLayoutMode() {
     setLayoutMode(getLayoutMode() === 'desktop' ? 'mobile' : 'desktop');
+}
+
+function initializeResponsiveLayout() {
+    const forced = new URLSearchParams(location.search).get('view');
+    if (forced === 'mobile' || forced === 'desktop') return;
+    responsiveLayoutMedia = window.matchMedia('(max-width: 820px)');
+    const apply = event => setLayoutMode(event.matches ? 'mobile' : 'desktop');
+    if (typeof responsiveLayoutMedia.addEventListener === 'function') {
+        responsiveLayoutMedia.addEventListener('change', apply);
+    } else {
+        responsiveLayoutMedia.addListener?.(apply);
+    }
 }
 
 function updateLayoutToggleLabel() {
@@ -2650,6 +2659,7 @@ document.addEventListener('DOMContentLoaded', async function () {
     if (document.body.dataset.page !== 'public') return;
 
     updateLayoutToggleLabel();
+    initializeResponsiveLayout();
     applyViewModule(getLayoutMode());
     updateBellState();
     startRailClock();

@@ -87,6 +87,7 @@ html[data-view="mobile"] .mobile-mode-btn,
 html[data-preview="1"] .mobile-mode-btn { display: none !important; }
 
 /* ---------- 카테고리 탭 ---------- */
+html[data-view="mobile"] .category-tabs { overflow-x: hidden; }
 html[data-view="mobile"] .category-tabs-inner {
     display: flex;
     width: max-content;
