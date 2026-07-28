@@ -303,10 +303,12 @@
 .banner-field > span { color: var(--text-sub); font-size: 12px; font-weight: 700; }
 .banner-field-wide { grid-column: 1 / -1; }
 .banner-field input,
-.banner-field textarea { width: 100%; min-width: 0; padding: 9px 11px; border: 1px solid var(--border); font: inherit; font-size: 13.5px; background: #fff; }
+.banner-field textarea,
+.banner-field select { width: 100%; min-width: 0; padding: 9px 11px; border: 1px solid var(--border); font: inherit; font-size: 13.5px; background: #fff; }
 .banner-field textarea { min-height: 72px; resize: vertical; }
 .banner-field input:focus,
-.banner-field textarea:focus { outline: none; border-color: var(--primary); }
+.banner-field textarea:focus,
+.banner-field select:focus { outline: none; border-color: var(--primary); }
 .banner-form-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding-top: 4px; }
 .banner-item-form .btn { min-height: 36px; padding: 7px 13px; }
 .banner-item-add { background: #f7f9fd !important; border-color: #b8c8e8 !important; }

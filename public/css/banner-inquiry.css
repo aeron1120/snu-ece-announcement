@@ -16,7 +16,7 @@ body {
     background: linear-gradient(180deg, #f7f9fc 0, #fff 300px);
     font-family: Pretendard, "Malgun Gothic", sans-serif;
 }
-button, input, textarea { font: inherit; }
+button, input, textarea, select { font: inherit; }
 
 .inquiry-header {
     display: flex;
@@ -67,7 +67,7 @@ legend { margin-bottom: 18px; color: var(--navy-deep); font-size: 16px; font-wei
 .form-grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 label:not(.image-upload):not(.consent-row) { display: grid; gap: 8px; margin-top: 16px; color: #343a46; font-size: 13px; font-weight: 750; }
 fieldset label:first-of-type { margin-top: 0; }
-input, textarea {
+input, textarea, select {
     width: 100%;
     border: 1px solid #cfd5df;
     border-radius: 2px;
@@ -78,7 +78,7 @@ input, textarea {
     transition: border-color .15s ease, box-shadow .15s ease;
 }
 textarea { resize: vertical; line-height: 1.65; }
-input:focus, textarea:focus { border-color: var(--navy); box-shadow: 0 0 0 3px rgba(33, 69, 143, .11); }
+input:focus, textarea:focus, select:focus { border-color: var(--navy); box-shadow: 0 0 0 3px rgba(33, 69, 143, .11); }
 .field-help { margin: 10px 0 0; color: var(--muted); font-size: 12px; }
 .image-upload {
     display: grid;

@@ -2,7 +2,7 @@
    SNU ECE 공지방 — mobile.css
    data-view="mobile"일 때만 적용되는 레이아웃 레이어.
    좌우 레일을 폭 좁은 화면에 밀어 넣지 않는다. 왼쪽 브랜드 레일은
-   햄버거로 여는 서랍이 되고, 오른쪽 광고 레일은 목록 아래로 내려온다.
+   햄버거로 여는 서랍이 되고, 오른쪽 학내 홍보 레일은 목록 아래로 내려온다.
    ============================================================ */
 
 html[data-view="mobile"] .page-shell { padding: 0; min-width: 0; }
@@ -56,7 +56,7 @@ html[data-view="mobile"] .mobile-menu-btn { display: block; }
     cursor: pointer;
 }
 
-/* ---------- 오른쪽 광고 레일 → 목록 아래 배너 ---------- */
+/* ---------- 오른쪽 학내 홍보 레일 → 목록 아래 홍보 ---------- */
 html[data-view="mobile"] .rail-right {
     display: flex;
     position: static;

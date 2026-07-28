@@ -532,9 +532,12 @@ function goHomeAndReload() {
     window.location.assign(window.location.pathname);
 }
 
-async function loadBannerSlides() {
+async function loadBannerSlides(includeUnpublished = false) {
     try {
-        const result = await apiRequest('/api/banner-slides', { method: 'GET' });
+        const result = await apiRequest(includeUnpublished ? '/api/banner-slides/manage' : '/api/banner-slides', {
+            method: 'GET',
+            headers: includeUnpublished ? getBannerManageHeaders() : {}
+        });
         if (Array.isArray(result?.slides)) {
             bannerSlides = result.slides;
             randomizeInitialBanner();
@@ -645,11 +648,19 @@ function renderRightRailInquiryFallback() {
     stopBannerRotation();
 
     container.innerHTML = `
-        <span class="ad-label">AD</span>
-        <h2>배너 광고 문의</h2>
-        <p>학생들에게 소식을 알릴 세로 배너를 등록해보세요.</p>
-        <button class="rail-cta" type="button" onclick="openBannerInquiryFromRail()">배너 문의하기</button>
+        <span class="ad-label">학내 홍보</span>
+        <h2>학내 소식을 알리세요</h2>
+        <p>동아리·프로젝트·학생회 소식을 접수합니다.</p>
+        <button class="rail-cta" type="button" onclick="openBannerInquiryFromRail()">홍보 신청하기</button>
     `;
+}
+
+function getPromoTypeLabel(type) {
+    return {
+        club: '동아리',
+        project: '프로젝트',
+        council: '학생회'
+    }[type] || '학생회';
 }
 
 function renderRightRailAd({ restartRotation = true, transitionDirection = 0 } = {}) {
@@ -665,7 +676,7 @@ function renderRightRailAd({ restartRotation = true, transitionDirection = 0 } =
     }
 
     const image = slide.src
-        ? `<img class="rail-ad-image" src="${escapeHtml(slide.src)}" alt="${escapeHtml(slide.altText || slide.name || '광고 이미지')}" onerror="renderRightRailInquiryFallback()">`
+        ? `<img class="rail-ad-image" src="${escapeHtml(slide.src)}" alt="${escapeHtml(slide.altText || slide.name || '학내 홍보 이미지')}" onerror="renderRightRailInquiryFallback()">`
         : '';
     const controls = slides.length > 1 ? `
         <div class="rail-ad-controls" role="group" aria-label="배너 넘기기">
@@ -683,7 +694,7 @@ function renderRightRailAd({ restartRotation = true, transitionDirection = 0 } =
         ? ' is-entering-left'
         : (transitionDirection > 0 ? ' is-entering-right' : '');
     const content = `
-        <span class="ad-label">AD</span>
+        <span class="ad-label">${getPromoTypeLabel(slide.type)}</span>
         <div class="rail-ad-image-stage${transitionClass}">${imageContent}</div>
         ${controls}
     `;
@@ -1004,7 +1015,7 @@ function setFeedbackCategory(category) {
     const message = document.getElementById('feedback-message');
     if (activeFeedbackCategory === 'banner') {
         if (title) title.textContent = '배너 문의';
-        if (help) help.textContent = '오른쪽 광고 배너 등록과 제휴에 관한 문의로 분류해 전달합니다.';
+        if (help) help.textContent = '학내 홍보 등록과 제휴에 관한 문의로 분류해 전달합니다.';
         if (message) message.placeholder = '배너 게재 기간, 내용, 연락 방법을 적어주세요. (5자 이상)';
     } else {
         if (title) title.textContent = '익명 피드백';

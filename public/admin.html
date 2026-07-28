@@ -46,7 +46,7 @@
             </button>
             <button type="button" class="admin-tab" data-tab="compose" onclick="selectAdminTab('compose')">공지 추가하기</button>
             <button type="button" class="admin-tab" data-tab="notices" onclick="selectAdminTab('notices')">공지 목록</button>
-            <button type="button" class="admin-tab" data-tab="banner" onclick="selectAdminTab('banner')">배너 관리</button>
+            <button type="button" class="admin-tab" data-tab="banner" onclick="selectAdminTab('banner')">학내 홍보 관리</button>
             <button type="button" class="admin-tab" data-tab="category" onclick="selectAdminTab('category')">카테고리 추천</button>
             <button type="button" class="admin-tab" data-tab="feedback" onclick="selectAdminTab('feedback')">
                 문의함 <span class="tab-count" id="feedback-count" hidden>0</span>
@@ -204,11 +204,11 @@
 
         <!-- ============ 배너 관리 ============ -->
         <section class="admin-panel" id="panel-banner" aria-labelledby="panel-banner-title">
-            <h2 id="panel-banner-title">배너 관리</h2>
+            <h2 id="panel-banner-title">학내 홍보 관리</h2>
             <div id="banner-lock" class="admin-locked">
                 <p>배너를 관리하려면 배너 비밀번호가 필요합니다.</p>
                 <div class="banner-pwd-row" style="display:flex; gap:8px; justify-content:center; max-width:340px; margin:0 auto;">
-                    <input type="password" id="banner-mode-pwd" placeholder="배너 비밀번호" style="flex:1; padding:12px; border:1px solid var(--border);"
+                    <input type="password" id="banner-mode-pwd" placeholder="학내 홍보 관리 비밀번호" style="flex:1; padding:12px; border:1px solid var(--border);"
                            onkeyup="if(event.key==='Enter') verifyBannerPassword()">
                     <button class="btn" type="button" onclick="verifyBannerPassword()">인증</button>
                 </div>
@@ -218,7 +218,7 @@
                 <section class="banner-placement-section" aria-labelledby="right-rail-manager-title">
                     <div class="banner-manager-heading">
                         <div>
-                            <h3 id="right-rail-manager-title">오른쪽 세로 광고</h3>
+                            <h3 id="right-rail-manager-title">오른쪽 학내 홍보</h3>
                             <p>이미지와 연결 링크를 등록하면 공개 화면에서 순서대로 자동 순환합니다.</p>
                         </div>
                         <strong id="banner-limit-status">0 / 5</strong>

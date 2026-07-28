@@ -43,7 +43,11 @@ test('legacy banner rows default to header and preserve new metadata', () => {
             placement: 'header',
             linkUrl: 'https://example.com/ad',
             altText: '학생 할인 광고',
-            description: '이번 달 혜택'
+            description: '이번 달 혜택',
+            type: 'council',
+            owner: 'SNU ECE 학생회',
+            status: 'approved',
+            startsAt: null
         }
     );
 });
@@ -75,6 +79,9 @@ test('banner payload accepts only known placements and web links', () => {
     const payload = normalizeBannerPayload({
         name: '세로 광고',
         text: '가입 안내',
+        type: 'club',
+        owner: '학생 동아리',
+        status: 'approved',
         placement: 'right_rail',
         linkUrl: 'https://example.com/join',
         altText: '가입 안내 포스터',
@@ -87,38 +94,38 @@ test('banner payload accepts only known placements and web links', () => {
     assert.equal(payload.expiresAt, '2999-08-31T14:59:59.000Z');
 
     assert.throws(
-        () => normalizeBannerPayload({ text: '광고', placement: 'footer' }),
+        () => normalizeBannerPayload({ text: '홍보', owner: '학생회', placement: 'footer' }),
         /표시 위치/
     );
     assert.equal(
-        normalizeBannerPayload({ text: '광고' }).placement,
+        normalizeBannerPayload({ text: '홍보', owner: '학생회' }).placement,
         'header'
     );
     assert.throws(
-        () => normalizeBannerPayload({ text: '광고', placement: false }),
+        () => normalizeBannerPayload({ text: '홍보', owner: '학생회', placement: false }),
         /표시 위치/
     );
     assert.throws(
-        () => normalizeBannerPayload({ text: '광고', placement: 0 }),
+        () => normalizeBannerPayload({ text: '홍보', owner: '학생회', placement: 0 }),
         /표시 위치/
     );
     assert.throws(
-        () => normalizeBannerPayload({ text: '광고', linkUrl: 'javascript:alert(1)' }),
+        () => normalizeBannerPayload({ text: '홍보', owner: '학생회', linkUrl: 'javascript:alert(1)' }),
         /http 또는 https/
     );
     assert.throws(
-        () => normalizeBannerPayload({ text: '광고', expiresAt: 'not-a-date' }),
+        () => normalizeBannerPayload({ text: '홍보', owner: '학생회', expiresAt: 'not-a-date' }),
         /만료일/
     );
 });
 
 test('banner payload enforces text limits and requires text or image', () => {
     assert.throws(
-        () => normalizeBannerPayload({ text: 'x'.repeat(101) }),
+        () => normalizeBannerPayload({ text: 'x'.repeat(101), owner: '학생회' }),
         /100자/
     );
     assert.throws(
-        () => normalizeBannerPayload({ placement: 'right_rail' }),
+        () => normalizeBannerPayload({ placement: 'right_rail', owner: '학생회' }),
         /텍스트 또는 이미지/
     );
 });
@@ -137,6 +144,8 @@ test('right rail accepts at most five active banners', async t => {
     await assert.rejects(
         () => server.createBannerSlide(normalizeBannerPayload({
             text: 'sixth banner',
+            owner: '학생회',
+            status: 'approved',
             placement: 'right_rail'
         })),
         /최대 5개/
@@ -177,6 +186,48 @@ test('file banner storage evaluates expiration chronologically and preserves num
 
     const slides = await server.listBannerSlides?.(Date.parse('2030-04-05T06:07:08.988Z'));
     assert.deepEqual(slides?.map(slide => slide.id), [4, 2]);
+});
+
+test('public campus promotion excludes pending, rejected, and out-of-period slots', async t => {
+    await replaceBannerRows(t, [
+        {
+            id: 1, order: 1, status: 'approved',
+            startsAt: '2029-12-01T00:00:00.000Z',
+            expiresAt: '2030-02-01T00:00:00.000Z',
+            isDeleted: false
+        },
+        {
+            id: 2, order: 2, status: 'pending',
+            startsAt: '2029-12-01T00:00:00.000Z',
+            expiresAt: '2030-02-01T00:00:00.000Z',
+            isDeleted: false
+        },
+        {
+            id: 3, order: 3, status: 'rejected',
+            startsAt: '2029-12-01T00:00:00.000Z',
+            expiresAt: '2030-02-01T00:00:00.000Z',
+            isDeleted: false
+        },
+        {
+            id: 4, order: 4, status: 'approved',
+            startsAt: '2030-02-02T00:00:00.000Z',
+            expiresAt: '2030-03-01T00:00:00.000Z',
+            isDeleted: false
+        },
+        {
+            id: 5, order: 5, status: 'approved',
+            startsAt: '2029-10-01T00:00:00.000Z',
+            expiresAt: '2029-12-01T00:00:00.000Z',
+            isDeleted: false
+        }
+    ]);
+
+    const now = Date.parse('2030-01-01T00:00:00.000Z');
+    const publicSlides = await server.listBannerSlides(now);
+    const managedSlides = await server.listBannerSlides(now, { includeUnpublished: true });
+
+    assert.deepEqual(publicSlides.map(slide => slide.id), [1]);
+    assert.deepEqual(managedSlides.map(slide => slide.id), [1, 2, 3, 4, 5]);
 });
 
 test('file banner cleanup soft-deletes expired and invalid expiration values only', async t => {

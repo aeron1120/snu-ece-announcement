@@ -105,46 +105,60 @@ const initialNoticeAdminToken = NOTICE_ADMIN_TOKEN;
 const defaultNotices = [];
 
 const MAX_RIGHT_RAIL_BANNERS = 5;
-// 실제 광고가 등록되기 전 순환·관리 흐름을 확인할 수 있는 임시 배너다.
+const PROMO_TYPES = new Set(['club', 'project', 'council']);
+const PROMO_STATUSES = new Set(['pending', 'approved', 'rejected']);
+// 실제 학내 홍보가 등록되기 전 순환·관리 흐름을 확인할 수 있는 임시 항목이다.
 // 관리 화면에서 언제든 수정하거나 삭제할 수 있으며, 오른쪽 레일에만 노출된다.
 const defaultBannerSlides = [
     {
-        name: '캠퍼스 소식 임시 배너',
-        text: '캠퍼스 소식을 빠르게 확인하세요',
+        name: '학생회 소식 임시 홍보',
+        text: '학생회 소식을 빠르게 확인하세요',
+        type: 'council',
+        owner: 'SNU ECE 학생회',
+        status: 'approved',
         bgStyle: 'background: #1f3f8f;',
         textColor: '#ffffff',
         src: '/icons/banner-campus.svg',
         order: 0,
         placement: 'right_rail',
         linkUrl: '',
-        altText: 'SNU ECE 캠퍼스 소식 임시 배너',
-        description: '현재 배너 운영 화면을 확인하기 위한 임시 항목입니다.',
+        altText: 'SNU ECE 학생회 소식 임시 홍보',
+        description: '현재 학내 홍보 운영 화면을 확인하기 위한 임시 항목입니다.',
+        startsAt: '2026-01-01T00:00:00.000Z',
         expiresAt: '2999-12-31T23:59:59.000Z'
     },
     {
-        name: '학생 모집 임시 배너',
+        name: '동아리 모집 임시 홍보',
         text: '학생 모집 안내',
+        type: 'club',
+        owner: 'SNU ECE 학생 동아리',
+        status: 'approved',
         bgStyle: 'background: #ffffff;',
         textColor: '#17337a',
         src: '/icons/banner-recruit.svg',
         order: 1,
         placement: 'right_rail',
         linkUrl: '',
-        altText: '학생 모집 안내 임시 배너',
-        description: '동아리·행사·프로그램 모집 광고 예시입니다.',
+        altText: '학생 모집 안내 임시 홍보',
+        description: '동아리 모집 소식을 보여주는 임시 항목입니다.',
+        startsAt: '2026-01-01T00:00:00.000Z',
         expiresAt: '2999-12-31T23:59:59.000Z'
     },
     {
-        name: '배너 제휴 임시 배너',
-        text: '오른쪽 배너 광고를 신청하세요',
+        name: '프로젝트 모집 임시 홍보',
+        text: '학내 프로젝트를 소개하세요',
+        type: 'project',
+        owner: 'SNU ECE 프로젝트 팀',
+        status: 'approved',
         bgStyle: 'background: #132959;',
         textColor: '#ffffff',
         src: '/icons/banner-partnership.svg',
         order: 2,
         placement: 'right_rail',
         linkUrl: '',
-        altText: '배너 제휴 문의 임시 배너',
-        description: '배너 문의하기에서 게재 상담을 남길 수 있습니다.',
+        altText: '학내 프로젝트 모집 임시 홍보',
+        description: '홍보 신청하기에서 프로젝트 소개를 접수할 수 있습니다.',
+        startsAt: '2026-01-01T00:00:00.000Z',
         expiresAt: '2999-12-31T23:59:59.000Z'
     }
 ];
@@ -303,7 +317,7 @@ async function writeSettingsFile(settings) {
 function isMissingBannerTableError(error) {
     if (!error) return false;
     const message = String(error?.message || '');
-    return error.code === 'PGRST205' || message.includes('banner_slides');
+    return error.code === 'PGRST205' || message.includes('promo_slots');
 }
 
 function createDefaultBannerFileRows() {
@@ -321,6 +335,10 @@ function createDefaultBannerFileRows() {
         linkUrl: slide.linkUrl || '',
         altText: slide.altText || '',
         description: slide.description || '',
+        type: slide.type || 'council',
+        owner: slide.owner || 'SNU ECE 학생회',
+        startsAt: slide.startsAt || new Date(now).toISOString(),
+        status: slide.status || 'approved',
         createdAt: new Date(now + index).toISOString(),
         expiresAt: slide.expiresAt || new Date(now + sevenDaysMs).toISOString(),
         isDeleted: false
@@ -367,10 +385,10 @@ function normalizeBannerPayload(body = {}) {
         try {
             parsed = new URL(linkUrl);
         } catch {
-            throw new TypeError('광고 링크는 유효한 http 또는 https URL이어야 합니다.');
+            throw new TypeError('홍보 링크는 유효한 http 또는 https URL이어야 합니다.');
         }
         if (!['http:', 'https:'].includes(parsed.protocol)) {
-            throw new TypeError('광고 링크는 http 또는 https URL이어야 합니다.');
+            throw new TypeError('홍보 링크는 http 또는 https URL이어야 합니다.');
         }
     }
 
@@ -385,8 +403,31 @@ function normalizeBannerPayload(body = {}) {
         linkUrl,
         altText: String(body.altText || '').trim(),
         description: String(body.description || '').trim(),
+        type: String(body.type || 'council').trim(),
+        owner: String(body.owner || '').trim(),
+        status: String(body.status || 'pending').trim(),
+        startsAt: '',
         expiresAt: ''
     };
+
+    if (!PROMO_TYPES.has(payload.type)) {
+        throw new TypeError('학내 홍보 유형은 동아리, 프로젝트, 학생회 중 하나여야 합니다.');
+    }
+    if (!PROMO_STATUSES.has(payload.status)) {
+        throw new TypeError('학내 홍보 상태는 승인 대기, 승인, 반려 중 하나여야 합니다.');
+    }
+    if (!payload.owner) {
+        throw new TypeError('학내 홍보 주체를 입력해주세요.');
+    }
+
+    const rawStartsAt = String(body.startsAt || '').trim();
+    if (rawStartsAt) {
+        const startsAt = new Date(rawStartsAt);
+        if (Number.isNaN(startsAt.getTime())) {
+            throw new TypeError('노출 시작일은 유효한 날짜여야 합니다.');
+        }
+        payload.startsAt = startsAt.toISOString();
+    }
 
     const rawExpiresAt = String(body.expiresAt || '').trim();
     if (rawExpiresAt) {
@@ -400,7 +441,8 @@ function normalizeBannerPayload(body = {}) {
     const limits = [
         ['name', 50, '이름'],
         ['text', 100, '배너 텍스트'],
-        ['description', 240, '광고 설명'],
+        ['description', 240, '홍보 설명'],
+        ['owner', 80, '홍보 주체'],
         ['altText', 160, '대체 텍스트']
     ];
     for (const [field, max, label] of limits) {
@@ -418,7 +460,7 @@ async function switchBannerStorageToFile(error) {
     if (bannerStorageMode === 'file') return;
     bannerStorageMode = 'file';
     await ensureBannerFile();
-    console.warn('banner_slides 테이블을 찾지 못해 파일 저장소로 전환:', error?.message || error);
+    console.warn('promo_slots 테이블을 찾지 못해 파일 저장소로 전환:', error?.message || error);
 }
 
 function normalizeNoticeInput(body = {}) {
@@ -725,11 +767,11 @@ async function ensureDefaultData() {
     }
 
     const { count: bannerCount, error: bannerCountError } = await supabase
-        .from('banner_slides')
+        .from('promo_slots')
         .select('id', { count: 'exact', head: true })
         .eq('is_deleted', false)
         .eq('placement', 'right_rail')
-        .gt('expires_at', new Date().toISOString());
+        .gt('ends_at', new Date().toISOString());
 
     if (bannerCountError) {
         if (isMissingBannerTableError(bannerCountError)) {
@@ -744,21 +786,25 @@ async function ensureDefaultData() {
         sevenDaysLater.setDate(sevenDaysLater.getDate() + 7);
 
         const bannerSeedRows = defaultBannerSlides.map(slide => ({
-            name: slide.name,
-            text: slide.text,
+            internal_name: slide.name,
+            title: slide.text,
             bg_style: slide.bgStyle,
             text_color: slide.textColor,
-            src: slide.src,
+            image_url: slide.src,
             order: slide.order,
             placement: slide.placement || 'header',
             link_url: slide.linkUrl || '',
             alt_text: slide.altText || '',
             description: slide.description || '',
-            expires_at: slide.expiresAt || sevenDaysLater.toISOString(),
+            type: slide.type || 'council',
+            owner: slide.owner || 'SNU ECE 학생회',
+            status: slide.status || 'approved',
+            starts_at: slide.startsAt || new Date().toISOString(),
+            ends_at: slide.expiresAt || sevenDaysLater.toISOString(),
             is_deleted: false
         }));
 
-        const { error: bannerInsertError } = await supabase.from('banner_slides').insert(bannerSeedRows);
+        const { error: bannerInsertError } = await supabase.from('promo_slots').insert(bannerSeedRows);
         if (bannerInsertError) {
             throw bannerInsertError;
         }
@@ -1263,11 +1309,25 @@ function isBannerExpiryActive(expiresAt, now = Date.now()) {
     return Number.isFinite(expiresAtMs) && expiresAtMs > now;
 }
 
-async function listBannerSlides(now = Date.now()) {
+function isPromoSlotPublic(row, now = Date.now()) {
+    const status = String(row?.status || 'approved').trim();
+    if (status !== 'approved') return false;
+
+    const startsAt = row?.starts_at || row?.startsAt;
+    if (startsAt) {
+        const startsAtMs = Date.parse(startsAt);
+        if (!Number.isFinite(startsAtMs) || startsAtMs > now) return false;
+    }
+
+    return isBannerExpiryActive(row?.ends_at || row?.expires_at || row?.expiresAt, now);
+}
+
+async function listBannerSlides(now = Date.now(), { includeUnpublished = false } = {}) {
     if (!useSupabase || bannerStorageMode === 'file') {
         const rows = await readBannerFile();
         return rows
-            .filter(row => !row?.isDeleted && isBannerExpiryActive(row?.expiresAt, now))
+            .filter(row => !row?.isDeleted)
+            .filter(row => includeUnpublished || isPromoSlotPublic(row, now))
             .sort((a, b) => {
                 const orderDiff = (Number(a?.order) || 0) - (Number(b?.order) || 0);
                 if (orderDiff !== 0) return orderDiff;
@@ -1276,18 +1336,25 @@ async function listBannerSlides(now = Date.now()) {
             .map(toClientBannerSlide);
     }
 
-    const { data, error } = await supabase
-        .from('banner_slides')
+    let query = supabase
+        .from('promo_slots')
         .select('*')
         .eq('is_deleted', false)
-        .gt('expires_at', new Date().toISOString())
         .order('order', { ascending: true })
         .order('created_at', { ascending: false });
+    if (!includeUnpublished) {
+        const nowIso = new Date(now).toISOString();
+        query = query
+            .eq('status', 'approved')
+            .lte('starts_at', nowIso)
+            .gt('ends_at', nowIso);
+    }
+    const { data, error } = await query;
 
     if (error) {
         if (isMissingBannerTableError(error)) {
             await switchBannerStorageToFile(error);
-            return listBannerSlides();
+            return listBannerSlides(now, { includeUnpublished });
         }
         throw error;
     }
@@ -1296,12 +1363,12 @@ async function listBannerSlides(now = Date.now()) {
 }
 
 async function createBannerSlide(payload) {
-    if (payload.placement === 'right_rail') {
-        const activeRightRailCount = (await listBannerSlides())
-            .filter(slide => slide.placement === 'right_rail')
+    if (payload.placement === 'right_rail' && payload.status === 'approved') {
+        const activeRightRailCount = (await listBannerSlides(Date.now(), { includeUnpublished: true }))
+            .filter(slide => slide.placement === 'right_rail' && slide.status === 'approved')
             .length;
         if (activeRightRailCount >= MAX_RIGHT_RAIL_BANNERS) {
-            throw new RangeError(`오른쪽 배너는 최대 ${MAX_RIGHT_RAIL_BANNERS}개까지 등록할 수 있습니다.`);
+            throw new RangeError(`승인된 학내 홍보는 최대 ${MAX_RIGHT_RAIL_BANNERS}개까지 등록할 수 있습니다.`);
         }
     }
 
@@ -1325,6 +1392,10 @@ async function createBannerSlide(payload) {
             linkUrl: payload.linkUrl || '',
             altText: payload.altText || '',
             description: payload.description || '',
+            type: payload.type,
+            owner: payload.owner,
+            status: payload.status,
+            startsAt: payload.startsAt || new Date().toISOString(),
             isDeleted: false
         };
 
@@ -1337,19 +1408,23 @@ async function createBannerSlide(payload) {
     sevenDaysLater.setDate(sevenDaysLater.getDate() + 7);
 
     const { data, error } = await supabase
-        .from('banner_slides')
+        .from('promo_slots')
         .insert({
-            name: String(payload.name || '').trim(),
-            text: String(payload.text || '').trim(),
+            internal_name: String(payload.name || '').trim(),
+            title: String(payload.text || '').trim(),
             bg_style: String(payload.bgStyle || '').trim(),
             text_color: String(payload.textColor || '').trim(),
-            src: payload.src || null,
+            image_url: payload.src || null,
             order: Number(payload.order) || 0,
-            expires_at: payload.expiresAt || sevenDaysLater.toISOString(),
-            placement: payload.placement || 'header',
+            ends_at: payload.expiresAt || sevenDaysLater.toISOString(),
+            placement: 'right_rail',
             link_url: payload.linkUrl || '',
             alt_text: payload.altText || '',
             description: payload.description || '',
+            type: payload.type,
+            owner: payload.owner,
+            status: payload.status,
+            starts_at: payload.startsAt || new Date().toISOString(),
             is_deleted: false
         })
         .select('*')
@@ -1377,13 +1452,28 @@ function buildBannerSlideUpdate(payload, expiresAtField) {
         placement: payload.placement || 'header',
         linkUrl: payload.linkUrl || '',
         altText: payload.altText || '',
-        description: payload.description || ''
+        description: payload.description || '',
+        type: payload.type || 'council',
+        owner: String(payload.owner || '').trim(),
+        status: payload.status || 'pending'
     };
+    if (payload.startsAt) update.startsAt = payload.startsAt;
     if (payload.expiresAt) update[expiresAtField] = payload.expiresAt;
     return update;
 }
 
 async function updateBannerSlide(id, payload) {
+    if (payload.status === 'approved') {
+        const approvedCount = (await listBannerSlides(Date.now(), { includeUnpublished: true }))
+            .filter(slide => Number(slide.id) !== id
+                && slide.placement === 'right_rail'
+                && slide.status === 'approved')
+            .length;
+        if (approvedCount >= MAX_RIGHT_RAIL_BANNERS) {
+            throw new RangeError(`승인된 학내 홍보는 최대 ${MAX_RIGHT_RAIL_BANNERS}개까지 등록할 수 있습니다.`);
+        }
+    }
+
     if (!useSupabase || bannerStorageMode === 'file') {
         const rows = await readBannerFile();
         const idx = rows.findIndex(row => Number(row?.id) === id && !row?.isDeleted);
@@ -1400,22 +1490,26 @@ async function updateBannerSlide(id, payload) {
         return toClientBannerSlide(rows[idx]);
     }
 
-    const update = buildBannerSlideUpdate(payload, 'expires_at');
+    const update = buildBannerSlideUpdate(payload, 'ends_at');
 
     const { data, error } = await supabase
-        .from('banner_slides')
+        .from('promo_slots')
         .update({
-            name: update.name,
-            text: update.text,
+            internal_name: update.name,
+            title: update.text,
             bg_style: update.bgStyle,
             text_color: update.textColor,
-            src: update.src,
+            image_url: update.src,
             order: update.order,
             placement: update.placement,
             link_url: update.linkUrl,
             alt_text: update.altText,
             description: update.description,
-            ...(Object.hasOwn(update, 'expires_at') ? { expires_at: update.expires_at } : {})
+            type: update.type,
+            owner: update.owner,
+            status: update.status,
+            ...(Object.hasOwn(update, 'startsAt') ? { starts_at: update.startsAt } : {}),
+            ...(Object.hasOwn(update, 'ends_at') ? { ends_at: update.ends_at } : {})
         })
         .eq('id', id)
         .eq('is_deleted', false)
@@ -1469,7 +1563,7 @@ async function reorderBannerSlides(items) {
 
     for (const item of normalized) {
         const { error } = await supabase
-            .from('banner_slides')
+            .from('promo_slots')
             .update({ order: item.order })
             .eq('id', item.id)
             .eq('is_deleted', false);
@@ -1497,7 +1591,7 @@ async function softDeleteBannerSlide(id) {
     }
 
     const { data, error } = await supabase
-        .from('banner_slides')
+        .from('promo_slots')
         .update({ is_deleted: true })
         .eq('id', id)
         .eq('is_deleted', false)
@@ -1528,9 +1622,9 @@ async function cleanupExpiredBanners(now = Date.now()) {
 
     try {
         const { error } = await supabase
-            .from('banner_slides')
+            .from('promo_slots')
             .update({ is_deleted: true })
-            .lt('expires_at', new Date().toISOString())
+            .lt('ends_at', new Date().toISOString())
             .eq('is_deleted', false);
 
         if (error) {
@@ -1552,17 +1646,21 @@ function toClientBannerSlide(row) {
     if (!row) return null;
     return {
         id: Number(row.id),
-        name: row.name || '',
-        text: row.text || '',
+        name: row.internal_name || row.name || '',
+        text: row.title || row.text || '',
         bgStyle: row.bg_style || row.bgStyle || '',
         textColor: row.text_color || row.textColor || '',
-        src: row.src || null,
+        src: row.image_url || row.src || null,
         order: Number(row.order) || 0,
-        expiresAt: row.expires_at || row.expiresAt || null,
+        expiresAt: row.ends_at || row.expires_at || row.expiresAt || null,
         placement: row.placement || 'header',
         linkUrl: row.link_url || row.linkUrl || '',
         altText: row.alt_text || row.altText || '',
-        description: row.description || ''
+        description: row.description || '',
+        type: row.type || 'council',
+        owner: row.owner || 'SNU ECE 학생회',
+        status: row.status || 'approved',
+        startsAt: row.starts_at || row.startsAt || row.created_at || row.createdAt || null
     };
 }
 
@@ -1672,6 +1770,7 @@ app.post('/api/banner-inquiries', bannerInquiryJson, async (req, res) => {
         const inquiry = {
             name: cleanBannerInquiryText(req.body?.name, 40),
             organization: cleanBannerInquiryText(req.body?.organization, 80),
+            type: cleanBannerInquiryText(req.body?.type, 20),
             phone: cleanBannerInquiryText(req.body?.phone, 30),
             email: cleanBannerInquiryText(req.body?.email, 120),
             title: cleanBannerInquiryText(req.body?.title, 80),
@@ -1692,7 +1791,10 @@ app.post('/api/banner-inquiries', bannerInquiryJson, async (req, res) => {
             return res.status(400).json({ error: '이메일 주소를 확인해주세요.' });
         }
         if (inquiry.title.length < 2 || inquiry.description.length < 10) {
-            return res.status(400).json({ error: '배너 제목과 설명을 확인해주세요.' });
+            return res.status(400).json({ error: '홍보 제목과 설명을 확인해주세요.' });
+        }
+        if (!PROMO_TYPES.has(inquiry.type)) {
+            return res.status(400).json({ error: '홍보 유형을 확인해주세요.' });
         }
         if (inquiry.linkUrl) {
             let parsedLink;
@@ -1711,14 +1813,14 @@ app.post('/api/banner-inquiries', bannerInquiryJson, async (req, res) => {
         }
         if (!/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(imageDataUrl)
             || imageDataUrl.length > 1_900_000) {
-            return res.status(400).json({ error: '배너 이미지를 다시 선택해주세요.' });
+            return res.status(400).json({ error: '홍보 이미지를 다시 선택해주세요.' });
         }
 
         const id = crypto.randomUUID();
         const imageBuffer = Buffer.from(imageDataUrl.slice(imageDataUrl.indexOf(',') + 1), 'base64');
         if (imageBuffer.length === 0 || imageBuffer.length > 1_400_000
             || imageBuffer[0] !== 0xff || imageBuffer[1] !== 0xd8 || imageBuffer[2] !== 0xff) {
-            return res.status(400).json({ error: '배너 이미지 형식을 확인해주세요.' });
+            return res.status(400).json({ error: '홍보 이미지 형식을 확인해주세요.' });
         }
         await fs.mkdir(bannerInquiryImageDir, { recursive: true });
         const imageFileName = `${id}.jpg`;
@@ -1734,9 +1836,24 @@ app.post('/api/banner-inquiries', bannerInquiryJson, async (req, res) => {
             createdAt: new Date().toISOString()
         });
         await writeFeedback(items.slice(0, 1000));
+        await createBannerSlide(normalizeBannerPayload({
+            name: `${inquiry.organization} · ${inquiry.title}`.slice(0, 50),
+            text: inquiry.title,
+            src: imageDataUrl,
+            placement: 'right_rail',
+            linkUrl: inquiry.linkUrl,
+            altText: `${inquiry.organization} ${inquiry.title}`,
+            description: inquiry.description.slice(0, 240),
+            type: inquiry.type,
+            owner: inquiry.organization,
+            status: 'pending',
+            startsAt: `${inquiry.startDate}T00:00:00+09:00`,
+            expiresAt: `${inquiry.endDate}T23:59:59+09:00`,
+            order: 999
+        }));
         res.status(201).json({ ok: true });
     } catch (error) {
-        res.status(500).json({ error: error.message || '배너 문의 저장 실패' });
+        res.status(500).json({ error: error.message || '학내 홍보 신청 저장 실패' });
     }
 });
 
@@ -2027,6 +2144,15 @@ app.get('/api/banner-slides', async (req, res) => {
     }
 });
 
+app.get('/api/banner-slides/manage', requireBannerAdmin, async (req, res) => {
+    try {
+        const slides = await listBannerSlides(Date.now(), { includeUnpublished: true });
+        res.json({ slides });
+    } catch (error) {
+        res.status(500).json({ error: error.message || '학내 홍보 관리 목록 조회 실패' });
+    }
+});
+
 app.post('/api/banner-slides', requireBannerAdmin, async (req, res) => {
     try {
         const payload = normalizeBannerPayload(req.body);
@@ -2076,6 +2202,9 @@ app.put('/api/banner-slides/:id', requireBannerAdmin, async (req, res) => {
     } catch (error) {
         if (error instanceof TypeError) {
             return res.status(400).json({ error: error.message });
+        }
+        if (error instanceof RangeError) {
+            return res.status(409).json({ error: error.message });
         }
         res.status(500).json({ error: error.message || '배너 수정 실패' });
     }

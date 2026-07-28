@@ -394,22 +394,30 @@ test('a category tab bar sits above the filters like the SNU newsroom', async ()
     assert.doesNotMatch(app, /function toggleCategoryFilter/);
 });
 
-test('the top inquiry button is gone and the banner CTA reads 배너 문의하기', async () => {
+test('the public rail presents approved campus promotion instead of advertising language', async () => {
     const html = await readFile('index.html', 'utf8');
     const app = await readFile('js/core.js', 'utf8');
+    const schema = await readFile('server/sql/supabase-schema.sql', 'utf8');
 
     // 헤더 액션에는 모바일 모드 버튼만 남는다(문의 버튼 제거).
     const headerActions = html.slice(html.indexOf('class="header-actions"'), html.indexOf('</div>', html.indexOf('class="header-actions"')));
     assert.doesNotMatch(headerActions, /openModal\('contact-modal'\)/);
-    assert.match(html, />배너 문의하기</);
-    assert.match(app, />배너 문의하기</);
+    assert.match(html, />홍보 신청하기</);
+    assert.match(app, />홍보 신청하기</);
+    assert.match(html, /class="rail-section-label">학내 홍보</);
+    assert.doesNotMatch(html, />광고</);
+    assert.doesNotMatch(html, />AD</);
     assert.match(html, /class="rail-section-label">문의</);
     assert.match(html, /onclick="openContactFromRail\(\)">일반 문의하기/);
-    assert.match(html, /onclick="openBannerInquiryFromRail\(\)">배너 문의하기/);
+    assert.match(html, /onclick="openBannerInquiryFromRail\(\)">홍보 신청하기/);
     assert.doesNotMatch(html, /class="rail-section-label">일반 문의</);
     assert.doesNotMatch(html, /class="rail-section-label">배너 문의</);
     assert.match(app, /function openBannerInquiryFromRail/);
     assert.match(app, /window\.location\.href = '\.\/banner-inquiry\.html'/);
+    assert.match(app, /function getPromoTypeLabel/);
+    assert.match(app, /club: '동아리'[\s\S]*project: '프로젝트'[\s\S]*council: '학생회'/);
+    assert.match(schema, /create table if not exists public\.promo_slots/);
+    assert.match(schema, /type text[\s\S]*title text[\s\S]*image_url text[\s\S]*link_url text[\s\S]*owner text[\s\S]*starts_at timestamptz[\s\S]*ends_at timestamptz[\s\S]*status text/);
 });
 
 test('sort chips are exposed beside result count and category tabs restore their defaults', async () => {
@@ -476,6 +484,7 @@ test('banner inquiries use a dedicated identified submission page and protected 
     assert.match(html, /id="banner-inquiry-form"/);
     assert.match(html, /id="inquiry-name"[^>]*required/);
     assert.match(html, /id="inquiry-organization"[^>]*required/);
+    assert.match(html, /id="inquiry-type"[^>]*required/);
     assert.match(html, /id="inquiry-image"[^>]*type="file"/);
     assert.match(html, /세로형 9 : 16/);
     assert.match(html, /개인정보 수집 및 이용/);
@@ -486,6 +495,8 @@ test('banner inquiries use a dedicated identified submission page and protected 
     assert.match(server, /category: 'banner'/);
     assert.match(server, /bannerInquiryImageDir/);
     assert.match(server, /imageFileName/);
+    assert.match(server, /status: 'pending'/);
+    assert.match(server, /await createBannerSlide\(normalizeBannerPayload/);
     assert.match(server, /app\.get\('\/api\/admin\/feedback\/:id\/image', requireNoticeAdmin/);
     assert.match(admin, /function openBannerInquiryImage/);
     assert.match(admin, /class="banner-inquiry-details"/);
@@ -788,7 +799,7 @@ test('right rail chooses the smallest numeric order', async () => {
     assert.equal(getBannerSlidesByPlacement('right_rail')[0].id, 2);
 });
 
-test('banner manager only publishes right rail ads now that the top banner is gone', async () => {
+test('campus promotion manager captures type, owner, status, and exposure period', async () => {
     const html = await readFile('admin.html', 'utf8');
     const app = await readFile('js/admin.js', 'utf8');
 
@@ -799,6 +810,10 @@ test('banner manager only publishes right rail ads now that the top banner is go
     assert.match(app, /new-right_rail-link-url/);
     assert.match(app, /new-right_rail-alt-text/);
     assert.match(app, /new-right_rail-expires-at/);
+    assert.match(app, /new-right_rail-starts-at/);
+    assert.match(app, /new-right_rail-type/);
+    assert.match(app, /new-right_rail-owner/);
+    assert.match(app, /new-right_rail-status/);
     assert.match(app, /new-right_rail-name/);
     assert.match(app, /async function addNewBannerSlide\(placement\)/);
     assert.match(app, /async function moveBanner\(placement, idx, dir\)/);

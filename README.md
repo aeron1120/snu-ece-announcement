@@ -46,7 +46,7 @@ npm run prepare:public
 
 뷰 모드는 `<html data-view="desktop|mobile">`로 갈립니다. 첫 페인트가 흔들리지 않도록 `index.html`의 인라인 스크립트가 CSS보다 먼저 값을 정하고(저장된 선택 → 없으면 화면 폭), 헤더의 전환 버튼이 `localStorage.eceLayoutMode`에 선택을 기억합니다. `desktop.js`와 `mobile.js`는 `registerViewModule()`로 자신을 등록하며, 활성화된 한쪽만 동작합니다.
 
-좌우 레일은 `position: fixed`라 본문을 스크롤해도 자리가 고정됩니다. 광고는 오른쪽 레일에만 노출되며(`placement: right_rail`), 상단 가로 배너는 제거되었습니다.
+좌우 레일은 `position: fixed`라 본문을 스크롤해도 자리가 고정됩니다. 승인된 학내 홍보는 오른쪽 레일에만 노출되며(`placement: right_rail`), 상단 가로 배너는 제거되었습니다.
 
 공지 제목은 자유 입력이 아니라 `[주관 기관] 핵심 내용 유형` 양식으로 조립됩니다. 조합 규칙은 `js/admin.js`의 `composeNoticeTitle()` 한 곳에만 있고, 기존 제목을 양식으로 되돌려 읽는 일은 `applyTitleToBuilder()`가 맡습니다.
 

@@ -51,6 +51,12 @@ create table if not exists public.banner_slides (
   link_url text,
   alt_text text,
   description text,
+  type text not null default 'council'
+    check (type in ('club', 'project', 'council')),
+  owner text not null default 'SNU ECE 학생회',
+  starts_at timestamptz not null default now(),
+  status text not null default 'approved'
+    check (status in ('pending', 'approved', 'rejected')),
   created_at timestamptz not null default now(),
   expires_at timestamptz not null,
   is_deleted boolean not null default false
@@ -60,7 +66,11 @@ alter table public.banner_slides
   add column if not exists placement text not null default 'header',
   add column if not exists link_url text,
   add column if not exists alt_text text,
-  add column if not exists description text;
+  add column if not exists description text,
+  add column if not exists type text not null default 'council',
+  add column if not exists owner text not null default 'SNU ECE 학생회',
+  add column if not exists starts_at timestamptz not null default now(),
+  add column if not exists status text not null default 'approved';
 
 do $$
 begin
@@ -73,6 +83,24 @@ begin
       add constraint banner_slides_placement_check
       check (placement in ('header', 'right_rail'));
   end if;
+  if not exists (
+    select 1 from pg_constraint
+    where conname = 'banner_slides_type_check'
+      and conrelid = 'public.banner_slides'::regclass
+  ) then
+    alter table public.banner_slides
+      add constraint banner_slides_type_check
+      check (type in ('club', 'project', 'council'));
+  end if;
+  if not exists (
+    select 1 from pg_constraint
+    where conname = 'banner_slides_status_check'
+      and conrelid = 'public.banner_slides'::regclass
+  ) then
+    alter table public.banner_slides
+      add constraint banner_slides_status_check
+      check (status in ('pending', 'approved', 'rejected'));
+  end if;
 end;
 $$;
 
@@ -80,6 +108,66 @@ create index if not exists banner_slides_active_order_idx on public.banner_slide
 create index if not exists banner_slides_expires_idx on public.banner_slides (expires_at);
 create index if not exists banner_slides_placement_active_order_idx
   on public.banner_slides (placement, is_deleted, "order" asc);
+create index if not exists banner_slides_public_period_idx
+  on public.banner_slides (status, starts_at, expires_at, is_deleted);
+
+create table if not exists public.promo_slots (
+  id bigint generated always as identity primary key,
+  type text not null check (type in ('club', 'project', 'council')),
+  title text not null,
+  image_url text,
+  link_url text,
+  owner text not null,
+  starts_at timestamptz not null,
+  ends_at timestamptz not null,
+  status text not null default 'pending'
+    check (status in ('pending', 'approved', 'rejected')),
+  internal_name text,
+  description text,
+  alt_text text,
+  "order" integer not null default 0,
+  placement text not null default 'right_rail'
+    check (placement = 'right_rail'),
+  bg_style text,
+  text_color text,
+  created_at timestamptz not null default now(),
+  is_deleted boolean not null default false
+);
+
+create index if not exists promo_slots_public_period_idx
+  on public.promo_slots (status, starts_at, ends_at, is_deleted, "order" asc);
+
+insert into public.promo_slots (
+  type, title, image_url, link_url, owner, starts_at, ends_at, status,
+  internal_name, description, alt_text, "order", placement, bg_style, text_color, created_at, is_deleted
+)
+select
+  coalesce(type, 'council'),
+  text,
+  src,
+  link_url,
+  coalesce(nullif(owner, ''), 'SNU ECE 학생회'),
+  coalesce(starts_at, created_at),
+  expires_at,
+  coalesce(status, 'approved'),
+  name,
+  description,
+  alt_text,
+  "order",
+  'right_rail',
+  bg_style,
+  text_color,
+  created_at,
+  is_deleted
+from public.banner_slides legacy
+where legacy.placement = 'right_rail'
+  and not exists (
+    select 1
+    from public.promo_slots promo
+    where promo.title = legacy.text
+      and coalesce(promo.link_url, '') = coalesce(legacy.link_url, '')
+      and promo.starts_at = coalesce(legacy.starts_at, legacy.created_at)
+  );
 
 alter table public.notices
   add column if not exists has_images boolean

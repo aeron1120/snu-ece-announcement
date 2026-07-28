@@ -144,7 +144,7 @@ body {
     letter-spacing: 0.1em;
 }
 
-/* 광고 레일 — 남색 바탕 위에 얹히므로 글자는 밝게 간다 */
+/* 학내 홍보 레일 — 남색 바탕 위에 얹히므로 글자는 밝게 간다 */
 .ad-rail { justify-content: flex-start; }
 #right-rail-ad-content {
     display: flex;

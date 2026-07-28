@@ -105,6 +105,7 @@ function getBannerInquiryPayload() {
     return {
         name: document.getElementById('inquiry-name').value.trim(),
         organization: document.getElementById('inquiry-organization').value.trim(),
+        type: document.getElementById('inquiry-type').value,
         phone: document.getElementById('inquiry-phone').value.trim(),
         email: document.getElementById('inquiry-email').value.trim(),
         title: document.getElementById('inquiry-title').value.trim(),
@@ -123,11 +124,12 @@ function validateBannerInquiry(payload) {
     }
     if (!payload.phone && !payload.email) return '전화번호 또는 이메일 중 하나를 입력해주세요.';
     if (payload.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(payload.email)) return '이메일 주소를 확인해주세요.';
-    if (payload.title.length < 2 || payload.description.length < 10) return '배너 제목과 10자 이상의 설명을 입력해주세요.';
+    if (!['club', 'project', 'council'].includes(payload.type)) return '홍보 유형을 선택해주세요.';
+    if (payload.title.length < 2 || payload.description.length < 10) return '홍보 제목과 10자 이상의 설명을 입력해주세요.';
     if (payload.linkUrl && !/^https?:\/\//i.test(payload.linkUrl)) return '연결 링크는 http:// 또는 https://로 시작해야 합니다.';
     if (!payload.startDate || !payload.endDate) return '희망 게재 시작일과 종료일을 선택해주세요.';
     if (payload.endDate < payload.startDate) return '종료일은 시작일보다 빠를 수 없습니다.';
-    if (!payload.imageDataUrl) return '배너 이미지를 선택해주세요.';
+    if (!payload.imageDataUrl) return '홍보 이미지를 선택해주세요.';
     if (!payload.consent) return '개인정보 수집 및 이용에 동의해주세요.';
     return '';
 }
@@ -142,7 +144,7 @@ async function submitBannerInquiry(event) {
     }
 
     bannerInquirySubmit.disabled = true;
-    setBannerInquiryStatus('배너 문의를 제출하고 있습니다.');
+    setBannerInquiryStatus('학내 홍보 신청을 제출하고 있습니다.');
     try {
         const response = await fetch(`${bannerInquiryApiBase}/api/banner-inquiries`, {
             method: 'POST',
@@ -150,7 +152,7 @@ async function submitBannerInquiry(event) {
             body: JSON.stringify(payload)
         });
         const result = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(result.error || '배너 문의를 제출하지 못했습니다.');
+        if (!response.ok) throw new Error(result.error || '학내 홍보 신청을 제출하지 못했습니다.');
         bannerInquiryForm.reset();
         preparedBannerImage = '';
         bannerImagePreview.hidden = true;

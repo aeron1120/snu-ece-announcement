@@ -1244,7 +1244,7 @@ async function verifyBannerPassword() {
 async function unlockBannerPanel() {
     document.getElementById('banner-lock').hidden = true;
     document.getElementById('banner-list-area').hidden = false;
-    await loadBannerSlides();
+    await loadBannerSlides(true);
     renderBannerList();
 }
 
@@ -1264,7 +1264,7 @@ function resolveUpdateExpiresAt(input) {
 }
 
 function renderBannerList() {
-    renderBannerSection('right_rail', '오른쪽 세로 광고');
+    renderBannerSection('right_rail', '오른쪽 학내 홍보');
     renderLegacyBannerSection();
 }
 
@@ -1309,6 +1309,7 @@ function renderBannerSection(placement, title) {
         const safeId = Number(slide.id);
         const safeText = escapeHtml(slide.text || '');
         const localExpiresAt = toDateTimeLocalValue(slide.expiresAt);
+        const localStartsAt = toDateTimeLocalValue(slide.startsAt);
         const safeImage = slide.src ? escapeHtml(slide.src) : '';
         const slideItem = document.createElement('div');
         slideItem.className = 'banner-item';
@@ -1344,16 +1345,36 @@ function renderBannerSection(placement, title) {
                 </div>
                 <div class="banner-item-form">
                     <label class="banner-field">
+                        <span>홍보 유형</span>
+                        <select class="banner-input-type-${safeId}">
+                            <option value="club" ${slide.type === 'club' ? 'selected' : ''}>동아리</option>
+                            <option value="project" ${slide.type === 'project' ? 'selected' : ''}>프로젝트</option>
+                            <option value="council" ${slide.type === 'council' ? 'selected' : ''}>학생회</option>
+                        </select>
+                    </label>
+                    <label class="banner-field">
+                        <span>승인 상태</span>
+                        <select class="banner-input-status-${safeId}">
+                            <option value="pending" ${slide.status === 'pending' ? 'selected' : ''}>승인 대기</option>
+                            <option value="approved" ${slide.status === 'approved' ? 'selected' : ''}>승인</option>
+                            <option value="rejected" ${slide.status === 'rejected' ? 'selected' : ''}>반려</option>
+                        </select>
+                    </label>
+                    <label class="banner-field">
                         <span>관리용 이름</span>
                         <input type="text" maxlength="50" placeholder="예: 8월 학생회 행사" value="${escapeHtml(slide.name || '')}" class="banner-input-name-${safeId}">
                     </label>
                     <label class="banner-field">
+                        <span>홍보 주체</span>
+                        <input type="text" maxlength="80" placeholder="예: SNU ECE 학생회" value="${escapeHtml(slide.owner || '')}" class="banner-input-owner-${safeId}">
+                    </label>
+                    <label class="banner-field banner-field-wide">
                         <span>공개 제목</span>
-                        <input type="text" maxlength="100" placeholder="배너 아래에 보일 제목" value="${safeText}" class="banner-input-text-${safeId}">
+                        <input type="text" maxlength="100" placeholder="학내 홍보 제목" value="${safeText}" class="banner-input-text-${safeId}">
                     </label>
                     <label class="banner-field banner-field-wide">
                         <span>짧은 설명</span>
-                        <textarea class="banner-input-description-${safeId}" maxlength="240" placeholder="광고의 핵심 내용을 한두 문장으로 적어주세요.">${escapeHtml(slide.description || '')}</textarea>
+                        <textarea class="banner-input-description-${safeId}" maxlength="240" placeholder="홍보의 핵심 내용을 한두 문장으로 적어주세요.">${escapeHtml(slide.description || '')}</textarea>
                     </label>
                     <label class="banner-field banner-field-wide">
                         <span>클릭 시 연결 링크</span>
@@ -1364,13 +1385,17 @@ function renderBannerSection(placement, title) {
                         <input type="text" class="banner-input-alt-${safeId}" maxlength="160" value="${escapeHtml(slide.altText || '')}" placeholder="이미지 내용을 설명">
                     </label>
                     <label class="banner-field">
+                        <span>노출 시작</span>
+                        <input type="datetime-local" value="${localStartsAt}" data-original-local-value="${localStartsAt}" class="banner-input-starts-at-${safeId}">
+                    </label>
+                    <label class="banner-field">
                         <span>노출 종료</span>
                         <input type="datetime-local" value="${localExpiresAt}" data-original-local-value="${localExpiresAt}" class="banner-input-expires-at-${safeId}">
                     </label>
                     <input type="hidden" value="${escapeHtml(slide.textColor || '#000000')}" class="banner-input-color-${safeId}">
                     <div class="banner-form-actions banner-field-wide">
                         <button class="btn btn-small" type="button" onclick="updateBannerSlide(${safeId})">변경사항 저장</button>
-                        <button class="btn btn-small btn-danger" type="button" onclick="deleteBannerSlide(${safeId})">배너 삭제</button>
+                        <button class="btn btn-small btn-danger" type="button" onclick="deleteBannerSlide(${safeId})">홍보 삭제</button>
                     </div>
                 </div>
             </div>
@@ -1383,8 +1408,8 @@ function renderBannerSection(placement, title) {
     addForm.innerHTML = `
         <div class="banner-item-header">
             <div>
-                <span class="banner-item-text">새 배너 추가하기</span>
-                <small>${isAtLimit ? '최대 5개가 등록되어 있습니다. 기존 배너를 삭제하면 추가할 수 있습니다.' : '등록 즉시 오른쪽 광고 영역의 순환 목록에 포함됩니다.'}</small>
+                <span class="banner-item-text">새 학내 홍보 추가하기</span>
+                <small>${isAtLimit ? '최대 5개가 등록되어 있습니다. 기존 항목을 삭제하면 추가할 수 있습니다.' : '승인 상태와 노출 기간이 모두 맞을 때만 공개됩니다.'}</small>
             </div>
         </div>
         <div class="banner-editor-layout ${isAtLimit ? 'is-disabled' : ''}">
@@ -1401,16 +1426,36 @@ function renderBannerSection(placement, title) {
             </div>
             <div class="banner-item-form">
                 <label class="banner-field">
+                    <span>홍보 유형</span>
+                    <select id="new-right_rail-type" ${isAtLimit ? 'disabled' : ''}>
+                        <option value="club">동아리</option>
+                        <option value="project">프로젝트</option>
+                        <option value="council">학생회</option>
+                    </select>
+                </label>
+                <label class="banner-field">
+                    <span>승인 상태</span>
+                    <select id="new-right_rail-status" ${isAtLimit ? 'disabled' : ''}>
+                        <option value="approved">승인</option>
+                        <option value="pending">승인 대기</option>
+                        <option value="rejected">반려</option>
+                    </select>
+                </label>
+                <label class="banner-field">
                     <span>관리용 이름</span>
                     <input type="text" id="new-right_rail-name" maxlength="50" placeholder="관리자만 구분하는 이름" ${isAtLimit ? 'disabled' : ''}>
                 </label>
                 <label class="banner-field">
+                    <span>홍보 주체</span>
+                    <input type="text" id="new-right_rail-owner" maxlength="80" placeholder="예: SNU ECE 학생회" ${isAtLimit ? 'disabled' : ''}>
+                </label>
+                <label class="banner-field banner-field-wide">
                     <span>공개 제목</span>
-                    <input type="text" id="new-right_rail-text" maxlength="100" placeholder="배너 아래에 보일 제목" ${isAtLimit ? 'disabled' : ''}>
+                    <input type="text" id="new-right_rail-text" maxlength="100" placeholder="학내 홍보 제목" ${isAtLimit ? 'disabled' : ''}>
                 </label>
                 <label class="banner-field banner-field-wide">
                     <span>짧은 설명</span>
-                    <textarea id="new-right_rail-description" maxlength="240" placeholder="광고의 핵심 내용을 한두 문장으로 적어주세요." ${isAtLimit ? 'disabled' : ''}></textarea>
+                    <textarea id="new-right_rail-description" maxlength="240" placeholder="홍보의 핵심 내용을 한두 문장으로 적어주세요." ${isAtLimit ? 'disabled' : ''}></textarea>
                 </label>
                 <label class="banner-field banner-field-wide">
                     <span>클릭 시 연결 링크</span>
@@ -1421,13 +1466,17 @@ function renderBannerSection(placement, title) {
                     <input type="text" id="new-right_rail-alt-text" maxlength="160" placeholder="이미지 내용을 설명" ${isAtLimit ? 'disabled' : ''}>
                 </label>
                 <label class="banner-field">
+                    <span>노출 시작</span>
+                    <input type="datetime-local" id="new-right_rail-starts-at" ${isAtLimit ? 'disabled' : ''}>
+                </label>
+                <label class="banner-field">
                     <span>노출 종료</span>
                     <input type="datetime-local" id="new-right_rail-expires-at" ${isAtLimit ? 'disabled' : ''}>
                 </label>
                 <input type="hidden" id="new-right_rail-color" value="#000000">
                 <input type="hidden" id="new-right_rail-bg" value="#ffffff">
                 <div class="banner-form-actions banner-field-wide">
-                    <button class="btn btn-small" type="button" onclick="addNewBannerSlide('${placement}')" ${isAtLimit ? 'disabled' : ''}>배너 등록하기</button>
+                    <button class="btn btn-small" type="button" onclick="addNewBannerSlide('${placement}')" ${isAtLimit ? 'disabled' : ''}>학내 홍보 등록하기</button>
                 </div>
             </div>
         </div>
@@ -1473,12 +1522,20 @@ async function addNewBannerSlide(placement) {
     const linkUrl = (document.getElementById(`new-${placement}-link-url`)?.value || '').trim();
     const altText = (document.getElementById(`new-${placement}-alt-text`)?.value || '').trim();
     const expiresAt = document.getElementById(`new-${placement}-expires-at`)?.value || '';
+    const startsAt = document.getElementById(`new-${placement}-starts-at`)?.value || '';
+    const type = document.getElementById(`new-${placement}-type`)?.value || 'council';
+    const owner = (document.getElementById(`new-${placement}-owner`)?.value || '').trim();
+    const status = document.getElementById(`new-${placement}-status`)?.value || 'pending';
     const imageInput = document.getElementById(`new-${placement}-image`);
     const imageFile = imageInput?.files?.[0] || null;
     if (!validateBannerImageFile(imageFile)) return;
 
+    if (!owner) {
+        alert('홍보 주체를 입력해주세요.');
+        return;
+    }
     if (!text && !imageFile) {
-        alert('배너 텍스트 또는 이미지를 입력해주세요.');
+        alert('홍보 제목 또는 이미지를 입력해주세요.');
         return;
     }
 
@@ -1500,13 +1557,17 @@ async function addNewBannerSlide(placement) {
                 description,
                 linkUrl,
                 altText,
+                type,
+                owner,
+                status,
+                startsAt: startsAt ? new Date(startsAt).toISOString() : new Date().toISOString(),
                 expiresAt: expiresAt ? new Date(expiresAt).toISOString() : ''
             })
         });
 
         bannerSlides.push(result.slide);
         renderBannerList();
-        alert('배너가 추가되었습니다!');
+        alert(status === 'approved' ? '학내 홍보가 공개 목록에 추가되었습니다.' : '학내 홍보가 저장되었습니다.');
     } catch (error) {
         alert(`배너 추가 실패: ${error.message}`);
     }
@@ -1531,14 +1592,23 @@ async function updateBannerSlide(slideId) {
     const altInput = document.querySelector(`.banner-input-alt-${slideId}`);
     const expiresInput = document.querySelector(`.banner-input-expires-at-${slideId}`);
     const expiresAt = resolveUpdateExpiresAt(expiresInput);
+    const startsInput = document.querySelector(`.banner-input-starts-at-${slideId}`);
+    const startsAt = resolveUpdateExpiresAt(startsInput);
+    const type = document.querySelector(`.banner-input-type-${slideId}`)?.value || prevSlide.type || 'council';
+    const owner = (document.querySelector(`.banner-input-owner-${slideId}`)?.value || '').trim();
+    const status = document.querySelector(`.banner-input-status-${slideId}`)?.value || prevSlide.status || 'pending';
     const imageInput = document.querySelector(`.banner-input-file-${slideId}`);
     const imageFile = imageInput?.files?.[0] || null;
     if (!validateBannerImageFile(imageFile)) return;
     const imageSrc = imageFile ? await getBase64(imageFile) : null;
     const removeExistingImage = Boolean(document.querySelector(`.banner-input-remove-${slideId}`)?.checked);
 
+    if (!owner) {
+        alert('홍보 주체를 입력해주세요.');
+        return;
+    }
     if (!newText && !imageSrc && (!prevSlide.src || removeExistingImage)) {
-        alert('배너 텍스트 또는 이미지를 입력해주세요.');
+        alert('홍보 제목 또는 이미지를 입력해주세요.');
         return;
     }
 
@@ -1557,6 +1627,10 @@ async function updateBannerSlide(slideId) {
                 description: descriptionInput ? descriptionInput.value.trim() : (prevSlide.description || ''),
                 linkUrl: linkInput ? linkInput.value.trim() : (prevSlide.linkUrl || ''),
                 altText: altInput ? altInput.value.trim() : (prevSlide.altText || ''),
+                type,
+                owner,
+                status,
+                startsAt,
                 expiresAt
             })
         });
@@ -1564,7 +1638,7 @@ async function updateBannerSlide(slideId) {
         const idx = bannerSlides.findIndex(slide => Number(slide.id) === Number(slideId));
         if (idx !== -1) bannerSlides[idx] = result.slide;
         renderBannerList();
-        alert('배너가 수정되었습니다!');
+        alert('학내 홍보가 수정되었습니다.');
     } catch (error) {
         alert(`배너 수정 실패: ${error.message}`);
     }
@@ -1578,7 +1652,7 @@ async function deleteBannerSlide(slideId) {
         return;
     }
 
-    if (!confirm('이 배너를 삭제하시겠습니까?')) return;
+    if (!confirm('이 학내 홍보를 삭제하시겠습니까?')) return;
 
     try {
         await apiRequest(`/api/banner-slides/${slideId}`, {
@@ -1588,7 +1662,7 @@ async function deleteBannerSlide(slideId) {
 
         bannerSlides = bannerSlides.filter(s => Number(s.id) !== Number(slideId));
         renderBannerList();
-        alert('배너가 삭제되었습니다!');
+        alert('학내 홍보가 삭제되었습니다.');
     } catch (error) {
         alert(`배너 삭제 실패: ${error.message}`);
     }
