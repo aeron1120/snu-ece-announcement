@@ -154,7 +154,7 @@ html[data-view="mobile"] .header {
 html[data-view="mobile"] .header-title-area { width: auto; flex: 1; }
 html[data-view="mobile"] .header h1,
 html[data-view="mobile"] .site-title { font-size: 22px; white-space: normal; }
-html[data-view="mobile"] .site-title-mark { height: 56px; }
+html[data-view="mobile"] .site-title-mark { height: 38px; }
 html[data-view="mobile"] .header-actions {
     width: auto;
     margin-left: 0;
@@ -288,12 +288,13 @@ html[data-view="mobile"] .grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 10px;
     align-items: start;
-    padding-top: 48px;
 }
-html[data-view="mobile"] .grid > .card:nth-child(2n+1) { margin-top: -48px; }
+/* 위쪽에 자리를 비워 두면 오른쪽 열이 그만큼 내려가 빈 띠가 오히려 넓어진다.
+   목록 전체는 제자리에 두고 왼쪽 열만 정렬 버튼 줄 옆으로 끌어올린다.
+   그 자리는 정렬 버튼이 오른쪽에 몰려 있어 비어 있다. */
+html[data-view="mobile"] .grid > .card:nth-child(2n+1) { margin-top: -46px; }
 /* 검색·필터를 걸면 그 자리에 "결과 N건"이 들어선다. 카드가 겹치지 않게
    끌어올리기를 멈춘다. */
-html[data-view="mobile"] .grid.has-result-count { padding-top: 0; }
 html[data-view="mobile"] .grid.has-result-count > .card:nth-child(2n+1) { margin-top: 0; }
 html[data-view="mobile"] .card {
     width: 100%;

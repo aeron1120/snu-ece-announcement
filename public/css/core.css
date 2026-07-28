@@ -502,7 +502,9 @@ body {
 }
 .header-title-area { display: flex; align-items: center; gap: 12px; min-width: 0; }
 /* 워드마크가 제목 자리를 대신한다. 글자 제목은 이미지가 없을 때만 나온다. */
-.site-title-mark { display: block; width: auto; height: 82px; -webkit-user-drag: none; }
+/* 한 줄짜리 가로 워드마크(비율 약 5.7:1). 두 줄짜리와 달리 높이가 곧
+   글자 크기라 같은 높이에서 훨씬 크게 읽힌다. */
+.site-title-mark { display: block; width: auto; height: 54px; -webkit-user-drag: none; }
 .site-title-text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; }
 .site-title.is-text .site-title-text { position: static; width: auto; height: auto; overflow: visible; clip: auto; }
 .header h1, .site-title {
@@ -1709,6 +1711,10 @@ body.notice-dragging .notice-hover-preview { display: none !important; }
 }
 .compare-col.is-drop-before::before { top: -2px; }
 .compare-col.is-drop-after::after { bottom: 8px; }
+/* 손잡이는 블록 왼쪽 바깥에 선다. 그런데 블록과 손잡이 사이에 빈 틈이
+   있으면, 블록에서 손잡이로 손을 옮기는 순간 hover가 풀려 손잡이가
+   사라진다. 오른쪽에 여백을 붙여 판정 영역이 블록 모서리까지 이어지게
+   해 두면 손이 끊기지 않고 넘어간다. */
 .compare-col-controls {
     position: absolute;
     top: 8px;
@@ -1717,6 +1723,7 @@ body.notice-dragging .notice-hover-preview { display: none !important; }
     display: flex;
     align-items: center;
     gap: 2px;
+    padding-right: 20px;
     opacity: 0;
     transform: translateX(4px);
     pointer-events: none;

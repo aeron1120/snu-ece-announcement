@@ -1911,10 +1911,12 @@ test('the left rail never scrolls and the hover preview follows its card', async
 
     // 모바일 두 열이 나란히 끝나 생기는 아래 빈 띠를 벽돌 배치로 메운다.
     // 끌어올린 만큼 위를 비워 두지 않으면 첫 줄이 잘린다.
-    assert.match(mobileCss, /\.grid > \.card:nth-child\(2n\+1\)\s*\{\s*margin-top:\s*-48px/);
-    assert.match(mobileCss, /\.grid\s*\{[^}]*padding-top:\s*48px/s);
+    assert.match(mobileCss, /\.grid > \.card:nth-child\(2n\+1\)\s*\{\s*margin-top:\s*-46px/);
+    // 위에 자리를 비워 두면 오른쪽 열이 그만큼 내려가 빈 띠가 오히려 넓어진다.
+    const gridBlock = mobileCss.slice(mobileCss.indexOf('html[data-view="mobile"] .grid {'));
+    assert.doesNotMatch(gridBlock.slice(0, gridBlock.indexOf('}')), /padding-top/);
     // "결과 N건"이 그 자리에 들어서면 끌어올리기를 멈춘다.
-    assert.match(mobileCss, /\.grid\.has-result-count\s*\{\s*padding-top:\s*0/);
+    assert.match(mobileCss, /\.grid\.has-result-count > \.card:nth-child\(2n\+1\)\s*\{\s*margin-top:\s*0/);
     assert.match(readNamedFunction(app, 'updateNoticeResultCount'), /classList\.toggle\('has-result-count', show\)/);
 });
 

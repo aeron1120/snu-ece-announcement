@@ -231,6 +231,56 @@ function roleSatisfies(role, required) {
     return role === required;
 }
 
+/* 로그인 실패 잠금.
+   같은 곳에서 다섯 번 틀리면 10분 동안 더 시도할 수 없다. 초당 요청 수만
+   재는 rate limit과 달리, 천천히 하나씩 찔러보는 시도까지 막는 게 목적이다.
+   성공하면 기록을 지운다. */
+const ADMIN_LOGIN_MAX_ATTEMPTS = 5;
+const ADMIN_LOGIN_LOCK_MS = 10 * 60 * 1000;
+const adminLoginAttempts = new Map();
+
+function loginAttemptKey(req) {
+    return String(req.ip || req.socket?.remoteAddress || 'unknown');
+}
+
+function getAdminLoginLock(req) {
+    const key = loginAttemptKey(req);
+    const record = adminLoginAttempts.get(key);
+    if (!record) return null;
+    if (record.lockedUntil && record.lockedUntil > Date.now()) {
+        return { key, retryAfterMs: record.lockedUntil - Date.now() };
+    }
+    // 잠금이 풀렸으면 실패 기록도 함께 비운다.
+    if (record.lockedUntil && record.lockedUntil <= Date.now()) {
+        adminLoginAttempts.delete(key);
+    }
+    return null;
+}
+
+function recordAdminLoginFailure(req) {
+    const key = loginAttemptKey(req);
+    const record = adminLoginAttempts.get(key) || { count: 0, lockedUntil: 0 };
+    record.count += 1;
+    if (record.count >= ADMIN_LOGIN_MAX_ATTEMPTS) {
+        record.lockedUntil = Date.now() + ADMIN_LOGIN_LOCK_MS;
+        record.count = 0;
+    }
+    adminLoginAttempts.set(key, record);
+    return record;
+}
+
+function clearAdminLoginFailures(req) {
+    adminLoginAttempts.delete(loginAttemptKey(req));
+}
+
+// 오래된 기록이 메모리에 계속 쌓이지 않게 이따금 치운다.
+setInterval(() => {
+    const now = Date.now();
+    for (const [key, record] of adminLoginAttempts) {
+        if (!record.lockedUntil || record.lockedUntil <= now) adminLoginAttempts.delete(key);
+    }
+}, ADMIN_LOGIN_LOCK_MS).unref?.();
+
 app.disable('x-powered-by');
 app.set('trust proxy', 1);
 
@@ -371,6 +421,17 @@ async function hasValidAdminSession(req) {
 
 app.post('/api/admin/session', authenticationLimiter, async (req, res) => {
     try {
+        // 잠겨 있으면 비밀번호가 맞아도 열어 주지 않는다.
+        const lock = getAdminLoginLock(req);
+        if (lock) {
+            const seconds = Math.ceil(lock.retryAfterMs / 1000);
+            res.setHeader('Retry-After', String(seconds));
+            return res.status(429).json({
+                error: `비밀번호를 ${ADMIN_LOGIN_MAX_ATTEMPTS}회 이상 틀렸습니다. ${Math.ceil(seconds / 60)}분 뒤에 다시 시도해주세요.`,
+                lockedForSeconds: seconds
+            });
+        }
+
         const password = String(req.body?.password || '').trim();
         const requestedRole = String(req.body?.role || '').trim();
         const settings = await getSecuritySettings();
@@ -386,9 +447,23 @@ app.post('/api/admin/session', authenticationLimiter, async (req, res) => {
             : null;
 
         if (!matched) {
-            return res.status(401).json({ error: '관리자 인증 실패' });
+            const record = recordAdminLoginFailure(req);
+            if (record.lockedUntil > Date.now()) {
+                const seconds = Math.ceil((record.lockedUntil - Date.now()) / 1000);
+                res.setHeader('Retry-After', String(seconds));
+                return res.status(429).json({
+                    error: `비밀번호를 ${ADMIN_LOGIN_MAX_ATTEMPTS}회 틀렸습니다. ${Math.ceil(seconds / 60)}분 동안 로그인할 수 없습니다.`,
+                    lockedForSeconds: seconds
+                });
+            }
+            const left = ADMIN_LOGIN_MAX_ATTEMPTS - record.count;
+            return res.status(401).json({
+                error: `관리자 인증 실패 (${left}회 더 틀리면 ${ADMIN_LOGIN_LOCK_MS / 60000}분 동안 잠깁니다)`,
+                attemptsLeft: left
+            });
         }
 
+        clearAdminLoginFailures(req);
         const sessionId = crypto.randomBytes(32).toString('base64url');
         adminSessions.set(sessionId, {
             role: matched,
@@ -3134,9 +3209,16 @@ app.delete('/api/banner-slides/:id', requireBannerAdmin, async (req, res) => {
     }
 });
 
+// 테스트가 잠금 상태를 되돌릴 수 있게 열어 둔다. 같은 IP를 여러 테스트가
+// 공유하므로, 잠근 채로 두면 뒤따르는 테스트가 로그인하지 못한다.
+function resetAdminLoginAttempts() {
+    adminLoginAttempts.clear();
+}
+
 export {
     applyNoticeListFilters,
     app,
+    resetAdminLoginAttempts,
     buildBannerSlideUpdate,
     cleanupExpiredBanners,
     createBannerSlide,
