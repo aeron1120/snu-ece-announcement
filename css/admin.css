@@ -83,8 +83,42 @@
 }
 .review-layout { display: grid; grid-template-columns: minmax(230px, 320px) minmax(0, 1fr); gap: 18px; }
 .review-auto-note { margin: -4px 0 8px; color: var(--text-sub); font-size: 13px; line-height: 1.55; }
+.review-crawl-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin: 12px 0 6px;
+}
+.review-crawl-progress {
+    display: grid;
+    grid-template-columns: minmax(150px, 320px) 48px;
+    align-items: center;
+    gap: 10px;
+    flex: 1;
+    max-width: 390px;
+}
+.review-crawl-progress[hidden] { display: none; }
+.review-crawl-progress progress {
+    width: 100%;
+    height: 9px;
+    overflow: hidden;
+    border: 0;
+    border-radius: 999px;
+    background: #e5e7eb;
+    accent-color: var(--primary);
+}
+.review-crawl-progress progress::-webkit-progress-bar { background: #e5e7eb; border-radius: 999px; }
+.review-crawl-progress progress::-webkit-progress-value {
+    background: linear-gradient(90deg, var(--primary), #5279cc);
+    border-radius: 999px;
+    transition: width .35s ease;
+}
+.review-crawl-progress strong {
+    color: var(--primary);
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+}
 .review-list-pane { border-right: 1px solid var(--border); padding-right: 18px; }
-.review-list-pane > .btn { width: 100%; margin-bottom: 12px; }
 .review-notice-list { display: flex; flex-direction: column; gap: 8px; max-height: 68vh; overflow-y: auto; }
 .review-list-item {
     width: 100%; padding: 12px; border: 1px solid var(--border);
@@ -95,6 +129,18 @@
 .review-editor { min-width: 0; }
 .review-source { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 16px; font-size: 13px; }
 .review-source a { color: var(--primary); font-weight: 700; }
+.review-actions-top {
+    position: sticky;
+    top: 8px;
+    z-index: 12;
+    justify-content: flex-end;
+    margin: 0 0 18px;
+    padding: 10px 0;
+    background: rgba(255, 255, 255, .97);
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    box-shadow: 0 8px 12px rgba(15, 44, 98, .04);
+}
 .review-editor-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .review-editor-grid .wide { grid-column: 1 / -1; }
 .review-editor textarea { min-height: 150px; }
@@ -104,6 +150,21 @@
 .review-keyword { padding: 4px 8px; background: var(--primary-light); color: var(--primary); font-size: 12px; }
 .review-attachments { margin: 12px 0; padding-left: 20px; }
 .review-actions .btn[disabled] { opacity: .55; cursor: wait; }
+.review-reward-group { align-content: start; }
+.review-reward-toggle {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 12px;
+    border: 1px solid var(--border);
+    background: #fafbfc;
+    cursor: pointer;
+}
+.review-reward-toggle input { width: 18px; height: 18px; margin-top: 2px; accent-color: var(--primary); }
+.review-reward-toggle span { display: grid; gap: 3px; }
+.review-reward-toggle small { color: var(--text-sub); font-size: 11.5px; font-weight: 500; line-height: 1.45; }
+.review-reward-note { display: grid; gap: 7px; margin-top: 10px; }
+.review-reward-note[hidden] { display: none; }
 
 /* ---------- 제목 양식 빌더 ---------- */
 .title-builder {
@@ -363,6 +424,10 @@
     .review-notice-list { max-height: 240px; }
     .review-editor-grid { grid-template-columns: 1fr; }
     .review-editor-grid .wide { grid-column: auto; }
+    .review-crawl-toolbar { align-items: stretch; flex-direction: column; }
+    .review-crawl-progress { width: 100%; max-width: none; }
+    .review-actions-top { top: 0; justify-content: stretch; }
+    .review-actions-top .btn { flex: 1 1 calc(50% - 4px); }
     .title-builder-grid { grid-template-columns: 1fr; }
     .ai-progress-steps { grid-template-columns: repeat(2, 1fr); }
     .admin-notice-row { flex-direction: column; align-items: stretch; }

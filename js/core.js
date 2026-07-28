@@ -37,7 +37,7 @@ let bannerRotationInterval = null;
 let bannerTransitionTimer = null;
 let compareBlocks = [];   // 독립 비교 공간에 담긴 공지 id들 (데스크톱 전용, 최대 4)
 let compareWorkspaceOpen = false;
-let compareDockSide = 'right';
+let compareDockSide = 'left';
 let compareLayoutMode = 'stack';
 let expandedCompareBlocks = new Set();
 let activeNoticeSplitDragId = '';
@@ -1689,12 +1689,7 @@ function renderNoticeCards(animate = false) {
     const baseNotices = preferredStudentYear
         ? [...preferredNotices, ...otherNotices]
         : unrankedBaseNotices;
-    const singleBlockMode = blockIds.length === 1;
-    const visibleBaseNotices = singleBlockMode
-        ? baseNotices.slice(0, 2)
-        : baseNotices;
-
-    visibleBaseNotices.forEach(notice => {
+    baseNotices.forEach(notice => {
         const datePresentation = getNoticeDatePresentation(notice);
         const rawTitle = notice.title || "제목 없음";
         const safeTitle = escapeHtml(rawTitle);
@@ -2337,7 +2332,9 @@ async function applyPendingNoticeSplit(placement) {
         return;
     }
     if (!hadWorkspace) {
-        compareDockSide = placement === 'left' ? 'left' : 'right';
+        // 첫 블록은 항상 왼쪽에 반고정하고, 오른쪽은 기존 공지 목록 흐름을 유지한다.
+        // 어느 쪽 추가 표식에서 시작했든 결과 구조는 같아야 사용자가 길을 잃지 않는다.
+        compareDockSide = 'left';
         compareLayoutMode = 'stack';
         compareBlocks.push(id);
     } else if (placement === 'left') {
@@ -2685,8 +2682,8 @@ function renderCompareSpace(blockIds = compareBlocks) {
     }).join('');
 
     const canAddBlock = blockIds.length < maxCompareBlocks();
-    const emptyOnLeft = blockIds.length === 1 && compareDockSide === 'right';
-    const emptyPlacement = emptyOnLeft ? 'left' : 'right';
+    const emptyOnLeft = false;
+    const emptyPlacement = 'right';
     const emptySlot = canAddBlock ? `
         <button class="compare-empty-slot ${emptyOnLeft ? 'is-left' : 'is-right'}" type="button"
                 data-placement="${emptyPlacement}" aria-label="빈 반쪽에 공지 블록 추가"

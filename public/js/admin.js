@@ -28,6 +28,8 @@ let aiProgressTimer = null;
 let aiProgressValue = 0;
 let aiProgressCeiling = 0;
 let aiProgressActiveStep = 'prepare';
+let crawlProgressTimer = null;
+let crawlProgressValue = 0;
 let reviewInboxPollTimer = null;
 let reviewInboxPollInFlight = false;
 let adminFeedbackItems = [];
@@ -1301,6 +1303,8 @@ function renderReviewEditor(notice) {
     const selectedCategoryIds = new Set((notice.categoryIds || []).map(Number));
     const isOcrEligible = String(notice.rawContent || notice.content || '').trim().length < 15;
     const indexedOcrCharacters = String(notice.ocrText || '').length;
+    const rewardNote = String(notice.rewardNote || notice.surveyReward || '').trim();
+    const hasReward = Boolean(notice.hasReward || rewardNote);
     const categoryCheckboxHtml = activeCategories.length > 0
         ? activeCategories.map(category => `
             <label class="notification-check">
@@ -1320,6 +1324,12 @@ function renderReviewEditor(notice) {
             <a href="${escapeHtml(safeHttpUrl(notice.sourceUrl))}" target="_blank" rel="noopener noreferrer">ECE 원문 열기</a>
             <span>분석 상태: ${escapeHtml(notice.analysisStatus || '대기')}</span>
             <span>신뢰도: ${notice.analysisConfidence == null ? '—' : escapeHtml(notice.analysisConfidence)}</span>
+        </div>
+        <div class="review-actions review-actions-top" role="toolbar" aria-label="공지 검수 작업">
+            <button class="btn btn-outline btn-small review-action" type="button" onclick="reanalyzeReviewNotice()">AI 편집 적용</button>
+            <button class="btn btn-danger btn-small review-action" type="button" onclick="rejectReviewNotice()">반려</button>
+            <button class="btn btn-outline btn-small review-action" type="button" onclick="publishReviewNotice(false)">승인만</button>
+            <button class="btn btn-small review-action" type="button" onclick="publishReviewNotice(true)">승인 및 알림</button>
         </div>
         <div class="review-editor-grid">
             <div class="form-group wide">
@@ -1350,14 +1360,21 @@ function renderReviewEditor(notice) {
                 <label for="review-keywords">키워드 (쉼표로 구분)</label>
                 <input id="review-keywords" type="text" value="${escapeHtml(keywords.join(', '))}">
             </div>
-            <div class="form-group">
-                <label for="review-survey-reward">리워드 표기</label>
-                <input id="review-survey-reward" type="text" maxlength="120"
-                       value="${escapeHtml(notice.rewardNote || notice.surveyReward || '')}" placeholder="예: 추첨 20명 스타벅스 기프티콘">
-                <label class="title-manual-row">
-                    <input id="review-has-reward" type="checkbox" ${notice.hasReward ? 'checked' : ''}>
-                    리워드 있음
+            <div class="form-group review-reward-group">
+                <label class="review-reward-toggle">
+                    <input id="review-has-reward" type="checkbox" ${hasReward ? 'checked' : ''}
+                           onchange="syncReviewRewardField(true)">
+                    <span>
+                        <strong>리워드 있음</strong>
+                        <small>기프티콘·상품·간식·지원금 등 즉시 보상이 있을 때 선택</small>
+                    </span>
                 </label>
+                <div id="review-reward-note-field" class="review-reward-note" ${hasReward ? '' : 'hidden'}>
+                    <label for="review-survey-reward">리워드 표기</label>
+                    <input id="review-survey-reward" type="text" maxlength="120"
+                           value="${escapeHtml(rewardNote)}" ${hasReward ? '' : 'disabled'}
+                           placeholder="예: 추첨 20명 스타벅스 기프티콘">
+                </div>
                 <label class="title-manual-row">
                     <input id="review-requires-action" type="checkbox" ${notice.requiresAction ? 'checked' : ''}>
                     신청·제출 필요
@@ -1392,12 +1409,19 @@ function renderReviewEditor(notice) {
                 <button class="btn btn-outline btn-small review-action" type="button" onclick="runReviewOcr()">이미지 OCR 실행</button>
             </div>
         ` : ''}
-        <div class="review-actions">
-            <button class="btn btn-outline btn-small review-action" type="button" onclick="reanalyzeReviewNotice()">AI 편집 적용</button>
-            <button class="btn btn-danger btn-small review-action" type="button" onclick="rejectReviewNotice()">반려</button>
-            <button class="btn btn-outline btn-small review-action" type="button" onclick="publishReviewNotice(false)">승인만</button>
-            <button class="btn btn-small review-action" type="button" onclick="publishReviewNotice(true)">승인 및 알림</button>
-        </div>`;
+        `;
+}
+
+function syncReviewRewardField(clearWhenDisabled = false) {
+    const checkbox = document.getElementById('review-has-reward');
+    const field = document.getElementById('review-reward-note-field');
+    const input = document.getElementById('review-survey-reward');
+    if (!checkbox || !field || !input) return;
+    const enabled = checkbox.checked;
+    field.hidden = !enabled;
+    input.disabled = !enabled;
+    if (!enabled && clearWhenDisabled) input.value = '';
+    if (enabled) requestAnimationFrame(() => input.focus());
 }
 
 async function runReviewOcr() {
@@ -1444,6 +1468,10 @@ function setReviewMutationBusy(busy) {
 }
 
 function collectReviewEdits() {
+    const hasReward = document.getElementById('review-has-reward').checked;
+    const rewardNote = hasReward
+        ? document.getElementById('review-survey-reward').value.trim()
+        : '';
     return {
         title: document.getElementById('review-title').value.trim(),
         content: document.getElementById('review-content').value.trim(),
@@ -1454,9 +1482,9 @@ function collectReviewEdits() {
         isPinned: document.getElementById('review-pinned').checked,
         targets: splitReviewValues(document.getElementById('review-targets').value),
         keywords: splitReviewValues(document.getElementById('review-keywords').value),
-        surveyReward: document.getElementById('review-survey-reward').value.trim(),
-        rewardNote: document.getElementById('review-survey-reward').value.trim() || null,
-        hasReward: document.getElementById('review-has-reward').checked,
+        surveyReward: rewardNote,
+        rewardNote: rewardNote || null,
+        hasReward,
         requiresAction: document.getElementById('review-requires-action').checked,
         categoryIds: Array.from(
             document.querySelectorAll('input[name="review-category"]:checked')
@@ -1475,6 +1503,11 @@ async function publishReviewNotice(notify) {
     const edits = collectReviewEdits();
     if (!edits.title || !edits.content || edits.targets.length === 0) {
         setReviewStatus('제목, 원문, 대상 학번을 확인해주세요.', true);
+        return;
+    }
+    if (edits.hasReward && !edits.rewardNote) {
+        setReviewStatus('리워드가 있으면 카드에 표시할 리워드 내용을 입력해주세요.', true);
+        document.getElementById('review-survey-reward')?.focus();
         return;
     }
     setReviewMutationBusy(true);
@@ -1541,19 +1574,63 @@ async function reanalyzeReviewNotice() {
     }
 }
 
+function setCrawlProgress(value, message) {
+    crawlProgressValue = Math.max(crawlProgressValue, Math.min(100, Math.round(value)));
+    const container = document.getElementById('review-crawl-progress');
+    const bar = document.getElementById('review-crawl-progress-bar');
+    const percent = document.getElementById('review-crawl-progress-percent');
+    if (container) container.hidden = false;
+    if (bar) bar.value = crawlProgressValue;
+    if (percent) percent.textContent = `${crawlProgressValue}%`;
+    if (message) setReviewStatus(`${message} ${crawlProgressValue}%`);
+}
+
+function getCrawlProgressMessage(value) {
+    if (value < 24) return 'ECE 사이트에 연결하고 있습니다.';
+    if (value < 52) return '공지 목록과 기존 검수 항목을 비교하고 있습니다.';
+    if (value < 82) return '새 공지의 원문과 리워드 여부를 확인하고 있습니다.';
+    return '확인한 공지를 검수함에 정리하고 있습니다.';
+}
+
+function beginCrawlProgress() {
+    if (crawlProgressTimer) clearInterval(crawlProgressTimer);
+    crawlProgressValue = 0;
+    setCrawlProgress(4, 'ECE 사이트에서 새 공지를 확인하고 있습니다.');
+    crawlProgressTimer = setInterval(() => {
+        if (crawlProgressValue >= 94) return;
+        const step = crawlProgressValue < 45 ? 3 : crawlProgressValue < 75 ? 2 : 1;
+        const next = Math.min(94, crawlProgressValue + step);
+        setCrawlProgress(next, getCrawlProgressMessage(next));
+    }, 700);
+}
+
+function finishCrawlProgress(message) {
+    if (crawlProgressTimer) clearInterval(crawlProgressTimer);
+    crawlProgressTimer = null;
+    setCrawlProgress(100, message);
+}
+
+function failCrawlProgress(message) {
+    if (crawlProgressTimer) clearInterval(crawlProgressTimer);
+    crawlProgressTimer = null;
+    const container = document.getElementById('review-crawl-progress');
+    if (container) container.hidden = true;
+    setReviewStatus(message, true);
+}
+
 async function runManualCrawl() {
     if (reviewMutationInFlight) return;
     setReviewMutationBusy(true);
-    setReviewStatus('ECE 사이트에서 새 공지를 확인하고 있습니다.');
+    beginCrawlProgress();
     try {
         const result = await apiRequest('/api/admin/crawl/ece-academics', {
             method: 'POST',
             headers: getNoticeAdminHeaders()
         });
         await loadReviewNotices();
-        setReviewStatus(`확인 완료: 새 검수 공지 ${Number(result.createdCount) || 0}건`);
+        finishCrawlProgress(`확인 완료 · 새 검수 공지 ${Number(result.createdCount) || 0}건 ·`);
     } catch (error) {
-        setReviewStatus(error.message, true);
+        failCrawlProgress(error.message);
     } finally {
         setReviewMutationBusy(false);
     }

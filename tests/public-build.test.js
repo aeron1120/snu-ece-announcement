@@ -300,8 +300,9 @@ test('notice blocks use six-dot handles and expose only left/right split targets
     assert.match(css, /\.spatial-workspace\.is-split\s*\{[^}]*display:\s*block;/s);
     assert.match(css, /\.spatial-workspace\.is-split \.compare-space-stage\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*repeat\(2,/s);
     assert.match(css, /\.spatial-workspace\.is-split\[data-blocks="1"\]\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*repeat\(2,/s);
-    assert.match(css, /\.spatial-workspace\.is-split\[data-blocks="1"\]\[data-dock="right"\]\s*\{[^}]*grid-template-areas:\s*"base blocks"/s);
-    assert.match(css, /\.spatial-workspace\.is-split\[data-blocks="1"\] \.notice-base-block > \.grid\s*\{[^}]*grid-template-columns:\s*1fr/s);
+    assert.doesNotMatch(css, /\.spatial-workspace\.is-split\[data-blocks="1"\]\[data-dock="right"\]/);
+    assert.match(css, /\.spatial-workspace\.is-split\[data-blocks="1"\] \.compare-space\s*\{[^}]*position:\s*sticky/s);
+    assert.match(css, /\.spatial-workspace\.is-split\[data-blocks="1"\] \.notice-base-block > \.grid\s*\{[^}]*grid-template-columns:\s*repeat\(2,/s);
     assert.match(css, /\.compare-space\.is-notice-drop-active \.compare-empty-slot\s*\{[^}]*display:\s*flex;/s);
     assert.match(css, /\.compare-col-controls\s*\{[^}]*position:\s*absolute;[^}]*left:\s*-54px;[^}]*opacity:\s*0;/s);
     assert.match(css, /\.compare-col:hover > \.compare-col-controls[\s\S]*opacity:\s*1;/);
@@ -700,14 +701,24 @@ test('Gemini quota errors show only a retry countdown and admin mode has one exi
 test('automatic ECE crawling feeds a live review inbox and original text is black', async () => {
     const html = await readFile('admin.html', 'utf8');
     const admin = await readFile('js/admin.js', 'utf8');
+    const adminCss = await readFile('css/admin.css', 'utf8');
     const crawler = await readFile('server/services/ece-crawler.js', 'utf8');
     const css = await readFile('css/core.css', 'utf8');
 
     assert.match(crawler, /store\.createPendingNotice\(/);
     assert.match(html, /자동 수집되어 이 검수함에 들어오며/);
+    assert.match(html, /id="review-crawl-progress-bar"/);
+    assert.match(html, /id="review-crawl-progress-percent"/);
     assert.match(admin, /function startReviewInboxPolling\(\)/);
     assert.match(admin, /loadReviewNotices\(\{ quiet: true \}\)/);
     assert.match(admin, /60_000/);
+    assert.match(admin, /function beginCrawlProgress\(\)/);
+    assert.match(admin, /새 공지의 원문과 리워드 여부를 확인하고 있습니다/);
+    assert.match(admin, /finishCrawlProgress\(`확인 완료/);
+    assert.match(admin, /class="review-actions review-actions-top"/);
+    assert.match(admin, /id="review-has-reward"[\s\S]*id="review-reward-note-field"/);
+    assert.match(admin, /if \(edits\.hasReward && !edits\.rewardNote\)/);
+    assert.match(adminCss, /\.review-actions-top\s*\{[^}]*position:\s*sticky/s);
     assert.match(css, /\.original-text-content\s*\{[^}]*color:\s*#111111/s);
     assert.match(css, /\.compare-col-content\s*\{[^}]*color:\s*#111111/s);
 });
@@ -1002,7 +1013,7 @@ test('desktop notice cards expose a delayed hover preview without enabling it on
     assert.match(mobileCss, /\.notice-hover-preview\s*\{\s*display:\s*none !important;/);
 });
 
-test('one fixed block keeps two base notice rows in the opposite half without a base load-more', async () => {
+test('one fixed block keeps the complete base notice flow in the right half', async () => {
     const html = await readFile('index.html', 'utf8');
     const app = await readFile('js/core.js', 'utf8');
     const css = await readFile('css/core.css', 'utf8');
@@ -1015,7 +1026,8 @@ test('one fixed block keeps two base notice rows in the opposite half without a 
     assert.match(queueSource, /noticeDragInProgress \|\| activeNoticeSplitDragId/);
     assert.match(dragSource, /suspendNoticeHoverPreview\(\)/);
     assert.match(dragSource, /classList\.add\('notice-dragging'\)/);
-    assert.match(filterSource, /singleBlockMode[\s\S]*baseNotices\.slice\(0, 2\)/);
+    assert.match(filterSource, /baseNotices\.forEach\(notice =>/);
+    assert.doesNotMatch(filterSource, /baseNotices\.slice\(0, 2\)/);
     assert.doesNotMatch(app, /SPLIT_NOTICE_PAGE_SIZE|showMoreSplitNotices|updateSplitNoticeMore/);
     assert.match(css, /body\.notice-dragging \.notice-hover-preview\s*\{[^}]*display:\s*none !important;/s);
     assert.doesNotMatch(css, /\.split-notice-more/);

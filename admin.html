@@ -46,10 +46,17 @@
         <section class="admin-panel active" id="panel-review" aria-labelledby="panel-review-title">
             <h2 id="panel-review-title">공지 검수함</h2>
             <p class="review-auto-note">ECE 학사 공지는 자동 수집되어 이 검수함에 들어오며, 화면을 열어두면 1분마다 새 목록을 확인합니다.</p>
+            <div class="review-crawl-toolbar">
+                <button id="review-crawl-button" class="btn btn-outline btn-small review-action"
+                        type="button" onclick="runManualCrawl()">지금 새 공지 확인</button>
+                <div id="review-crawl-progress" class="review-crawl-progress" hidden>
+                    <progress id="review-crawl-progress-bar" max="100" value="0"></progress>
+                    <strong id="review-crawl-progress-percent">0%</strong>
+                </div>
+            </div>
             <p id="review-status" class="review-status" aria-live="polite"></p>
             <div class="review-layout">
                 <aside class="review-list-pane" aria-label="검수 대기 공지">
-                    <button class="btn btn-outline btn-small" type="button" onclick="runManualCrawl()">지금 새 공지 확인</button>
                     <div id="review-notice-list" class="review-notice-list"></div>
                 </aside>
                 <section id="review-editor" class="review-editor" aria-label="공지 검수 편집기">
