@@ -7,6 +7,6 @@
     "crons": ["*/30 * * * *"]
   },
   "vars": {
-    "API_BASE_URL": "https://replace-with-render-service.example"
+    "API_BASE_URL": "https://snu-ece-announcement.onrender.com"
   }
 }
