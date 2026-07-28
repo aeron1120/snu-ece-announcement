@@ -102,10 +102,9 @@ html[data-view="desktop"] .spatial-workspace.is-split[data-blocks="1"] .notice-b
         display: block;
     }
 
-    html[data-view="desktop"] .mobile-menu-btn,
-    html[data-view="desktop"] .rail-left .drawer-close-btn {
-        display: block !important;
-    }
+    /* 좁은 데스크탑에서는 제목 줄 안에 서랍 손잡이로 둔다. */
+    html[data-view="desktop"] .mobile-menu-btn { display: grid !important; }
+    html[data-view="desktop"] .rail-left .drawer-close-btn { display: block !important; }
 
     html[data-view="desktop"] .rail-right {
         width: var(--compact-ad-rail-width);

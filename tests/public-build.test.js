@@ -1910,7 +1910,12 @@ test('the left rail never scrolls and the hover preview follows its card', async
     assert.match(app, /placement === 'trash'/);
 
     // 모바일 두 열이 나란히 끝나 생기는 아래 빈 띠를 벽돌 배치로 메운다.
-    assert.match(mobileCss, /\.grid > \.card:nth-child\(2n\+1\)\s*\{\s*margin-top:\s*-22px/);
+    // 끌어올린 만큼 위를 비워 두지 않으면 첫 줄이 잘린다.
+    assert.match(mobileCss, /\.grid > \.card:nth-child\(2n\+1\)\s*\{\s*margin-top:\s*-48px/);
+    assert.match(mobileCss, /\.grid\s*\{[^}]*padding-top:\s*48px/s);
+    // "결과 N건"이 그 자리에 들어서면 끌어올리기를 멈춘다.
+    assert.match(mobileCss, /\.grid\.has-result-count\s*\{\s*padding-top:\s*0/);
+    assert.match(readNamedFunction(app, 'updateNoticeResultCount'), /classList\.toggle\('has-result-count', show\)/);
 });
 
 test('banner slots show one at a time and the inbox toolbar acts on the selection', async () => {
@@ -2043,4 +2048,41 @@ test('no notice title can overflow the text poster box', async () => {
 
     // 다 담지 못하면 잘렸다는 걸 말줄임으로 알린다.
     assert.match(split('가'.repeat(300), 7, 12).at(-1), /…$/);
+});
+
+test('drop targets light up when the dragged card overlaps them, not only the cursor', async () => {
+    const app = await readFile('js/core.js', 'utf8');
+    const source = readNamedFunction(app, 'findDropZoneUnderDrag');
+
+    // 겹치는 넓이로 고르고, 여러 개가 겹치면 더 많이 겹친 쪽을 잡는다.
+    assert.match(source, /overlapX \* overlapY/);
+    assert.match(source, /area > bestArea/);
+    // 겹치는 게 없을 때만 커서 한 점을 마지막으로 본다.
+    assert.match(source, /elementFromPoint/);
+    // 카드 드래그와 블록 재배치 양쪽에서 같은 판정을 쓴다.
+    assert.match(readNamedFunction(app, 'onNoticeHandlePointerMove'), /findDropZoneUnderDrag\(/);
+    assert.match(readNamedFunction(app, 'onCompareHandlePointerMove'), /findDropZoneUnderDrag\([\s\S]*?compareDragOverlay\)/);
+
+    // 겹침 판정을 떼어내 실제로 넓이 큰 쪽을 고르는지 확인한다.
+    const zones = [
+        { name: 'left',  rect: { left: 0,   right: 60,  top: 0, bottom: 50 } },
+        { name: 'right', rect: { left: 70,  right: 130, top: 0, bottom: 50 } }
+    ];
+    const pick = drag => {
+        let best = null;
+        let bestArea = 0;
+        for (const zone of zones) {
+            const overlapX = Math.min(drag.right, zone.rect.right) - Math.max(drag.left, zone.rect.left);
+            const overlapY = Math.min(drag.bottom, zone.rect.bottom) - Math.max(drag.top, zone.rect.top);
+            if (overlapX <= 0 || overlapY <= 0) continue;
+            const area = overlapX * overlapY;
+            if (area > bestArea) { bestArea = area; best = zone.name; }
+        }
+        return best;
+    };
+    // 두 표적에 걸쳐 있으면 더 많이 덮은 쪽이 켜진다.
+    assert.equal(pick({ left: 40, right: 120, top: 10, bottom: 40 }), 'right');
+    assert.equal(pick({ left: 10, right: 80, top: 10, bottom: 40 }), 'left');
+    // 어느 쪽에도 닿지 않으면 아무것도 켜지 않는다.
+    assert.equal(pick({ left: 200, right: 260, top: 10, bottom: 40 }), null);
 });

@@ -57,19 +57,44 @@ html[data-view="mobile"] .drawer-scrim {
 }
 html[data-view="mobile"] .drawer-scrim.drawer-open { display: block; }
 
+/* 제목 줄에서 빠져나와 화면 왼쪽 위 구석에 떠 있는 버튼.
+   본문을 가리지 않도록 흐린 회색 반투명으로 조용히 둔다. */
+/* 공통 생김새. 폭 좁은 데스크탑에서도 같은 버튼을 서랍 손잡이로 쓴다. */
 .mobile-menu-btn {
     display: none;
-    background: white;
-    border: 1px solid var(--border);
-    color: var(--primary-deep);
-    width: 44px; height: 44px;
-    border-radius: 14px;
-    font-size: 20px; line-height: 1;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    place-items: center;
+    color: rgba(31, 63, 143, 0.62);
+    background: rgba(255, 255, 255, 0.55);
+    border: 1px solid rgba(31, 63, 143, 0.12);
+    border-radius: 12px;
     cursor: pointer;
     flex-shrink: 0;
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+    transition: color .15s ease, background-color .15s ease, border-color .15s ease;
 }
-html[data-view="mobile"] .mobile-menu-btn { display: block; }
-.mobile-menu-btn:hover { background: var(--primary-light); border-color: var(--primary); }
+.mobile-menu-btn svg { width: 21px; height: 21px; }
+.mobile-menu-btn:hover,
+.mobile-menu-btn:focus-visible {
+    color: var(--primary-deep);
+    background: rgba(255, 255, 255, 0.86);
+    border-color: rgba(31, 63, 143, 0.28);
+}
+html[data-view="mobile"] .mobile-menu-btn {
+    display: grid;
+    position: fixed;
+    top: 10px;
+    left: 10px;
+    z-index: 1050;
+}
+/* 서랍이 열려 있는 동안에는 서랍 뒤에 가려 두고 손도 닿지 않게 한다. */
+html[data-view="mobile"] .rail-left.drawer-open ~ .page-main .mobile-menu-btn {
+    opacity: 0;
+    pointer-events: none;
+}
 
 .drawer-close-btn {
     display: inline-flex;
@@ -119,7 +144,8 @@ html[data-view="mobile"] .header {
     row-gap: 10px;
     align-items: center;
     margin-bottom: 12px;
-    padding: 12px;
+    /* 왼쪽 위에 뜬 메뉴 버튼이 로고를 덮지 않도록 그만큼 비워 둔다. */
+    padding: 12px 12px 12px 54px;
     background: #fff;
     border: 0;
     border-radius: 20px;
@@ -255,16 +281,20 @@ html[data-view="mobile"] .notice-sort-chips button {
 }
 
 /* ---------- 공지 목록 ---------- */
-/* 두 열이 나란히 끝나면 아래에 빈 띠가 남는다. 왼쪽 열을 조금 끌어올려
-   벽돌처럼 어긋나게 두면 그 자리가 자연스럽게 메워진다. 끌어올린 만큼
-   위쪽에 자리를 미리 비워 두어 첫 줄이 잘리지 않는다. */
+/* 두 열이 나란히 끝나면 아래에 빈 띠가 남는다. 왼쪽 열을 정렬 버튼 줄
+   높이까지 끌어올려 벽돌처럼 어긋나게 두면 그 자리가 메워진다.
+   정렬 버튼은 오른쪽에 몰려 있어 그 왼쪽은 비어 있다. */
 html[data-view="mobile"] .grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 10px;
     align-items: start;
-    padding-top: 22px;
+    padding-top: 48px;
 }
-html[data-view="mobile"] .grid > .card:nth-child(2n+1) { margin-top: -22px; }
+html[data-view="mobile"] .grid > .card:nth-child(2n+1) { margin-top: -48px; }
+/* 검색·필터를 걸면 그 자리에 "결과 N건"이 들어선다. 카드가 겹치지 않게
+   끌어올리기를 멈춘다. */
+html[data-view="mobile"] .grid.has-result-count { padding-top: 0; }
+html[data-view="mobile"] .grid.has-result-count > .card:nth-child(2n+1) { margin-top: 0; }
 html[data-view="mobile"] .card {
     width: 100%;
     height: auto;

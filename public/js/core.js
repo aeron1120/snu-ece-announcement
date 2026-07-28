@@ -2194,6 +2194,9 @@ function updateNoticeResultCount() {
     const show = total > 0 && hasActiveNoticeQuery();
     countEl.hidden = !show;
     countEl.innerHTML = show ? `결과 <strong>${total}</strong>건` : '';
+    // 모바일에서 왼쪽 열을 정렬 버튼 줄까지 끌어올리는데, 결과 건수가
+    // 바로 그 자리에 들어서므로 보일 때는 끌어올리지 않는다.
+    document.getElementById('notice-grid')?.classList.toggle('has-result-count', show);
 }
 
 // 검색어나 상세·빠른 필터 중 하나라도 기본값에서 벗어났는지.
@@ -2714,11 +2717,45 @@ function onNoticeHandlePointerMove(event) {
     positionNoticePointerOverlay(event.clientX, event.clientY);
     document.querySelectorAll('.split-drop-zone.active, .compare-empty-slot.active')
         .forEach(zone => zone.classList.remove('active'));
-    const target = document.elementFromPoint?.(event.clientX, event.clientY)
-        ?.closest?.('.split-drop-zone, .compare-empty-slot');
+    const target = findDropZoneUnderDrag(event.clientX, event.clientY);
     pointerNoticeDrag.placement = target?.dataset?.splitSide || target?.dataset?.placement || '';
     // 왼쪽·오른쪽·휴지통 셋 다 표적이다.
     if (['left', 'right', 'trash'].includes(pointerNoticeDrag.placement)) target.classList.add('active');
+}
+
+/* 표적을 고를 때 커서 한 점만 보지 않는다. 끌고 있는 카드가 표적에
+   조금이라도 겹치면 그 표적을 켠다. 겹치는 표적이 여럿이면 더 많이
+   겹친 쪽을 고른다. 커서를 정확히 올려야만 반응하면 큰 카드를 들고
+   작은 버튼을 맞추기가 어렵다. */
+function findDropZoneUnderDrag(clientX, clientY, ghostElement = noticeSplitDragOverlay) {
+    const zones = Array.from(document.querySelectorAll('.split-drop-zone, .compare-empty-slot'))
+        .filter(zone => zone.offsetParent !== null || zone.getClientRects().length);
+    if (!zones.length) return null;
+
+    const ghost = ghostElement?.getBoundingClientRect();
+    // 분신이 아직 없으면 커서를 아주 작은 사각형으로 본다.
+    const dragRect = ghost && ghost.width
+        ? ghost
+        : { left: clientX, right: clientX + 1, top: clientY, bottom: clientY + 1 };
+
+    let best = null;
+    let bestArea = 0;
+    for (const zone of zones) {
+        const rect = zone.getBoundingClientRect();
+        const overlapX = Math.min(dragRect.right, rect.right) - Math.max(dragRect.left, rect.left);
+        const overlapY = Math.min(dragRect.bottom, rect.bottom) - Math.max(dragRect.top, rect.top);
+        if (overlapX <= 0 || overlapY <= 0) continue;
+        const area = overlapX * overlapY;
+        if (area > bestArea) {
+            bestArea = area;
+            best = zone;
+        }
+    }
+    // 겹치는 게 없으면 커서가 직접 올라가 있는지 마지막으로 확인한다.
+    return best
+        || document.elementFromPoint?.(clientX, clientY)
+            ?.closest?.('.split-drop-zone, .compare-empty-slot')
+        || null;
 }
 
 function onNoticeHandlePointerEnd(event) {
@@ -2973,10 +3010,12 @@ function onCompareHandlePointerMove(event) {
     const trashZone = document.getElementById('compare-trash-zone');
     trashZone?.classList.toggle('active', Boolean(trash));
 
-    // 위쪽 표적 위에 있으면 그 자리로 옮긴다는 뜻이다.
+    // 위쪽 표적도 카드가 겹치기만 하면 켜진다. 커서를 정확히 맞출 필요가 없다.
     document.querySelectorAll('.split-drop-zone.active')
         .forEach(zone => zone.classList.remove('active'));
-    const splitZone = trash ? null : hoveredElement?.closest?.('.split-drop-zone');
+    const splitZone = trash
+        ? null
+        : findDropZoneUnderDrag(event.clientX, event.clientY, compareDragOverlay);
     pointerCompareSplitSide = splitZone?.dataset?.splitSide || '';
     if (splitZone) {
         splitZone.classList.add('active');
