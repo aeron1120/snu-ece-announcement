@@ -83,3 +83,17 @@ button:disabled { opacity: .6; cursor: wait; }
 @media (max-width: 540px) {
     .login-card { padding: 26px 22px; }
 }
+
+/* 폰에서도 그대로 로그인할 수 있게 손가락 크기에 맞춘다. */
+@media (max-width: 520px) {
+    body { padding: 20px 0; align-items: start; }
+    .login-shell { width: min(440px, calc(100% - 24px)); }
+    .login-card { padding: 22px 18px 26px; }
+    h1 { font-size: 23px; }
+    .role-option { padding: 13px 12px; }
+    .role-name { font-size: 15px; }
+    .role-desc { font-size: 12px; }
+    /* 라디오는 그대로 두고 비밀번호 칸만 키운다. iOS는 16px 미만이면 화면을 확대한다. */
+    input:not([type="radio"]) { min-height: 50px; font-size: 16px; }
+    button { min-height: 52px; font-size: 16px; }
+}

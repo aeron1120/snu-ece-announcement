@@ -1804,3 +1804,46 @@ test('Cloudflare scheduled worker triggers the protected crawl endpoint', async 
     assert.equal(calls[0].options.method, 'POST');
     assert.equal(calls[0].options.headers['x-crawl-secret'], 'secret');
 });
+
+test('the admin console is usable on a phone and keeps AI editing in reach', async () => {
+    const adminCss = await readFile('css/admin.css', 'utf8');
+    const loginCss = await readFile('css/admin-login.css', 'utf8');
+    const html = await readFile('admin.html', 'utf8');
+    const admin = await readFile('js/admin.js', 'utf8');
+
+    // 폰 폭에서 여러 열 배치를 한 열로 푼다.
+    assert.match(adminCss, /@media \(max-width: 760px\)/);
+    const phoneLayer = adminCss.slice(adminCss.indexOf('@media (max-width: 760px)'));
+    assert.match(phoneLayer, /\.review-layout\s*\{\s*grid-template-columns:\s*minmax\(0, 1fr\)/);
+    assert.match(phoneLayer, /\.review-editor-grid\s*\{\s*grid-template-columns:\s*minmax\(0, 1fr\)/);
+    assert.match(phoneLayer, /\.title-builder-grid,[\s\S]*grid-template-columns:\s*minmax\(0, 1fr\)/);
+    // 탭은 줄바꿈으로 쌓이지 않고 가로로 밀린다.
+    assert.match(phoneLayer, /\.admin-tabs\s*\{[\s\S]*?overflow-x:\s*auto/);
+    // AI 자동 편집은 스크롤과 무관하게 늘 보여야 한다.
+    assert.match(phoneLayer, /\.analyze-bar\s*\{[\s\S]*?position:\s*sticky;[\s\S]*?bottom:\s*8px/);
+    assert.match(phoneLayer, /\.analyze-bar \.btn\s*\{[\s\S]*?min-height:\s*50px/);
+    // 손가락으로 누를 수 있는 크기.
+    assert.match(phoneLayer, /\.admin-tab\s*\{[\s\S]*?min-height:\s*44px/);
+
+    // 로그인 화면도 폰에서 그대로 쓸 수 있어야 한다.
+    assert.match(loginCss, /@media \(max-width: 520px\)/);
+    assert.match(loginCss, /input:not\(\[type="radio"\]\)\s*\{[^}]*font-size:\s*16px/);
+
+    // 직책을 고르는 자리가 로그인 화면에 있다.
+    const loginHtml = await readFile('admin-login.html', 'utf8');
+    for (const role of ['notice', 'banner', 'master']) {
+        assert.match(loginHtml, new RegExp(`name="admin-role" value="${role}"`));
+    }
+
+    // 역할별로 열리는 탭이 코드에 못박혀 있다.
+    assert.match(admin, /master: \['review', 'backfill', 'compose', 'notices', 'banner', 'feedback', 'settings'\]/);
+    assert.match(admin, /notice: \['review', 'backfill', 'compose', 'notices'\]/);
+    assert.match(admin, /banner: \['banner'\]/);
+    // 쓸 수 없는 탭은 감추는 게 아니라 지운다.
+    assert.match(readNamedFunction(admin, 'applyAdminRoleToChrome'), /tab\.remove\(\)/);
+    assert.match(readNamedFunction(admin, 'applyAdminRoleToChrome'), /panel\.remove\(\)/);
+
+    // 운영진이 마스터에게 남기는 창.
+    assert.match(html, /id="staff-report-modal"/);
+    assert.match(admin, /\/api\/admin\/staff-report/);
+});

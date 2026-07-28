@@ -570,3 +570,137 @@
     font-size: 11px;
     font-weight: 700;
 }
+
+/* ============================================================
+   좁은 화면(폰) 관리자 레이아웃
+   데스크탑용 여러 열 배치를 한 열로 풀고, 손가락으로 누를 수 있게
+   버튼과 입력칸을 키운다. 화면을 줄여 보여 주는 게 아니라
+   같은 기능을 폰에서 실제로 쓸 수 있게 만드는 것이 목적이다.
+   ============================================================ */
+@media (max-width: 760px) {
+    .admin-topbar {
+        gap: 8px;
+        padding: 12px 14px;
+        row-gap: 10px;
+    }
+    .admin-topbar h1 { font-size: 18px; }
+    .admin-topbar-actions {
+        width: 100%;
+        margin-left: 0;
+        gap: 6px;
+    }
+    .admin-topbar-actions button {
+        flex: 1;
+        min-height: 42px;
+        padding: 0 10px;
+        font-size: 12.5px;
+        border-radius: 10px;
+    }
+
+    .admin-shell { padding: 14px 12px 48px; }
+
+    /* 탭은 가로로 밀어 본다. 줄바꿈으로 쌓이면 화면 절반을 먹는다. */
+    .admin-tabs {
+        gap: 4px;
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        overscroll-behavior-x: contain;
+        margin-bottom: 14px;
+        padding-bottom: 2px;
+        border-bottom-width: 2px;
+        scrollbar-width: none;
+    }
+    .admin-tabs::-webkit-scrollbar { display: none; }
+    .admin-tab {
+        flex: 0 0 auto;
+        min-height: 44px;
+        padding: 0 14px;
+        font-size: 13px;
+        white-space: nowrap;
+    }
+    .admin-tab.active { margin-bottom: -2px; border-radius: 8px 8px 0 0; }
+
+    .admin-panel { padding: 16px 14px 22px; border-radius: 12px; }
+    .admin-panel > h2 { font-size: 18px; }
+
+    /* 검수함: 목록과 편집기를 위아래로 편다. */
+    .review-layout { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+    .review-list-pane {
+        padding-right: 0;
+        padding-bottom: 14px;
+        border-right: 0;
+        border-bottom: 1px solid var(--border);
+    }
+    .review-notice-list { max-height: 42vh; }
+    .review-editor-grid { grid-template-columns: minmax(0, 1fr); }
+    .review-crawl-toolbar { flex-wrap: wrap; gap: 10px; }
+    .review-crawl-progress { max-width: none; }
+    .review-actions { flex-wrap: wrap; gap: 8px; }
+    .review-actions .btn { flex: 1 1 46%; min-height: 46px; }
+    /* 검수 화면 위쪽 고정 막대는 폰에서 자리를 너무 먹는다. */
+    .review-actions-top { position: static; }
+
+    /* 공지 작성: 제목 양식 세 칸을 한 줄씩 내린다. */
+    .title-builder-grid,
+    .analysis-fields .title-builder-grid { grid-template-columns: minmax(0, 1fr); }
+    .analysis-fields { padding: 12px; }
+    .title-preview { font-size: 15px; padding: 12px 13px; }
+
+    /* AI 자동 편집은 이 화면의 핵심이다. 원문 입력칸이 길어 스크롤을 내리면
+       버튼이 화면 밖으로 밀려나므로, 아래쪽에 붙여 언제나 보이게 한다. */
+    .analyze-bar {
+        position: sticky;
+        bottom: 8px;
+        z-index: 20;
+        gap: 10px;
+        margin: 0 0 16px;
+        padding: 12px;
+        border-radius: 12px;
+        box-shadow: 0 -4px 18px rgba(20, 43, 88, .14);
+    }
+    .analyze-bar .btn {
+        flex: 1 1 100%;
+        min-height: 50px;
+        font-size: 15px;
+        font-weight: 800;
+    }
+    .analyze-bar .review-status { flex: 1 1 100%; font-size: 12px; }
+
+    #post-content { min-height: 190px; }
+    .paste-dropzone { padding: 16px 12px; font-size: 13px; }
+
+    /* 공지 목록: 제목과 버튼을 위아래로 나눈다. */
+    .admin-notice-row { flex-direction: column; align-items: stretch; gap: 10px; }
+    .admin-notice-row-actions { flex-wrap: wrap; gap: 6px; }
+    .admin-notice-row-actions .btn { flex: 1 1 30%; min-height: 42px; }
+    .admin-notice-row-meta { font-size: 11.5px; line-height: 1.7; }
+
+    /* 카톡 백필 표는 가로로 밀어 본다. */
+    .backfill-upload-row { flex-direction: column; align-items: stretch; gap: 10px; }
+    .backfill-upload-row .btn { min-height: 46px; }
+    .backfill-table { min-width: 760px; }
+
+    /* 배너 편집: 사진 두 장과 입력칸을 한 줄씩. */
+    .banner-editor-layout { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+    .banner-visual-column { flex-direction: row; flex-wrap: wrap; gap: 12px; }
+    .banner-format-editor { flex: 1 1 46%; min-width: 140px; }
+    .banner-manager-heading { flex-direction: column; gap: 8px; }
+
+    /* 문의함 도구 막대 */
+    .feedback-toolbar { gap: 8px; }
+    .feedback-toolbar .btn { flex: 1 1 46%; min-height: 44px; }
+    .feedback-admin-filters { flex-wrap: wrap; gap: 6px; }
+    .feedback-admin-filters .filter-btn { flex: 1 1 30%; min-height: 42px; }
+    .feedback-pick { top: 10px; right: 10px; }
+
+    /* 설정 화면 */
+    .settings-section .form-group input { min-height: 46px; }
+}
+
+/* 아주 좁은 화면(320px 근처) */
+@media (max-width: 380px) {
+    .admin-topbar-actions button { font-size: 11.5px; }
+    .admin-notice-row-actions .btn { flex: 1 1 46%; }
+    .banner-format-editor { flex: 1 1 100%; }
+    .review-actions .btn { flex: 1 1 100%; }
+}
