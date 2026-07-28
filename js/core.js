@@ -175,6 +175,8 @@ function setLayoutMode(mode) {
     // 푸터는 뷰마다 관리자 버튼 노출과 동기화 문구가 다르다.
     syncFooterAdminLink();
     refreshFooterSyncStatus();
+    // 뷰가 바뀌면 정렬 버튼 폭도 바뀌므로 활성 알약을 다시 맞춘다.
+    syncNoticeSortChips();
     if (document.body?.dataset.page === 'public' && document.getElementById('notice-grid')) {
         renderNoticeCards();
     }
@@ -1722,11 +1724,41 @@ function syncNoticeListUrl(page = 1) {
 }
 
 function syncNoticeSortChips() {
+    let activeButton = null;
     document.querySelectorAll('#notice-sort-chips [data-sort]').forEach(button => {
         const active = button.dataset.sort === filterState.sort;
         button.classList.toggle('active', active);
         button.setAttribute('aria-pressed', active ? 'true' : 'false');
+        if (active) activeButton = button;
     });
+    moveNoticeSortThumb(activeButton);
+}
+
+/* 활성 알약을 고른 버튼 위로 옮긴다. 폭과 위치만 인라인으로 주고 실제
+   움직임은 CSS transition이 맡으므로 매 프레임 계산이 없다. */
+function moveNoticeSortThumb(activeButton) {
+    const thumb = document.getElementById('notice-sort-thumb');
+    const group = document.getElementById('notice-sort-chips');
+    if (!thumb || !group || !activeButton) return;
+    // 화면에 없으면 폭이 0이라 엉뚱한 자리에 붙는다. 보일 때 다시 맞춘다.
+    if (!activeButton.offsetWidth) {
+        thumb.classList.remove('is-ready');
+        return;
+    }
+    thumb.style.width = `${activeButton.offsetWidth}px`;
+    thumb.style.transform = `translateX(${activeButton.offsetLeft - group.clientLeft}px)`;
+    // 첫 배치는 미끄러지지 않게 한 프레임 뒤에 전환을 켠다.
+    if (!thumb.classList.contains('is-ready')) {
+        requestAnimationFrame(() => thumb.classList.add('is-ready'));
+    }
+}
+
+// 글꼴이 늦게 오거나 창 크기가 바뀌면 버튼 폭이 달라지므로 알약을 다시 맞춘다.
+function watchNoticeSortThumb() {
+    if (!document.getElementById('notice-sort-chips')) return;
+    const resync = () => syncNoticeSortChips();
+    window.addEventListener('resize', resync);
+    document.fonts?.ready?.then(resync);
 }
 
 function setNoticeSort(sort) {
@@ -3256,6 +3288,7 @@ document.addEventListener('DOMContentLoaded', async function () {
     updateBellState();
     startRailClock();
     initializeFooter();
+    watchNoticeSortThumb();
 
     await Promise.all([loadData(), loadCategories()]);
     const initialNoticePage = restoreNoticeListStateFromUrl();

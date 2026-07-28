@@ -842,6 +842,7 @@ body {
     margin: 14px 0 18px;
 }
 .notice-sort-chips {
+    position: relative;
     display: flex;
     align-items: center;
     gap: 2px;
@@ -863,11 +864,29 @@ body {
     transition: color 140ms ease, background-color 140ms ease,
         box-shadow 140ms ease, transform 120ms ease;
 }
-.notice-sort-chips button:hover { color: var(--primary); background: rgba(255, 255, 255, 0.72); }
-.notice-sort-chips button.active {
-    color: var(--primary-deep);
-    background: white;
+/* 미끄러지는 활성 알약. 버튼 배경 대신 이 하나가 자리를 옮긴다. */
+.notice-sort-thumb {
+    position: absolute;
+    top: 2px;
+    left: 0;
+    z-index: 0;
+    height: calc(100% - 4px);
+    background: #fff;
+    border-radius: 6px;
     box-shadow: 0 1px 5px rgba(20, 43, 88, 0.12);
+    pointer-events: none;
+    will-change: transform;
+}
+/* 첫 배치에서는 미끄러지지 않고, 그 다음 전환부터 움직인다. */
+.notice-sort-thumb.is-ready {
+    transition: transform 260ms cubic-bezier(0.32, 0.72, 0.24, 1),
+        width 260ms cubic-bezier(0.32, 0.72, 0.24, 1);
+}
+.notice-sort-chips button { position: relative; z-index: 1; }
+.notice-sort-chips button:hover { color: var(--primary); }
+.notice-sort-chips button.active { color: var(--primary-deep); }
+@media (prefers-reduced-motion: reduce) {
+    .notice-sort-thumb.is-ready { transition: none; }
 }
 .notice-sort-chips button:active { transform: scale(0.97); }
 .notice-sort-chips button:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
@@ -1094,15 +1113,15 @@ body {
     -webkit-line-clamp: 2;
 }
 .card-meta {
-    display: flex; align-items: center; justify-content: flex-end; gap: 8px;
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
     min-width: 0;
     font-size: 11.5px; color: var(--text-sub);
     margin-top: auto; padding-top: 8px;
     font-variant-numeric: tabular-nums;
 }
-/* 조회수는 오른쪽 끝에 붙고 줄어들지 않는다. 리워드 칩은 그 바로 왼쪽에
-   맞붙어 서고, 자리가 모자라면 조회수 대신 칩이 줄어든다. */
-.view-count { flex: 0 0 auto; white-space: nowrap; }
+/* 리워드 칩은 줄 왼쪽 끝에서 시작하고, 조회수는 오른쪽 끝에 붙어 줄어들지
+   않는다. 자리가 모자라면 조회수 대신 칩이 줄어든다. */
+.view-count { flex: 0 0 auto; margin-left: auto; white-space: nowrap; }
 
 /* 데스크톱 마우스 사용 환경에서만 잠시 머문 공지를 가볍게 펼쳐 보여준다. */
 .notice-hover-preview {

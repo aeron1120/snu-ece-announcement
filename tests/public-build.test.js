@@ -89,8 +89,7 @@ test('administrator surfaces live on admin.html, not the public page', async () 
         'review-editor',
         'review-pending-count',
         'panel-compose',
-        'right-rail-slides-list',
-        'category-candidate-list'
+        'right-rail-slides-list'
     ]) {
         assert.match(html, new RegExp(`id="${id}"`));
     }
@@ -288,7 +287,8 @@ test('mobile cards stay compact, keep paging, and disable notice comparison drag
     // 리워드는 뷰별로 마크업을 나누지 않고 한 벌로 조회수 바로 왼쪽에 선다.
     assert.doesNotMatch(mobileCss, /card-mobile-reward|card-desktop-reward/);
     assert.match(await readFile('css/core.css', 'utf8'), /\.card-reward\s*\{[^}]*display:\s*inline-flex/s);
-    assert.match(mobileCss, /\.card-meta\s*\{[^}]*justify-content:\s*flex-end/s);
+    // 리워드는 줄 왼쪽에서 시작하고 조회수는 오른쪽 끝에 붙는다.
+    assert.match(mobileCss, /\.card-meta\s*\{[^}]*justify-content:\s*space-between/s);
     assert.match(renderCards, /class="card-meta"[\s\S]*\$\{rewardHtml\}[\s\S]*class="view-count"/);
     assert.match(mobileCss, /\.notice-pagination\s*\{[^}]*display:\s*flex/s);
     assert.match(mobileCss, /\.card-block-controls,[\s\S]*\.compare-space,[\s\S]*display:\s*none !important/s);
@@ -657,7 +657,9 @@ test('banner inquiries use a dedicated identified submission page and protected 
     assert.match(server, /status: 'pending'/);
     assert.match(server, /exposureDays > 14/);
     assert.match(server, /await createBannerSlide\(normalizeBannerPayload/);
-    assert.match(server, /app\.get\('\/api\/admin\/feedback\/:id\/image', requireNoticeAdmin/);
+    // 배너 관리자도 자기 문의의 첨부는 봐야 하므로 역할로 거른다.
+    assert.match(server, /app\.get\('\/api\/admin\/feedback\/:id\/image', requireAnyAdmin/);
+    assert.match(server, /const items = visibleFeedbackForRole\(await readFeedback\(\), req\.adminRole\)/);
     assert.match(admin, /function openBannerInquiryImage/);
     assert.match(admin, /variant = 'desktop'/);
     assert.match(admin, /class="banner-inquiry-details"/);
@@ -755,7 +757,8 @@ test('Gemini quota errors show only a retry countdown and admin mode has one exi
     assert.match(html, />관리자 모드 나가기<\/button>/);
     assert.doesNotMatch(html, /id="admin-logout"|>로그아웃<|공개 화면으로/);
     assert.match(admin, /getElementById\('admin-mode-exit'\)\.textContent = '관리자 모드 나가기'/);
-    assert.match(admin, /async function exitAdminMode\(\)[\s\S]*fetch\('\/api\/admin\/session', \{ method: 'DELETE' \}\)[\s\S]*location\.replace\('\.\/index\.html'\)/);
+    // 나가면 공개 화면이 아니라 들어왔던 로그인 화면으로 되돌아간다.
+    assert.match(admin, /async function exitAdminMode\(\)[\s\S]*fetch\('\/api\/admin\/session', \{ method: 'DELETE' \}\)[\s\S]*location\.replace\('\/admin'\)/);
 });
 
 test('automatic ECE crawling feeds a live review inbox and original text is black', async () => {

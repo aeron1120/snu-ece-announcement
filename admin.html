@@ -34,8 +34,7 @@
             <button type="button" class="admin-tab" data-tab="backfill" onclick="selectAdminTab('backfill')">카톡 백필</button>
             <button type="button" class="admin-tab" data-tab="compose" onclick="selectAdminTab('compose')">공지 추가하기</button>
             <button type="button" class="admin-tab" data-tab="notices" onclick="selectAdminTab('notices')">공지 목록</button>
-            <button type="button" class="admin-tab" data-tab="banner" onclick="selectAdminTab('banner')">학내 홍보 관리</button>
-            <button type="button" class="admin-tab" data-tab="category" onclick="selectAdminTab('category')">분류 키워드</button>
+            <button type="button" class="admin-tab" data-tab="banner" onclick="selectAdminTab('banner')">배너 관리</button>
             <button type="button" class="admin-tab" data-tab="feedback" onclick="selectAdminTab('feedback')">
                 문의함 <span class="tab-count" id="feedback-count" hidden>0</span>
             </button>
@@ -228,17 +227,9 @@
 
         <!-- ============ 배너 관리 ============ -->
         <section class="admin-panel" id="panel-banner" aria-labelledby="panel-banner-title">
-            <h2 id="panel-banner-title">학내 홍보 관리</h2>
-            <div id="banner-lock" class="admin-locked">
-                <p>배너를 관리하려면 배너 비밀번호가 필요합니다.</p>
-                <div class="banner-pwd-row" style="display:flex; gap:8px; justify-content:center; max-width:340px; margin:0 auto;">
-                    <input type="password" id="banner-mode-pwd" placeholder="학내 홍보 관리 비밀번호" style="flex:1; padding:12px; border:1px solid var(--border);"
-                           onkeyup="if(event.key==='Enter') verifyBannerPassword()">
-                    <button class="btn" type="button" onclick="verifyBannerPassword()">인증</button>
-                </div>
-                <p class="admin-gate-error" id="banner-pwd-error" aria-live="polite"></p>
-            </div>
-            <div id="banner-list-area" hidden>
+            <h2 id="panel-banner-title">배너 관리</h2>
+            <!-- 로그인할 때 배너 관리자인지 이미 확인했으므로 여기서 비밀번호를 다시 묻지 않는다. -->
+            <div id="banner-list-area">
                 <section class="banner-placement-section" aria-labelledby="right-rail-manager-title">
                     <div class="banner-manager-heading">
                         <div>
@@ -266,14 +257,6 @@
             </div>
         </section>
 
-        <!-- ============ 분류 키워드 ============ -->
-        <section class="admin-panel" id="panel-category" aria-labelledby="panel-category-title">
-            <h2 id="panel-category-title">분류 키워드</h2>
-            <p>반복해서 등장하는 키워드를 학사·기회·혜택·행사 중 하나에 병합합니다. 새 탭은 추가되지 않습니다.</p>
-            <p id="category-manager-status" class="review-status" aria-live="polite"></p>
-            <div id="category-candidate-list" class="category-candidate-list"></div>
-        </section>
-
         <!-- ============ 일반 문의·배너 문의 ============ -->
         <section class="admin-panel" id="panel-feedback" aria-labelledby="panel-feedback-title">
             <h2 id="panel-feedback-title">문의함</h2>
@@ -295,17 +278,8 @@
         <!-- ============ 관리자 설정 ============ -->
         <section class="admin-panel" id="panel-settings" aria-labelledby="panel-settings-title">
             <h2 id="panel-settings-title">관리자 설정</h2>
-            <div id="settings-lock" class="admin-locked">
-                <p>관리자 설정을 바꾸려면 절대 관리자 비밀번호가 필요합니다.</p>
-                <div style="display:flex; gap:8px; justify-content:center; max-width:340px; margin:0 auto;">
-                    <input type="password" id="super-admin-pwd" placeholder="절대 관리자 비밀번호" style="flex:1; padding:12px; border:1px solid var(--border);"
-                           onkeyup="if(event.key==='Enter') verifySuperAdminPassword()">
-                    <button class="btn" type="button" onclick="verifySuperAdminPassword()">인증</button>
-                </div>
-                <p class="admin-gate-error" id="super-admin-error" aria-live="polite"></p>
-            </div>
-
-            <div class="settings-section" id="settings-area" hidden>
+            <!-- 마스터로 로그인해야만 이 탭 자체가 만들어지므로 추가 인증이 없다. -->
+            <div class="settings-section" id="settings-area">
                 <div class="form-group">
                     <label for="edit-admin-name">관리자 직책 및 이름</label>
                     <input type="text" id="edit-admin-name" placeholder="예: ECE 학생회장 (이름 : 홍길동)">

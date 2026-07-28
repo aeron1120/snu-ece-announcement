@@ -11,7 +11,6 @@ const GEMINI_MODEL = "gemini-flash-latest";
 let reviewNotices = [];
 let selectedReviewNoticeId = null;
 let reviewMutationInFlight = false;
-let categoryCandidates = [];
 let editingNoticeId = null;
 let pendingEditNoticeId = null;
 // 클립보드에서 붙여넣은 이미지들(base64 data URL). 파일 첨부와 함께 저장된다.
@@ -127,18 +126,66 @@ async function showGeminiRetryCountdown(error) {
     await new Promise(resolve => setTimeout(resolve, 700));
 }
 
+/* 역할별로 열리는 탭.
+   마스터는 전부, 공지 관리자는 공지 관련 셋, 배너 관리자는 배너만 본다. */
+const ADMIN_TABS_BY_ROLE = Object.freeze({
+    master: ['review', 'backfill', 'compose', 'notices', 'banner', 'feedback', 'settings'],
+    notice: ['review', 'backfill', 'compose', 'notices'],
+    banner: ['banner']
+});
+
+const ADMIN_ROLE_LABELS = Object.freeze({
+    master: '마스터 관리자',
+    notice: '공지 관리자',
+    banner: '배너 관리자'
+});
+
+let currentAdminRole = 'notice';
+
+function allowedAdminTabs() {
+    return ADMIN_TABS_BY_ROLE[currentAdminRole] || ADMIN_TABS_BY_ROLE.notice;
+}
+
+function canUseAdminTab(name) {
+    return allowedAdminTabs().includes(name);
+}
+
+/* 쓸 수 없는 탭은 감추는 게 아니라 아예 지운다. 화면에 남겨 두면
+   눌러지지 않는 버튼이 무엇을 뜻하는지 알 수 없어 더 헷갈린다. */
+function applyAdminRoleToChrome() {
+    const allowed = allowedAdminTabs();
+    document.querySelectorAll('.admin-tab').forEach(tab => {
+        if (!allowed.includes(tab.dataset.tab)) tab.remove();
+    });
+    document.querySelectorAll('.admin-panel').forEach(panel => {
+        const name = panel.id.replace(/^panel-/, '');
+        if (!allowed.includes(name)) panel.remove();
+    });
+
+    const badge = document.querySelector('.admin-badge');
+    if (badge) badge.textContent = ADMIN_ROLE_LABELS[currentAdminRole] || 'ADMIN';
+    document.body.dataset.adminRole = currentAdminRole;
+}
+
 async function enterAdminWorkspace() {
     const workspace = document.getElementById('admin-workspace');
     if (workspace) workspace.hidden = false;
     document.getElementById('admin-mode-exit').textContent = '관리자 모드 나가기';
 
-    await loadCategories();
-    await loadReviewNotices();
-    startReviewInboxPolling();
-    loadAdminFeedback();   // 탭 배지에 피드백 수를 채운다(백그라운드)
+    applyAdminRoleToChrome();
+    // 첫 화면은 그 역할이 실제로 쓸 수 있는 탭이어야 한다.
+    selectAdminTab(allowedAdminTabs()[0]);
+
+    if (canUseAdminTab('review')) {
+        await loadCategories();
+        await loadReviewNotices();
+        startReviewInboxPolling();
+    }
+    // 탭 배지에 문의 수를 채운다(백그라운드). 배너 관리자는 배너 문의만 받는다.
+    if (canUseAdminTab('feedback') || canUseAdminTab('banner')) loadAdminFeedback();
 
     // 공개 화면의 "관리자 페이지에서 수정" 링크로 들어온 경우 바로 편집 폼을 연다.
-    if (pendingEditNoticeId) {
+    if (pendingEditNoticeId && canUseAdminTab('notices')) {
         const target = pendingEditNoticeId;
         pendingEditNoticeId = null;
         selectAdminTab('notices');
@@ -158,7 +205,8 @@ async function exitAdminMode() {
     try {
         await fetch('/api/admin/session', { method: 'DELETE' });
     } finally {
-        location.replace('./index.html');
+        // 나가면 공개 화면이 아니라 들어왔던 로그인 화면으로 돌아간다.
+        location.replace('/admin');
     }
 }
 
@@ -167,6 +215,7 @@ async function exitAdminMode() {
 // ========================================
 
 function selectAdminTab(name) {
+    if (!canUseAdminTab(name)) return;
     document.querySelectorAll('.admin-tab').forEach(tab => {
         tab.classList.toggle('active', tab.dataset.tab === name);
     });
@@ -175,10 +224,10 @@ function selectAdminTab(name) {
     });
 
     if (name === 'notices') loadAdminNoticeList();
-    if (name === 'category') loadCategoryCandidates();
     if (name === 'feedback') loadAdminFeedback();
-    if (name === 'banner' && bannerManageAuthToken) unlockBannerPanel();
-    if (name === 'settings' && superAdminAuthToken) unlockSettingsPanel();
+    // 로그인할 때 이미 신분을 확인했으므로 배너·설정에서 비밀번호를 다시 묻지 않는다.
+    if (name === 'banner') unlockBannerPanel();
+    if (name === 'settings') unlockSettingsPanel();
 }
 
 function setKakaoBackfillStatus(message, isError = false) {
@@ -1640,38 +1689,7 @@ async function runManualCrawl() {
 // 🖼 배너 관리
 // ========================================
 
-async function verifyBannerPassword() {
-    const input = document.getElementById('banner-mode-pwd');
-    const error = document.getElementById('banner-pwd-error');
-    const password = input.value;
-    error.textContent = '';
-
-    if (!password) {
-        error.textContent = '배너 비밀번호를 입력해주세요.';
-        input.focus();
-        return;
-    }
-
-    try {
-        await apiRequest('/api/banner/verify', {
-            method: 'POST',
-            body: JSON.stringify({ password })
-        });
-    } catch (requestError) {
-        error.textContent = `인증 실패: ${requestError.message}`;
-        input.focus();
-        return;
-    }
-
-    bannerManageAuthToken = password;
-    sessionStorage.setItem('eceBannerManageToken', bannerManageAuthToken);
-    input.value = '';
-    unlockBannerPanel();
-}
-
 async function unlockBannerPanel() {
-    document.getElementById('banner-lock').hidden = true;
-    document.getElementById('banner-list-area').hidden = false;
     await Promise.all([loadBannerSlides(true), loadAdminFeedback()]);
     renderBannerList();
 }
@@ -2185,148 +2203,10 @@ async function moveBanner(placement, idx, dir) {
 }
 
 // ========================================
-// 🏷 고정 주제 분류 키워드
+// ⚙️ 관리자 설정 (마스터 관리자 전용)
 // ========================================
-
-function setCategoryManagerStatus(message, isError = false) {
-    const element = document.getElementById('category-manager-status');
-    if (!element) return;
-    element.textContent = message || '';
-    element.style.color = isError ? 'var(--danger)' : 'var(--text-sub)';
-}
-
-async function loadCategoryCandidates() {
-    const list = document.getElementById('category-candidate-list');
-    if (!list) return;
-    list.innerHTML = '<div class="review-empty">분류 키워드 후보를 계산하고 있습니다.</div>';
-    setCategoryManagerStatus('최근 공지의 키워드와 신뢰도를 확인하고 있습니다.');
-    try {
-        await loadCategories();
-        const result = await apiRequest('/api/admin/category-candidates', {
-            method: 'GET',
-            headers: getNoticeAdminHeaders()
-        });
-        categoryCandidates = Array.isArray(result?.candidates) ? result.candidates : [];
-        renderCategoryCandidates();
-        setCategoryManagerStatus(categoryCandidates.length > 0
-            ? `관리자 결정이 필요한 후보 ${categoryCandidates.length}건`
-            : '현재 기존 주제에 병합할 키워드 후보가 없습니다.');
-    } catch (error) {
-        list.innerHTML = '<div class="review-empty">분류 키워드 후보를 불러오지 못했습니다.</div>';
-        setCategoryManagerStatus(error.message, true);
-    }
-}
-
-function renderCategoryCandidates() {
-    const list = document.getElementById('category-candidate-list');
-    if (categoryCandidates.length === 0) {
-        list.innerHTML = '<div class="review-empty">현재 분류 키워드 후보가 없습니다.</div>';
-        return;
-    }
-    const categoryOptions = activeCategories.map(category =>
-        `<option value="${Number(category.id)}">${escapeHtml(category.name)}</option>`
-    ).join('');
-    list.innerHTML = categoryCandidates.map(candidate => {
-        const evidence = (candidate.supportingNotices || []).slice(0, 5);
-        return `
-            <article class="category-candidate">
-                <div class="category-candidate-header">
-                    <h3>${escapeHtml(candidate.displayName)}</h3>
-                    <span class="category-candidate-metrics">
-                        ${Number(candidate.occurrenceCount)}개 공지 · 신뢰도 ${Math.round(Number(candidate.averageConfidence) * 100)}%
-                    </span>
-                </div>
-                <p class="review-list-meta">
-                    ${escapeHtml(String(candidate.firstSeenAt || '').slice(0, 10))}
-                    ~ ${escapeHtml(String(candidate.lastSeenAt || '').slice(0, 10))}
-                </p>
-                <ul class="category-evidence">${evidence.map(notice =>
-                    `<li>${escapeHtml(notice.title || `공지 ${notice.id}`)}</li>`
-                ).join('')}</ul>
-                <div class="category-candidate-actions">
-                    <select id="category-merge-${Number(candidate.id)}" aria-label="${escapeHtml(candidate.displayName)} 병합 대상">
-                        <option value="">기존 카테고리 선택</option>${categoryOptions}
-                    </select>
-                    <button class="btn btn-outline btn-small" type="button" onclick="mergeCategoryCandidate(${Number(candidate.id)})">병합</button>
-                    <button class="btn btn-outline btn-small" type="button" onclick="deferCategoryCandidate(${Number(candidate.id)})">30일 보류</button>
-                    <button class="btn btn-danger btn-small" type="button" onclick="rejectCategoryCandidate(${Number(candidate.id)})">다시 추천 안 함</button>
-                </div>
-            </article>`;
-    }).join('');
-}
-
-async function decideCategoryCandidate(id, action, body = {}) {
-    setCategoryManagerStatus('카테고리 결정을 저장하고 있습니다.');
-    try {
-        await apiRequest(`/api/admin/category-candidates/${encodeURIComponent(id)}/${action}`, {
-            method: 'POST',
-            headers: getNoticeAdminHeaders(),
-            body: JSON.stringify(body)
-        });
-        await Promise.all([
-            loadCategoryCandidates(),
-            refreshPublishedNotices()
-        ]);
-    } catch (error) {
-        setCategoryManagerStatus(error.message, true);
-    }
-}
-
-async function mergeCategoryCandidate(id) {
-    const select = document.getElementById(`category-merge-${id}`);
-    const categoryId = Number(select?.value);
-    if (!categoryId) {
-        setCategoryManagerStatus('병합할 기존 카테고리를 선택해주세요.', true);
-        return;
-    }
-    await decideCategoryCandidate(id, 'merge', { categoryId });
-}
-
-async function deferCategoryCandidate(id) {
-    await decideCategoryCandidate(id, 'defer');
-}
-
-async function rejectCategoryCandidate(id) {
-    if (!window.confirm('이 키워드를 앞으로 다시 추천하지 않도록 반려할까요?')) return;
-    await decideCategoryCandidate(id, 'reject');
-}
-
-// ========================================
-// ⚙️ 관리자 설정 (절대 관리자 전용)
-// ========================================
-
-async function verifySuperAdminPassword() {
-    const input = document.getElementById('super-admin-pwd');
-    const error = document.getElementById('super-admin-error');
-    const password = input.value;
-    error.textContent = '';
-
-    if (!password) {
-        error.textContent = '절대 관리자 비밀번호를 입력해주세요.';
-        input.focus();
-        return;
-    }
-
-    try {
-        await apiRequest('/api/super-admin/verify', {
-            method: 'POST',
-            headers: getSuperAdminHeaders(password)
-        });
-    } catch (requestError) {
-        error.textContent = `인증 실패: ${requestError.message}`;
-        input.focus();
-        return;
-    }
-
-    superAdminAuthToken = password;
-    sessionStorage.setItem('eceSuperAdminToken', superAdminAuthToken);
-    input.value = '';
-    unlockSettingsPanel();
-}
 
 function unlockSettingsPanel() {
-    document.getElementById('settings-lock').hidden = true;
-    document.getElementById('settings-area').hidden = false;
     document.getElementById('edit-admin-name').value = adminInfo.name;
     document.getElementById('edit-admin-phone').value = adminInfo.phone;
     document.getElementById('edit-admin-kakao').value = adminInfo.kakao;
@@ -2411,7 +2291,8 @@ document.addEventListener('DOMContentLoaded', async function () {
     pendingEditNoticeId = new URLSearchParams(location.search).get('edit');
 
     try {
-        await apiRequest('/api/admin/session', { method: 'GET' });
+        const session = await apiRequest('/api/admin/session', { method: 'GET' });
+        currentAdminRole = ADMIN_TABS_BY_ROLE[session?.role] ? session.role : 'notice';
     } catch {
         const next = pendingEditNoticeId ? `?edit=${encodeURIComponent(pendingEditNoticeId)}` : '';
         location.replace(`/admin${next}`);
