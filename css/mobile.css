@@ -5,9 +5,16 @@
    햄버거로 여는 서랍이 되고, 오른쪽 학내 홍보 레일은 목록 아래로 내려온다.
    ============================================================ */
 
+html[data-view="mobile"] body { background: #f2f5fb; }
 html[data-view="mobile"] .page-shell { padding: 0; min-width: 0; }
-html[data-view="mobile"] .page-main { padding: 16px; max-width: 100%; }
+html[data-view="mobile"] .page-main { padding: 12px; max-width: 100%; }
 html[data-view="mobile"] .desktop-only { display: none !important; }
+html[data-view="mobile"] button,
+html[data-view="mobile"] input,
+html[data-view="mobile"] select,
+html[data-view="mobile"] textarea {
+    border-radius: 13px;
+}
 
 /* ---------- 왼쪽 레일 → 서랍 ---------- */
 html[data-view="mobile"] .rail-left {
@@ -21,6 +28,7 @@ html[data-view="mobile"] .rail-left {
     overflow-y: auto;
     transform: translateX(-100%);
     transition: transform 0.25s ease;
+    border-radius: 0 24px 24px 0;
 }
 html[data-view="mobile"] .rail-left.drawer-open { transform: translateX(0); }
 
@@ -38,7 +46,8 @@ html[data-view="mobile"] .drawer-scrim.drawer-open { display: block; }
     background: white;
     border: 1px solid var(--border);
     color: var(--primary-deep);
-    width: 42px; height: 42px;
+    width: 44px; height: 44px;
+    border-radius: 14px;
     font-size: 20px; line-height: 1;
     cursor: pointer;
     flex-shrink: 0;
@@ -54,6 +63,7 @@ html[data-view="mobile"] .mobile-menu-btn { display: block; }
     width: 34px; height: 34px;
     font-size: 18px; line-height: 1;
     cursor: pointer;
+    border-radius: 12px;
 }
 
 /* ---------- 오른쪽 학내 홍보 레일 → 목록 아래 홍보 ---------- */
@@ -69,43 +79,93 @@ html[data-view="mobile"] .rail-ad-viewport {
     min-height: 0;
     margin: 0;
 }
+html[data-view="mobile"] .rail-ad-image-stage { aspect-ratio: 16 / 9; }
 html[data-view="mobile"] .rail-ad-image {
-    width: calc(100% + 2px);
-    height: auto;
-    aspect-ratio: auto;
-    margin: 0 0 0 -1px;
+    width: 100%;
+    height: 100%;
+    margin: 0;
     object-fit: cover;
 }
 
 /* ---------- 헤더 ---------- */
 html[data-view="mobile"] .header {
-    row-gap: 12px;
-    align-items: flex-start;
+    row-gap: 10px;
+    align-items: center;
+    margin-bottom: 12px;
+    padding: 12px;
+    background: #fff;
+    border: 0;
+    border-radius: 20px;
+    box-shadow: 0 5px 18px rgba(27, 52, 104, 0.07);
 }
-html[data-view="mobile"] .header-title-area { width: 100%; }
+html[data-view="mobile"] .header-title-area { width: auto; flex: 1; }
 html[data-view="mobile"] .header h1,
 html[data-view="mobile"] .site-title { font-size: 22px; white-space: normal; }
 html[data-view="mobile"] .header-actions {
-    width: 100%;
+    width: auto;
     margin-left: 0;
     flex-wrap: wrap;
     justify-content: flex-start;
 }
 html[data-view="mobile"] .btn { min-height: 44px; }
+html[data-view="mobile"] .btn,
+html[data-view="mobile"] .filter-btn,
+html[data-view="mobile"] .filter-select,
+html[data-view="mobile"] .detail-back,
+html[data-view="mobile"] .close-btn,
+html[data-view="mobile"] .image-viewer-action {
+    border-radius: 14px;
+}
 
 /* 폰에서는 "모바일 모드" 버튼이 필요 없다. 미리보기 iframe 안에서도 감춘다. */
 html[data-view="mobile"] .mobile-mode-btn,
 html[data-preview="1"] .mobile-mode-btn { display: none !important; }
 
 /* ---------- 카테고리 탭 ---------- */
-html[data-view="mobile"] .category-tabs { overflow-x: auto; }
-html[data-view="mobile"] .category-tabs-inner {
-    display: flex;
-    width: max-content;
-    gap: 28px;
-    padding: 0 18px;
+html[data-view="mobile"] .category-tabs {
+    height: auto;
+    margin: 0 0 10px;
+    padding: 5px;
+    overflow: hidden;
+    background: #fff;
+    border: 0;
+    border-radius: 18px;
 }
-html[data-view="mobile"] .category-tab { font-size: 15px; padding: 0 2px; }
+html[data-view="mobile"] .category-tabs-inner {
+    display: grid;
+    width: 100%;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 3px;
+    padding: 0;
+}
+html[data-view="mobile"] .category-tab {
+    min-width: 0;
+    min-height: 42px;
+    justify-content: center;
+    padding: 0 3px;
+    margin: 0;
+    border: 0;
+    border-radius: 13px;
+    font-size: 12px;
+}
+html[data-view="mobile"] .category-tab.active {
+    color: #fff;
+    background: var(--primary);
+}
+html[data-view="mobile"] .notice-quick-filters {
+    flex-wrap: nowrap;
+    gap: 7px;
+    margin: 0 -12px 12px;
+    padding: 0 12px 4px;
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+html[data-view="mobile"] .notice-quick-filters::-webkit-scrollbar { display: none; }
+html[data-view="mobile"] .notice-quick-filters button {
+    min-height: 40px;
+    flex: 0 0 auto;
+    border-radius: 20px;
+}
 
 html[data-view="mobile"] .notice-results-toolbar {
     align-items: flex-start;
@@ -124,13 +184,18 @@ html[data-view="mobile"] .card {
     width: 100%;
     height: auto;
     min-width: 0;
-    aspect-ratio: 0.64;
+    aspect-ratio: 0.72;
+    border: 0;
+    border-radius: 18px;
+    box-shadow: 0 4px 14px rgba(27, 52, 104, 0.07);
+    touch-action: pan-y;
 }
 html[data-view="mobile"] .card-poster {
     flex: 0 0 42%;
     height: 42%;
     min-height: 0;
     padding: 0;
+    border-radius: 18px 18px 0 0;
 }
 html[data-view="mobile"] .card-poster.is-text { padding: 10px; }
 html[data-view="mobile"] .card-img-preview {
@@ -159,6 +224,7 @@ html[data-view="mobile"] .notice-pagination {
 html[data-view="mobile"] .notice-pagination button {
     min-width: 42px;
     height: 42px;
+    border-radius: 13px;
 }
 
 /* ---------- 공지 상세 ---------- */
@@ -197,15 +263,29 @@ html[data-view="mobile"] .search-field {
     min-height: 48px;
     grid-template-columns: minmax(0, 1fr) 42px;
     padding-left: 15px;
+    border-width: 1.5px;
+    border-radius: 24px;
 }
 html[data-view="mobile"] .search-container input { width: 100%; min-width: 0; font-size: 14px; }
 html[data-view="mobile"] .search-submit { width: 38px; height: 38px; }
-html[data-view="mobile"] .filter-toggle-bar { padding: 8px 12px; height: auto; }
+html[data-view="mobile"] .filter-toggle-bar {
+    min-height: 48px;
+    padding: 8px 12px;
+    height: auto;
+    background: #fff;
+    border-radius: 16px;
+}
 html[data-view="mobile"] .filter-active-chips { padding: 6px 0 0; }
+html[data-view="mobile"] .filter-panel {
+    margin-top: 6px;
+    background: #fff;
+    border: 0;
+    border-radius: 18px;
+}
 html[data-view="mobile"] .filter-panel-grid { grid-template-columns: 1fr; }
 
 /* ---------- 모달 ---------- */
-html[data-view="mobile"] .modal { padding: 24px 18px; }
+html[data-view="mobile"] .modal { padding: 24px 18px; border: 0; border-radius: 24px; }
 html[data-view="mobile"] .form-row { flex-direction: column; gap: 0; }
 html[data-view="mobile"] .student-year-actions { grid-template-columns: 1fr; }
 /* 모바일에서는 비교·분할·6점 드래그 UI를 제공하지 않는다. */
@@ -219,14 +299,17 @@ html[data-view="mobile"] .card,
 html[data-view="mobile"] .card * {
     -webkit-user-drag: none;
 }
+html[data-view="mobile"] .card.is-filter-entering {
+    opacity: 1;
+    transform: none;
+}
+html[data-view="mobile"] .card:hover {
+    transform: none;
+    box-shadow: 0 4px 14px rgba(27, 52, 104, 0.07);
+}
 
 @media (max-width: 420px) {
-    html[data-view="mobile"] .category-tabs-inner {
-        width: max-content;
-        justify-content: flex-start;
-        gap: 24px;
-        padding: 0 18px;
-    }
+    html[data-view="mobile"] .category-tabs-inner { width: 100%; gap: 2px; padding: 0; }
     html[data-view="mobile"] .category-tab {
         min-width: 0;
         font-size: 13px;

@@ -21,6 +21,8 @@ const MAX_NOTICE_IMAGES = 20;
 let composeAiSummary = [];
 let composeAiCategoryIds = [];
 let composeSurveyReward = '';
+let composeHasReward = false;
+let composeRequiresAction = false;
 let aiDeadlineCandidate = '';
 let aiProgressTimer = null;
 let aiProgressValue = 0;
@@ -414,6 +416,8 @@ function resetComposeForm() {
     composeAiSummary = [];
     composeAiCategoryIds = [];
     composeSurveyReward = '';
+    composeHasReward = false;
+    composeRequiresAction = false;
     aiDeadlineCandidate = '';
     renderAiDeadlineCandidate();
     renderPastePreview();
@@ -546,7 +550,7 @@ function parseAnalysisJson(text) {
 }
 
 const NOTICE_ANALYSIS_CATEGORY_SLUGS = new Set([
-    'application', 'academics', 'benefits-partnerships', 'campus', 'governance', 'survey'
+    'academic', 'opportunity', 'benefit', 'community'
 ]);
 
 function normalizeNoticeAnalysisResult(parsed = {}) {
@@ -562,7 +566,9 @@ function normalizeNoticeAnalysisResult(parsed = {}) {
         summary: Array.isArray(parsed.summary)
             ? parsed.summary.map(item => String(item).trim()).filter(Boolean).slice(0, 3)
             : [],
-        surveyReward: String(parsed.surveyReward || '').trim().slice(0, 120),
+        surveyReward: String(parsed.rewardNote || parsed.surveyReward || '').trim().slice(0, 120),
+        hasReward: parsed.hasReward === true || Boolean(String(parsed.rewardNote || parsed.surveyReward || '').trim()),
+        requiresAction: parsed.requiresAction === true,
         categorySlugs,
         verifiedNumbers: Array.isArray(parsed.verifiedNumbers)
             ? parsed.verifiedNumbers.map(item => String(item).trim()).filter(Boolean).slice(0, 12)
@@ -578,7 +584,7 @@ function normalizeNoticeAnalysisResult(parsed = {}) {
 async function runNoticeAnalysis(content, onVerificationStart = null) {
     const today = new Date().toISOString().slice(0, 10);
     const prompt = `다음 공지 원문을 분석해서 JSON만 출력해. 코드블록·설명 없이 JSON 객체 하나만.
-형식: {"deadline":"YYYY-MM-DD 또는 빈문자열","subject":"포스터용 핵심 문구 10~28자","type":"${TITLE_KINDS.join('|')} 중 하나","summary":["요약1","요약2","요약3"],"categorySlugs":["application|academics|benefits-partnerships|campus|governance|survey 중 해당값"],"surveyReward":"설문 보상 또는 빈문자열"}
+형식: {"deadline":"YYYY-MM-DD 또는 빈문자열","subject":"포스터용 핵심 문구 10~28자","type":"${TITLE_KINDS.join('|')} 중 하나","summary":["요약1","요약2","요약3"],"categorySlugs":["academic|opportunity|benefit|community 중 핵심 하나"],"hasReward":false,"rewardNote":null,"requiresAction":false}
 - 오늘 날짜는 ${today}. 마감일이 원문에 없거나 불명확하면 deadline은 빈문자열.
 - type은 반드시 제시한 보기 중 하나.
 - subject에는 유형 단어(${TITLE_KINDS.join(', ')})를 넣지 말고 핵심 명사구만. 예: "개강총회 참가자".
@@ -586,14 +592,13 @@ async function runNoticeAnalysis(content, onVerificationStart = null) {
 - 격식적인 보도자료 문체보다 학생이 빠르게 읽는 자연스럽고 캐주얼한 표현을 사용.
 - 물음표 반복, 깨진 문자, 불완전한 조사, 같은 단어 반복을 절대 포함하지 말 것. 원문 글자가 깨졌다면 문맥상 확실한 내용만 한국어로 복원.
 - summary는 각 줄 명사형 종결의 3줄 요약.
-- 신청(application): 링크·폼·메일로 직접 제출해야 하고 마감이 있을 때만.
-- 학사(academics): 학점·졸업·수강에 직접 영향이 있고 대체 안내 채널이 부족할 때.
-- 혜택/제휴(benefits-partnerships): 돈·물품·할인·지원이 걸렸지만 놓쳐도 학사상 불이익이 없을 때.
-- 캠퍼스(campus): 특정 날짜에 출입·시설·교통·정전 등 캠퍼스 상태가 평소와 다를 때.
-- 자치(governance): 일반 학부생이 아니라 대의원·학생회 집행부 등 자치기구가 주 수신 대상일 때.
-- 설문조사(survey): 참가 신청이 아니라 의견·경험·만족도·연구 자료를 수집하는 설문·인터뷰·사용자 조사일 때. 단순 행사 신청폼은 제외.
-- 설문 상품·기프티콘·사례비·추첨 보상이 있으면 surveyReward에 조건과 상품명을 60자 이내로 적고, 없으면 빈문자열.
-- categorySlugs는 중복 선택할 수 있지만 약한 연관성으로 늘리지 말고 가능한 한 핵심 범주 하나만 선택.
+- academic: 수강·학점·졸업·성적·전공진입에 직접 영향.
+- opportunity: 인턴·연구실·모집·공모전·대회·장학·교환 등 참여 기회.
+- benefit: 할인·지원·물품·제휴처럼 놓쳐도 학사상 불이익이 없는 혜택.
+- community: 학생 자치, 학내 행사, 시설·출입·교통 등 공동체와 캠퍼스 생활.
+- categorySlugs는 반드시 핵심 범주 하나만 선택.
+- 신청·제출·응답이 필요하면 requiresAction=true.
+- 상품·기프티콘·사례비·지원금·할인이 확인되면 hasReward=true와 rewardNote를 채움.
 
 원문:
 ${content}`;
@@ -614,17 +619,11 @@ ${content}`;
 1. 날짜, 시각, 금액, 인원, 학점, 학기, 기간, 횟수, 비율, 연락처 등 주요 수치를 원문 그대로 대조합니다.
 2. 원문에 없는 수치나 조건이 summary에 추가됐으면 삭제하거나 바로잡습니다.
 3. deadline은 실제 신청/제출 마감일일 때만 YYYY-MM-DD로 적고 불명확하면 빈 문자열입니다.
-4. categorySlugs는 아래 기준으로 다시 판정합니다. 중복은 가능하지만 근거가 약하면 하나만 고릅니다.
-   - application: 링크·폼·메일 등으로 직접 제출해야 하고 마감이 있음
-   - academics: 학점·졸업·수강에 직접 영향
-   - benefits-partnerships: 돈·물건·할인·제휴 혜택
-   - campus: 특정 날짜에 출입·시설·교통·정전 등 캠퍼스 상태가 달라짐
-   - governance: 대의원·학생회·집행부 등 자치기구가 주 수신 대상
-   - survey: 연구·경험·만족도 자료를 모으는 설문·인터뷰·참가자 조사
-5. 설문 보상이 원문에 있을 때만 surveyReward에 조건과 상품명을 적습니다.
+4. categorySlugs는 academic/opportunity/benefit/community 중 핵심 하나만 고릅니다.
+5. 신청·제출·응답은 requiresAction, 상품·지원·할인은 hasReward와 rewardNote로 다시 검증합니다.
 
 출력 형식:
-{"deadline":"YYYY-MM-DD 또는 빈 문자열","subject":"핵심 명사구","type":"${TITLE_KINDS.join('|')} 중 하나","summary":["정확한 요약1","정확한 요약2","정확한 요약3"],"categorySlugs":["해당 slug"],"surveyReward":"보상 또는 빈 문자열","verifiedNumbers":["원문에서 대조한 주요 수치"],"verificationWarnings":["불명확하거나 관리자 확인이 필요한 점"]}
+{"deadline":"YYYY-MM-DD 또는 빈 문자열","subject":"핵심 명사구","type":"${TITLE_KINDS.join('|')} 중 하나","summary":["정확한 요약1","정확한 요약2","정확한 요약3"],"categorySlugs":["핵심 slug 하나"],"hasReward":false,"rewardNote":null,"requiresAction":false,"verifiedNumbers":["원문에서 대조한 주요 수치"],"verificationWarnings":["불명확하거나 관리자 확인이 필요한 점"]}
 
 원문:
 ${content}
@@ -682,6 +681,8 @@ async function analyzeNotice() {
         composeAiSummary = parsed.summary;
         composeAiCategoryIds = parsed.categoryIds;
         composeSurveyReward = parsed.surveyReward;
+        composeHasReward = parsed.hasReward;
+        composeRequiresAction = parsed.requiresAction;
 
         // 분석 결과는 양식 조합으로 흐르므로 직접수정 모드를 끈다.
         document.getElementById('title-manual').checked = false;
@@ -919,6 +920,8 @@ async function generateAIAndSave() {
     let aiSummary = [];
     let categoryIds = [];
     let surveyReward = '';
+    let hasReward = false;
+    let requiresAction = false;
     let finalImages = [];
     let existing = null;
 
@@ -935,6 +938,8 @@ async function generateAIAndSave() {
             aiSummary = composeAiSummary;
             categoryIds = composeAiCategoryIds;
             surveyReward = composeSurveyReward;
+            hasReward = composeHasReward;
+            requiresAction = composeRequiresAction;
         } else if (!existing || existing.content !== content) {
             updateAiProgress(18, 'Gemini가 원문을 분석하고 있습니다.', 'analyze', 68);
             try {
@@ -942,18 +947,24 @@ async function generateAIAndSave() {
                 aiSummary = analysis.summary;
                 categoryIds = analysis.categoryIds;
                 surveyReward = analysis.surveyReward;
+                hasReward = analysis.hasReward;
+                requiresAction = analysis.requiresAction;
             } catch (error) {
                 if (isGeminiRateLimitError(error)) throw error;
                 console.error('저장 직전 분석 실패:', error);
                 aiSummary = existing?.aiSummary || [];
                 categoryIds = existing?.categoryIds || [];
                 surveyReward = existing?.surveyReward || '';
+                hasReward = existing?.hasReward === true;
+                requiresAction = existing?.requiresAction === true;
             }
         } else {
             updateAiProgress(42, '기존 분석 결과를 확인하고 있습니다.', 'analyze', 58);
             aiSummary = existing.aiSummary || [];
             categoryIds = existing.categoryIds || [];
             surveyReward = existing.surveyReward || '';
+            hasReward = existing.hasReward === true;
+            requiresAction = existing.requiresAction === true;
         }
 
         updateAiProgress(68, '첨부 이미지를 정리하고 있습니다.', 'process', 82);
@@ -981,6 +992,9 @@ async function generateAIAndSave() {
             isPinned,
             isHidden: existing?.isHidden === true,
             surveyReward,
+            rewardNote: surveyReward || null,
+            hasReward,
+            requiresAction,
             content,
             aiSummary,
             categoryIds,
@@ -1138,6 +1152,8 @@ async function editAdminNotice(id) {
     composeAiSummary = [];
     composeAiCategoryIds = [];
     composeSurveyReward = '';
+    composeHasReward = false;
+    composeRequiresAction = false;
     aiDeadlineCandidate = '';
     renderAiDeadlineCandidate();
     renderPastePreview();
@@ -1288,7 +1304,7 @@ function renderReviewEditor(notice) {
     const categoryCheckboxHtml = activeCategories.length > 0
         ? activeCategories.map(category => `
             <label class="notification-check">
-                <input type="checkbox" name="review-category" value="${Number(category.id)}"
+                <input type="radio" name="review-category" value="${Number(category.id)}"
                     ${selectedCategoryIds.has(Number(category.id)) ? 'checked' : ''}>
                 ${escapeHtml(category.name)}
             </label>`).join('')
@@ -1335,9 +1351,17 @@ function renderReviewEditor(notice) {
                 <input id="review-keywords" type="text" value="${escapeHtml(keywords.join(', '))}">
             </div>
             <div class="form-group">
-                <label for="review-survey-reward">설문 참여 보상</label>
+                <label for="review-survey-reward">리워드 표기</label>
                 <input id="review-survey-reward" type="text" maxlength="120"
-                       value="${escapeHtml(notice.surveyReward || '')}" placeholder="예: 추첨 20명 스타벅스 기프티콘">
+                       value="${escapeHtml(notice.rewardNote || notice.surveyReward || '')}" placeholder="예: 추첨 20명 스타벅스 기프티콘">
+                <label class="title-manual-row">
+                    <input id="review-has-reward" type="checkbox" ${notice.hasReward ? 'checked' : ''}>
+                    리워드 있음
+                </label>
+                <label class="title-manual-row">
+                    <input id="review-requires-action" type="checkbox" ${notice.requiresAction ? 'checked' : ''}>
+                    신청·제출 필요
+                </label>
             </div>
             <div class="form-group wide">
                 <label for="review-summary">AI 요약 (한 줄에 하나)</label>
@@ -1349,7 +1373,7 @@ function renderReviewEditor(notice) {
             </div>
         </div>
         <div class="review-analysis">
-            <strong>카테고리</strong>
+            <strong>주제 카테고리 (하나만 선택)</strong>
             <div id="review-category-checkboxes" class="review-keywords">
                 ${categoryCheckboxHtml}
             </div>
@@ -1431,6 +1455,9 @@ function collectReviewEdits() {
         targets: splitReviewValues(document.getElementById('review-targets').value),
         keywords: splitReviewValues(document.getElementById('review-keywords').value),
         surveyReward: document.getElementById('review-survey-reward').value.trim(),
+        rewardNote: document.getElementById('review-survey-reward').value.trim() || null,
+        hasReward: document.getElementById('review-has-reward').checked,
+        requiresAction: document.getElementById('review-requires-action').checked,
         categoryIds: Array.from(
             document.querySelectorAll('input[name="review-category"]:checked')
         ).map(input => Number(input.value)),
@@ -2074,7 +2101,7 @@ async function moveBanner(placement, idx, dir) {
 }
 
 // ========================================
-// 🏷 카테고리 추천
+// 🏷 고정 주제 분류 키워드
 // ========================================
 
 function setCategoryManagerStatus(message, isError = false) {
@@ -2087,7 +2114,7 @@ function setCategoryManagerStatus(message, isError = false) {
 async function loadCategoryCandidates() {
     const list = document.getElementById('category-candidate-list');
     if (!list) return;
-    list.innerHTML = '<div class="review-empty">추천 후보를 계산하고 있습니다.</div>';
+    list.innerHTML = '<div class="review-empty">분류 키워드 후보를 계산하고 있습니다.</div>';
     setCategoryManagerStatus('최근 공지의 키워드와 신뢰도를 확인하고 있습니다.');
     try {
         await loadCategories();
@@ -2099,9 +2126,9 @@ async function loadCategoryCandidates() {
         renderCategoryCandidates();
         setCategoryManagerStatus(categoryCandidates.length > 0
             ? `관리자 결정이 필요한 후보 ${categoryCandidates.length}건`
-            : '현재 기준을 충족한 새 카테고리 후보가 없습니다.');
+            : '현재 기존 주제에 병합할 키워드 후보가 없습니다.');
     } catch (error) {
-        list.innerHTML = '<div class="review-empty">추천 후보를 불러오지 못했습니다.</div>';
+        list.innerHTML = '<div class="review-empty">분류 키워드 후보를 불러오지 못했습니다.</div>';
         setCategoryManagerStatus(error.message, true);
     }
 }
@@ -2109,7 +2136,7 @@ async function loadCategoryCandidates() {
 function renderCategoryCandidates() {
     const list = document.getElementById('category-candidate-list');
     if (categoryCandidates.length === 0) {
-        list.innerHTML = '<div class="review-empty">현재 추천 후보가 없습니다.</div>';
+        list.innerHTML = '<div class="review-empty">현재 분류 키워드 후보가 없습니다.</div>';
         return;
     }
     const categoryOptions = activeCategories.map(category =>
@@ -2133,7 +2160,6 @@ function renderCategoryCandidates() {
                     `<li>${escapeHtml(notice.title || `공지 ${notice.id}`)}</li>`
                 ).join('')}</ul>
                 <div class="category-candidate-actions">
-                    <button class="btn btn-small" type="button" onclick="approveCategoryCandidate(${Number(candidate.id)})">새 카테고리로 추가</button>
                     <select id="category-merge-${Number(candidate.id)}" aria-label="${escapeHtml(candidate.displayName)} 병합 대상">
                         <option value="">기존 카테고리 선택</option>${categoryOptions}
                     </select>
@@ -2160,23 +2186,6 @@ async function decideCategoryCandidate(id, action, body = {}) {
     } catch (error) {
         setCategoryManagerStatus(error.message, true);
     }
-}
-
-async function approveCategoryCandidate(id) {
-    const candidate = categoryCandidates.find(item => Number(item.id) === Number(id));
-    if (!candidate) return;
-    const name = window.prompt('새 카테고리 이름', candidate.displayName);
-    if (!name?.trim()) return;
-    const suggestedSlug = String(candidate.normalizedKeyword)
-        .replace(/[^a-z0-9가-힣]+/g, '-')
-        .replace(/[가-힣]/g, '')
-        .replace(/^-|-$/g, '') || `category-${id}`;
-    const slug = window.prompt('URL용 영문 슬러그 (예: scholarships)', suggestedSlug);
-    if (!slug?.trim()) return;
-    await decideCategoryCandidate(id, 'approve', {
-        name: name.trim(),
-        slug: slug.trim().toLowerCase()
-    });
 }
 
 async function mergeCategoryCandidate(id) {

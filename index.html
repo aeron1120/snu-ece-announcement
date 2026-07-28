@@ -101,6 +101,13 @@
     </div>
 </nav>
 
+<div class="notice-quick-filters" id="notice-quick-filters" aria-label="공지 빠른 필터">
+    <button type="button" data-quick-filter="urgent" onclick="toggleQuickNoticeFilter('urgent')">마감임박</button>
+    <button type="button" data-quick-filter="reward" onclick="toggleQuickNoticeFilter('reward')">리워드 있음</button>
+    <button type="button" data-quick-filter="action" onclick="toggleQuickNoticeFilter('action')">신청 필요</button>
+    <button type="button" data-quick-filter="past" onclick="toggleQuickNoticeFilter('past')">지난 공지 보기</button>
+</div>
+
 <div class="search-wrapper">
     <!-- 검색바. 대상 학번은 상세 필터에서만 조정한다. -->
     <div class="search-container" role="search">

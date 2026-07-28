@@ -95,7 +95,7 @@ test('administrator surfaces live on admin.html, not the public page', async () 
         assert.match(html, new RegExp(`id="${id}"`));
     }
     assert.match(html, /aria-live="polite"/);
-    assert.match(html, /<script src="\.\/js\/admin\.js"><\/script>/);
+    assert.match(html, /<script src="\/js\/admin\.js"><\/script>/);
 
     // 공개 화면에는 관리자 UI도, 관리자 스크립트도 실려서는 안 된다.
     for (const leaked of [
@@ -149,7 +149,7 @@ test('desktop rails stay pinned to the viewport while the page scrolls', async (
     assert.doesNotMatch(css, /position:\s*sticky/);
 });
 
-test('compact desktop turns the left rail into a drawer and preserves banner ratio', async () => {
+test('compact desktop turns the left rail into a drawer and keeps the vertical banner cropped without side gaps', async () => {
     const desktopCss = await readFile('css/desktop.css', 'utf8');
     const desktopJs = await readFile('js/desktop.js', 'utf8');
     const mobileJs = await readFile('js/mobile.js', 'utf8');
@@ -159,7 +159,7 @@ test('compact desktop turns the left rail into a drawer and preserves banner rat
     assert.match(desktopCss, /\.rail-left\s*\{[^}]*transform:\s*translateX\(-100%\)/s);
     assert.match(desktopCss, /\.rail-left\.drawer-open\s*\{[^}]*translateX\(0\)/s);
     assert.match(desktopCss, /\.rail-right\s*\{[^}]*width:\s*var\(--compact-ad-rail-width\)/s);
-    assert.match(desktopCss, /\.rail-ad-image\s*\{[^}]*height:\s*auto;[^}]*aspect-ratio:\s*auto;[^}]*object-fit:\s*contain/s);
+    assert.match(desktopCss, /\.rail-ad-image\s*\{[^}]*width:\s*100%;[^}]*height:\s*100%;[^}]*object-fit:\s*cover/s);
     assert.match(mobileJs, /function usesDrawerNavigation\(\)/);
     assert.match(mobileJs, /COMPACT_DESKTOP_DRAWER_QUERY/);
     assert.match(desktopJs, /event\.key === 'Escape'[\s\S]*closeMobileDrawer\(\)/);
@@ -248,7 +248,7 @@ test('mobile cards stay compact, keep paging, and disable notice comparison drag
 
     assert.doesNotMatch(html, /class="search-brand"/);
     assert.match(html, /class="detail-back"[^>]*>← 이전</);
-    assert.match(mobileCss, /\.card\s*\{[^}]*height:\s*auto;[^}]*aspect-ratio:\s*0\.64/s);
+    assert.match(mobileCss, /\.card\s*\{[^}]*height:\s*auto;[^}]*aspect-ratio:\s*0\.72/s);
     assert.match(mobileCss, /\.card-img-preview\s*\{[^}]*object-fit:\s*cover/s);
     assert.match(mobileCss, /\.notice-pagination\s*\{[^}]*display:\s*flex/s);
     assert.match(mobileCss, /\.card-block-controls,[\s\S]*\.compare-space,[\s\S]*display:\s*none !important/s);
@@ -485,8 +485,8 @@ test('sort chips are exposed beside result count and category tabs restore their
     assert.match(html, /data-sort="마감임박순"[\s\S]*data-sort="최신순"[\s\S]*data-sort="조회순"/);
     assert.doesNotMatch(html, /id="fg-sort"/);
     const defaults = readNamedFunction(app, 'getDefaultSortForCategory');
-    assert.match(defaults, /application[\s\S]*benefits-partnerships[\s\S]*campus/);
-    assert.match(app, /function selectCategoryTab[\s\S]*getDefaultSortForCategory\(value\)[\s\S]*syncNoticeSortChips/);
+    assert.match(defaults, /opportunity[\s\S]*benefit[\s\S]*마감임박순/);
+    assert.match(app, /function selectCategoryTab[\s\S]*getDefaultSortForCategory\(category\?\.slug \|\| 'all'\)[\s\S]*syncNoticeSortChips/);
 });
 
 test('notice dates use one deadline, always-open, or registration presentation', async () => {
@@ -627,14 +627,14 @@ test('the compose form leads with content/photo/target, then AI fills date/subje
     assert.doesNotMatch(html, /class="panel-help"/);
 });
 
-test('public category tabs keep the canonical application-to-governance order', async () => {
+test('public category tabs keep the four canonical topic categories in order', async () => {
     const app = await readFile('js/core.js', 'utf8');
     const server = await readFile('server/server.js', 'utf8');
     const categoryConfig = await readFile('server/config/notice-categories.js', 'utf8');
     const orderSource = app.match(/const NOTICE_CATEGORY_ORDER = Object\.freeze\(\[[\s\S]*?\]\);/)?.[0] || '';
 
-    assert.match(orderSource, /'application'[\s\S]*'academics'[\s\S]*'benefits-partnerships'[\s\S]*'campus'[\s\S]*'governance'/);
-    assert.match(categoryConfig, /신청[\s\S]*학사[\s\S]*혜택\/제휴[\s\S]*캠퍼스[\s\S]*자치/);
+    assert.match(orderSource, /'academic'[\s\S]*'opportunity'[\s\S]*'benefit'[\s\S]*'community'/);
+    assert.match(categoryConfig, /ACADEMIC[\s\S]*OPPORTUNITY[\s\S]*BENEFIT[\s\S]*COMMUNITY/);
     assert.match(server, /canonicalSlugs[\s\S]*categories\.filter/);
     assert.match(app, /function orderedNoticeCategories/);
 });
@@ -644,8 +644,10 @@ test('manual Gemini analysis saves canonical category ids with the notice', asyn
     const server = await readFile('server/server.js', 'utf8');
     const schema = await readFile('server/sql/supabase-schema.sql', 'utf8');
 
-    assert.match(admin, /"categorySlugs":\["application\|academics\|benefits-partnerships\|campus\|governance/);
-    assert.match(admin, /가능한 한 핵심 범주 하나만 선택/);
+    assert.match(admin, /"categorySlugs":\["academic\|opportunity\|benefit\|community 중 핵심 하나"\]/);
+    assert.match(admin, /categorySlugs는 반드시 핵심 범주 하나만 선택/);
+    assert.match(admin, /"hasReward":false/);
+    assert.match(admin, /"requiresAction":false/);
     assert.match(admin, /categoryIds:\s*verified\.categorySlugs/);
     assert.match(admin, /verificationPrompt/);
     assert.match(admin, /verifiedNumbers/);
@@ -909,7 +911,8 @@ test('right-rail banners start randomly, auto-rotate, and keep manual arrows dir
     assert.match(app, /setInterval\([\s\S]*6500\)/);
     assert.match(app, /class="rail-ad-image-stage\$\{transitionClass\}"[\s\S]*\$\{imageContent\}[\s\S]*\$\{controls\}/);
     assert.doesNotMatch(app, /class="rail-ad-dot/);
-    assert.match(css, /\.rail-ad-image\s*\{[^}]*width:\s*calc\(100% \+ 2px\)[^}]*height:\s*auto[^}]*object-fit:\s*cover/s);
+    assert.match(css, /\.rail-ad-image-stage\s*\{[^}]*width:\s*100%;[^}]*aspect-ratio:\s*4\s*\/\s*5/s);
+    assert.match(css, /\.rail-ad-image\s*\{[^}]*width:\s*100%;[^}]*height:\s*100%;[^}]*object-fit:\s*cover[^}]*border:\s*0/s);
     assert.match(css, /\.rail-ad-controls\s*\{[^}]*grid-template-columns:\s*34px 1fr 34px/s);
     assert.match(css, /\.rail-ad-image-stage\.is-leaving-left\s*\{[^}]*translateX\(-42px\)/s);
     assert.match(css, /\.rail-ad-image-stage\.is-entering-right\s*\{[^}]*rail-banner-enter-right/s);
@@ -1289,8 +1292,16 @@ test('notice filtering and sorting are requested from the server before cards re
     const requestSource = readNamedFunction(app, 'filterCards');
     const renderSource = readNamedFunction(app, 'renderNoticeCards');
     assert.match(filtersSource, /sort:\s*filterState\.sort/);
-    assert.match(requestSource, /loadNoticePage\(1\)/);
+    assert.match(requestSource, /loadNoticePage\(requestedPage\)/);
+    assert.match(filtersSource, /urgent:\s*quickNoticeFilters\.urgent/);
+    assert.match(filtersSource, /reward:\s*quickNoticeFilters\.reward/);
+    assert.match(filtersSource, /action:\s*quickNoticeFilters\.action/);
+    assert.match(filtersSource, /past:\s*quickNoticeFilters\.past/);
     assert.doesNotMatch(renderSource, /\.sort\(/);
+    const syncUrlSource = readNamedFunction(app, 'syncNoticeListUrl');
+    const clearNoticeUrlSource = readNamedFunction(app, 'clearNoticeUrl');
+    assert.doesNotMatch(syncUrlSource, /delete\('id'\)/);
+    assert.match(clearNoticeUrlSource, /params\.delete\(NOTICE_URL_PARAM\)/);
 });
 
 test('student-year preference is optional, asked once, and keeps out-of-target notices visible', async () => {
@@ -1412,8 +1423,9 @@ test('column counts live in the per-view layers, not in core', async () => {
     assert.match(desktop, /@media \(max-width:\s*1500px\)[\s\S]*grid-template-columns:\s*repeat\(2/);
     assert.doesNotMatch(desktop, /grid-template-columns:\s*repeat\(3/);
     assert.match(mobile, /html\[data-view="mobile"\] \.grid\s*\{[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/s);
-    assert.match(mobile, /html\[data-view="mobile"\] \.category-tabs\s*\{[^}]*overflow-x:\s*auto/s);
-    assert.match(mobile, /@media \(max-width:\s*420px\)[\s\S]*\.category-tabs-inner\s*\{[^}]*width:\s*max-content;[^}]*justify-content:\s*flex-start/s);
+    assert.match(mobile, /html\[data-view="mobile"\] \.category-tabs\s*\{[^}]*overflow:\s*hidden/s);
+    assert.match(mobile, /html\[data-view="mobile"\] \.category-tabs-inner\s*\{[^}]*grid-template-columns:\s*repeat\(5,\s*minmax\(0,\s*1fr\)\)/s);
+    assert.match(mobile, /@media \(max-width:\s*420px\)[\s\S]*\.category-tabs-inner\s*\{[^}]*width:\s*100%/s);
     assert.match(desktop, /\.spatial-workspace\.is-split\[data-blocks="1"\] \.notice-base-block > \.grid\s*\{[^}]*repeat\(2,/s);
     assert.doesNotMatch(mobile, /\.notice-base-block \.grid,\s*\nhtml\[data-view="mobile"\] \.compare-space-stage/);
     assert.match(mobile, /\.image-viewer-action\s*\{[^}]*min-height:\s*38px/s);

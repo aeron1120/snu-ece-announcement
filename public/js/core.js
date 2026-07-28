@@ -67,14 +67,18 @@ let bannerManageAuthToken = '';
 let activeCategories = [];
 let selectedCategoryFilters = new Set();
 let archiveTabActive = false;
+const quickNoticeFilters = {
+    urgent: false,
+    reward: false,
+    action: false,
+    past: false
+};
 
 const NOTICE_CATEGORY_ORDER = Object.freeze([
-    'application',
-    'academics',
-    'benefits-partnerships',
-    'campus',
-    'governance',
-    'survey'
+    'academic',
+    'opportunity',
+    'benefit',
+    'community'
 ]);
 
 function orderedNoticeCategories(categories = activeCategories) {
@@ -451,7 +455,10 @@ function getNoticeListFilters() {
         sort: filterState.sort,
         dateFrom: document.getElementById('filter-date-from')?.value || '',
         dateTo: document.getElementById('filter-date-to')?.value || '',
-        archive: archiveTabActive ? 'expired' : ''
+        urgent: quickNoticeFilters.urgent,
+        reward: quickNoticeFilters.reward,
+        action: quickNoticeFilters.action,
+        past: quickNoticeFilters.past
     };
 }
 
@@ -483,6 +490,7 @@ async function goToNoticePage(page) {
         await loadNoticePage(targetPage);
         buildHostButtons();
         renderNoticeCards();
+        syncNoticeListUrl(targetPage);
         document.getElementById('spatial-workspace')
             ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     } catch (error) {
@@ -671,11 +679,8 @@ function renderRightRailInquiryFallback() {
     if (!container) return;
     stopBannerRotation();
 
-    container.innerHTML = `
-        <h2>학내 소식을 알리세요</h2>
-        <p>동아리·프로젝트·학생회 소식을 접수합니다.</p>
-        <button class="rail-cta" type="button" onclick="openBannerInquiryFromRail()">홍보 신청하기</button>
-    `;
+    container.innerHTML = `<button class="rail-cta rail-ad-fallback" type="button"
+        onclick="openBannerInquiryFromRail()">홍보 신청하기</button>`;
 }
 
 function renderRightRailAd({ restartRotation = true, transitionDirection = 0 } = {}) {
@@ -1207,8 +1212,11 @@ function syncUrlToNotice(id) {
 
 function clearNoticeUrl() {
     if (!window.history?.replaceState) return;
-    if (!new URLSearchParams(location.search).has(NOTICE_URL_PARAM)) return;
-    history.replaceState({}, '', location.pathname);
+    const params = new URLSearchParams(location.search);
+    if (!params.has(NOTICE_URL_PARAM)) return;
+    params.delete(NOTICE_URL_PARAM);
+    const query = params.toString();
+    history.replaceState({}, '', `${location.pathname}${query ? `?${query}` : ''}${location.hash}`);
 }
 
 // 최초 진입 시 ?id=... 가 있으면 그 공지를 연다.
@@ -1331,51 +1339,124 @@ async function loadCategories() {
     buildCategoryTabs();
 }
 
-// 서울대 소식 스타일 카테고리 탭. '전체' + 서버 카테고리 하나를 골라 걸러 본다(단일 선택).
+const LEGACY_CATEGORY_REDIRECTS = Object.freeze({
+    application: 'opportunity',
+    academics: 'academic',
+    'benefits-partnerships': 'benefit',
+    campus: 'community',
+    governance: 'community',
+    survey: 'benefit',
+    expired: 'all'
+});
+
+function categoryFromTabValue(value) {
+    const normalized = LEGACY_CATEGORY_REDIRECTS[value] || value;
+    if (normalized === 'all') return null;
+    return activeCategories.find(category =>
+        category.slug === normalized || Number(category.id) === Number(normalized)
+    ) || null;
+}
+
+// 주제 축만 남긴 5개 탭. 상태와 행동 여부는 아래 빠른 필터가 맡는다.
 function buildCategoryTabs() {
     const inner = document.getElementById('category-tabs-inner');
     if (!inner) return;
-    const current = archiveTabActive
-        ? 'expired'
-        : selectedCategoryFilters.size === 0
+    const current = selectedCategoryFilters.size === 0
         ? 'all'
         : (selectedCategoryFilters.size === 1 ? [...selectedCategoryFilters][0] : 'multi');
     let html = `<button type="button" class="category-tab ${current === 'all' ? 'active' : ''}" data-category="all" onclick="selectCategoryTab('all')">전체</button>`;
     html += orderedNoticeCategories().map(category => {
         const id = Number(category.id);
-        return `<button type="button" class="category-tab ${current === id ? 'active' : ''}" data-category="${id}" onclick="selectCategoryTab('${id}')">${escapeHtml(category.name)}</button>`;
+        return `<button type="button" class="category-tab ${current === id ? 'active' : ''}" data-category="${escapeHtml(category.slug)}" onclick="selectCategoryTab('${escapeHtml(category.slug)}')">${escapeHtml(category.name)}</button>`;
     }).join('');
-    html += `<button type="button" class="category-tab category-tab-archive ${current === 'expired' ? 'active' : ''}"
-        data-category="expired" onclick="selectCategoryTab('expired')">마감/만료</button>`;
     inner.innerHTML = html;
 }
 
 function selectCategoryTab(value) {
+    const category = categoryFromTabValue(value);
     selectedCategoryFilters.clear();
-    archiveTabActive = value === 'expired';
-    if (value !== 'all' && value !== 'expired') selectedCategoryFilters.add(Number(value));
+    archiveTabActive = false;
+    if (category) selectedCategoryFilters.add(Number(category.id));
     document.querySelectorAll('#category-tabs-inner .category-tab').forEach(tab => {
-        const selected = value === 'all'
+        const selected = !category
             ? tab.dataset.category === 'all'
-            : (value === 'expired'
-                ? tab.dataset.category === 'expired'
-                : Number(tab.dataset.category) === Number(value));
+            : tab.dataset.category === category.slug;
         tab.classList.toggle('active', selected);
         tab.setAttribute('aria-current', selected ? 'true' : 'false');
     });
-    filterState.sort = getDefaultSortForCategory(value);
+    filterState.sort = getDefaultSortForCategory(category?.slug || 'all');
     syncNoticeSortChips();
     updateFilterChips();
     filterCards(true);
 }
 
 function getDefaultSortForCategory(value = 'all') {
-    if (value === 'expired') return '최신순';
     if (value === 'all') return '최신순';
-    const category = activeCategories.find(item => Number(item.id) === Number(value));
-    return ['application', 'benefits-partnerships', 'campus'].includes(category?.slug)
+    const category = categoryFromTabValue(value);
+    return ['opportunity', 'benefit'].includes(category?.slug)
         ? '마감임박순'
         : '최신순';
+}
+
+function syncQuickNoticeFilterButtons() {
+    document.querySelectorAll('[data-quick-filter]').forEach(button => {
+        const active = Boolean(quickNoticeFilters[button.dataset.quickFilter]);
+        button.classList.toggle('active', active);
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+}
+
+function toggleQuickNoticeFilter(name) {
+    if (!Object.hasOwn(quickNoticeFilters, name)) return;
+    quickNoticeFilters[name] = !quickNoticeFilters[name];
+    syncQuickNoticeFilterButtons();
+    updateFilterChips();
+    filterCards(true);
+}
+
+function restoreNoticeListStateFromUrl() {
+    const params = new URLSearchParams(location.search);
+    const rawTab = params.get('tab') || params.get('category') || 'all';
+    const mappedTab = LEGACY_CATEGORY_REDIRECTS[rawTab] || rawTab;
+    const category = categoryFromTabValue(mappedTab);
+    selectedCategoryFilters.clear();
+    if (category) selectedCategoryFilters.add(Number(category.id));
+    quickNoticeFilters.urgent = params.get('urgent') === '1';
+    quickNoticeFilters.reward = params.get('reward') === '1' || rawTab === 'survey';
+    quickNoticeFilters.action = params.get('action') === '1' || rawTab === 'survey';
+    quickNoticeFilters.past = params.get('past') === '1'
+        || rawTab === 'expired'
+        || params.get('archive') === 'expired';
+    const search = document.getElementById('searchInput');
+    if (search && params.get('q')) search.value = params.get('q').slice(0, 200);
+    const requestedSort = params.get('sort');
+    filterState.sort = ['마감임박순', '최신순', '조회순'].includes(requestedSort)
+        ? requestedSort
+        : getDefaultSortForCategory(category?.slug || 'all');
+    syncQuickNoticeFilterButtons();
+    const page = Number.parseInt(params.get('page'), 10);
+    return Number.isSafeInteger(page) && page > 0 ? page : 1;
+}
+
+function syncNoticeListUrl(page = 1) {
+    if (!document.getElementById('notice-detail-view')?.hidden) return;
+    const params = new URLSearchParams(location.search);
+    params.delete('category');
+    params.delete('archive');
+    const categoryId = [...selectedCategoryFilters][0];
+    const category = activeCategories.find(item => Number(item.id) === Number(categoryId));
+    category ? params.set('tab', category.slug) : params.delete('tab');
+    for (const key of Object.keys(quickNoticeFilters)) {
+        quickNoticeFilters[key] ? params.set(key, '1') : params.delete(key);
+    }
+    const search = document.getElementById('searchInput')?.value.trim() || '';
+    search ? params.set('q', search) : params.delete('q');
+    filterState.sort !== getDefaultSortForCategory(category?.slug || 'all')
+        ? params.set('sort', filterState.sort)
+        : params.delete('sort');
+    Number(page) > 1 ? params.set('page', String(page)) : params.delete('page');
+    const query = params.toString();
+    history.replaceState(history.state, '', `${location.pathname}${query ? `?${query}` : ''}${location.hash}`);
 }
 
 function syncNoticeSortChips() {
@@ -1444,6 +1525,21 @@ function updateFilterChips() {
         chipsArea.appendChild(chip);
     }
 
+    Object.entries(quickNoticeFilters).forEach(([key, active]) => {
+        if (!active) return;
+        hasActive = true;
+        const names = {
+            urgent: '마감임박',
+            reward: '리워드 있음',
+            action: '신청 필요',
+            past: '지난 공지 보기'
+        };
+        const chip = document.createElement('div');
+        chip.className = 'filter-chip';
+        chip.innerHTML = `<span>${names[key]}</span><button onclick="event.stopPropagation(); toggleQuickNoticeFilter('${key}')">×</button>`;
+        chipsArea.appendChild(chip);
+    });
+
     bar.classList.toggle('has-active', hasActive);
     const count = chipsArea.children.length;
     const svg = `<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 4h18M7 8h10M11 12h2M9 16h6"/></svg>`;
@@ -1492,6 +1588,8 @@ function resetAllFilters() {
     document.querySelectorAll('.filter-btn').forEach(b => { b.classList.toggle('active', b.dataset.val === FILTER_DEFAULTS[b.dataset.group]); });
     selectedCategoryFilters.clear();
     archiveTabActive = false;
+    Object.keys(quickNoticeFilters).forEach(key => { quickNoticeFilters[key] = false; });
+    syncQuickNoticeFilterButtons();
     buildCategoryTabs();
     filterState.sort = getDefaultSortForCategory('all');
     syncNoticeSortChips();
@@ -1513,6 +1611,7 @@ function hasDetailedNoticeFilters() {
     const dateTo = document.getElementById('filter-date-to')?.value || '';
     return target !== '전체'
         || selectedCategoryFilters.size > 0
+        || Object.values(quickNoticeFilters).some(Boolean)
         || dateFrom
         || dateTo
         || Object.entries(filterState).some(([group, value]) =>
@@ -1625,8 +1724,8 @@ function renderNoticeCards(animate = false) {
         const excerpt = Array.isArray(notice.aiSummary) ? notice.aiSummary.join(' ') : '';
         // 이미지 카드만 본문 위에 제목을 다시 보여준다(텍스트 카드는 포스터가 곧 제목).
         const titleHtml = hasImg ? `<h3 class="card-title">${safeTitle}</h3>` : '';
-        const surveyRewardHtml = notice.surveyReward
-            ? `<div class="survey-reward" aria-label="설문 참여 보상">🎁 ${escapeHtml(notice.surveyReward)}</div>`
+        const surveyRewardHtml = notice.rewardNote || notice.surveyReward
+            ? `<div class="survey-reward" aria-label="리워드">🎁 ${escapeHtml(notice.rewardNote || notice.surveyReward)}</div>`
             : '';
 
         const card = document.createElement('div');
@@ -1703,15 +1802,19 @@ function renderNoticeCards(animate = false) {
 
 async function filterCards() {
     const animate = arguments[0] === true;
+    const requestedPage = Number.isSafeInteger(Number(arguments[1]))
+        ? Math.max(1, Number(arguments[1]))
+        : 1;
     const requestVersion = ++noticeListRequestVersion;
     noticePageLoading = true;
     updateNoticePaginationUI(noticeRepository.pagination, true);
     try {
-        const result = await loadNoticePage(1);
+        const result = await loadNoticePage(requestedPage);
         if (requestVersion !== noticeListRequestVersion) return;
         notices = result.notices;
         buildHostButtons();
         renderNoticeCards(animate);
+        syncNoticeListUrl(result.pagination.page);
     } catch (error) {
         if (requestVersion !== noticeListRequestVersion) return;
         console.error('공지 필터 적용 실패:', error);
@@ -2829,11 +2932,13 @@ document.addEventListener('DOMContentLoaded', async function () {
 
     await loadData();
     await loadCategories();
+    const initialNoticePage = restoreNoticeListStateFromUrl();
     maybeAskStudentYear();
     buildCategoryTabs();
     syncNoticeSortChips();
+    updateFilterChips();
     renderRightRailAd();
     buildHostButtons();
-    await filterCards();
+    await filterCards(false, initialNoticePage);
     openNoticeFromUrl();   // 카톡 링크로 들어온 경우 해당 공지를 바로 연다
 });
