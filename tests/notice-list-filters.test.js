@@ -69,10 +69,20 @@ test('notice list filters support contextual empty results and server-side sorti
 
     const byViews = applyNoticeListFilters(
         rows,
-        normalizeNoticeListFilters({ sort: '조회수순' }),
+        normalizeNoticeListFilters({ sort: '조회순' }),
         { now: new Date('2026-07-28T12:00:00+09:00') }
     );
     assert.deepEqual(byViews.map(notice => notice.id), [2, 1, 3]);
+});
+
+test('pinned notices stay above the selected sort order', () => {
+    const result = applyNoticeListFilters([
+        { ...rows[0], id: 30, views: 10, isPinned: true },
+        { ...rows[1], id: 31, views: 999, isPinned: false }
+    ], normalizeNoticeListFilters({ sort: '조회순' }), {
+        now: new Date('2026-07-01T00:00:00.000Z')
+    });
+    assert.deepEqual(result.map(notice => notice.id), [30, 31]);
 });
 
 test('notice list filter normalization rejects unknown states instead of widening queries unpredictably', () => {

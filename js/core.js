@@ -712,10 +712,37 @@ function calcDDay(deadlineStr) {
     if (!deadlineStr) return { text: "상시", isUrgent: false, isD1: false, isExpired: false };
     const diffDays = getCalendarDayDifference(new Date(deadlineStr + "T00:00:00"), getCurrentDate());
     if (diffDays < 0) return { text: "마감됨", isUrgent: false, isD1: false, isExpired: true };
-    if (diffDays === 0) return { text: "D-Day", isUrgent: true, isD1: false, isExpired: false };
+    if (diffDays === 0) return { text: "오늘 마감", isUrgent: true, isD1: false, isExpired: false };
     if (diffDays === 1) return { text: "D-1", isUrgent: true, isD1: true, isExpired: false };
     if (diffDays <= 3) return { text: `D-${diffDays}`, isUrgent: true, isD1: false, isExpired: false };
     return { text: `D-${diffDays}`, isUrgent: false, isD1: false, isExpired: false };
+}
+
+function getNoticeDatePresentation(notice) {
+    const createdLabel = notice.createdAt
+        ? `등록 ${formatDateWithWeekday(notice.createdAt)}`
+        : '등록일 없음';
+    if (notice.isAlwaysOpen) {
+        return {
+            badgeText: '상시',
+            badgeClass: '',
+            dateLabel: createdLabel
+        };
+    }
+    const deadline = String(notice.deadlineAt || notice.deadline || '').slice(0, 10);
+    if (!deadline) {
+        return {
+            badgeText: '',
+            badgeClass: '',
+            dateLabel: createdLabel
+        };
+    }
+    const dDay = calcDDay(deadline);
+    return {
+        badgeText: dDay.text,
+        badgeClass: dDay.isExpired ? 'expired' : (dDay.isUrgent ? 'd-day' : ''),
+        dateLabel: `마감 ${formatDateWithWeekday(deadline)}`
+    };
 }
 
 function matchesDeadlineStatus(deadlineStatus, dDay, hasDeadline) {
@@ -727,7 +754,7 @@ function matchesDeadlineStatus(deadlineStatus, dDay, hasDeadline) {
     return true;
 }
 
-// 서울대 소식처럼 요일까지 붙인 날짜. "2026.07.27.(월)" 형태.
+// 서울대 소식처럼 요일까지 붙인 날짜. "2026.07.27(월)" 형태.
 const WEEKDAY_KO = ['일', '월', '화', '수', '목', '금', '토'];
 let railClockTimer = null;
 
@@ -765,7 +792,7 @@ function formatDateWithWeekday(value) {
     const y = date.getFullYear();
     const m = String(date.getMonth() + 1).padStart(2, '0');
     const d = String(date.getDate()).padStart(2, '0');
-    return `${y}.${m}.${d}.(${WEEKDAY_KO[date.getDay()]})`;
+    return `${y}.${m}.${d}(${WEEKDAY_KO[date.getDay()]})`;
 }
 
 // 공지 제목·기관·배너 문구는 관리자가 자유롭게 입력하므로, HTML로 조립하기 전에 반드시 이스케이프한다.
@@ -1190,6 +1217,32 @@ function selectCategoryTab(value) {
         tab.classList.toggle('active', selected);
         tab.setAttribute('aria-current', selected ? 'true' : 'false');
     });
+    filterState.sort = getDefaultSortForCategory(value);
+    syncNoticeSortChips();
+    updateFilterChips();
+    filterCards(true);
+}
+
+function getDefaultSortForCategory(value = 'all') {
+    if (value === 'all') return '최신순';
+    const category = activeCategories.find(item => Number(item.id) === Number(value));
+    return ['application', 'benefits-partnerships', 'campus'].includes(category?.slug)
+        ? '마감임박순'
+        : '최신순';
+}
+
+function syncNoticeSortChips() {
+    document.querySelectorAll('#notice-sort-chips [data-sort]').forEach(button => {
+        const active = button.dataset.sort === filterState.sort;
+        button.classList.toggle('active', active);
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+}
+
+function setNoticeSort(sort) {
+    if (!['마감임박순', '최신순', '조회순'].includes(sort)) return;
+    filterState.sort = sort;
+    syncNoticeSortChips();
     filterCards(true);
 }
 
@@ -1210,13 +1263,14 @@ function updateFilterChips() {
     if (!chipsArea || !bar || !labelEl) return;
     chipsArea.innerHTML = '';
 
-    const labelMap = { 'deadline-status': '마감', 'host': '기관', 'has-image': '이미지', 'views': '조회수', 'sort': '정렬' };
+    const labelMap = { 'deadline-status': '마감', 'host': '기관', 'has-image': '이미지', 'views': '조회수' };
     let hasActive = false;
 
     const dateFrom = document.getElementById('filter-date-from')?.value;
     const dateTo = document.getElementById('filter-date-to')?.value;
 
     Object.entries(filterState).forEach(([group, val]) => {
+        if (group === 'sort') return;
         if (val !== FILTER_DEFAULTS[group]) {
             hasActive = true;
             const chip = document.createElement('div');
@@ -1259,6 +1313,8 @@ function clearDateRange() {
 function clearCategoryFilters() {
     selectedCategoryFilters.clear();
     buildCategoryTabs();
+    filterState.sort = getDefaultSortForCategory('all');
+    syncNoticeSortChips();
     filterCards();
     updateFilterChips();
 }
@@ -1268,6 +1324,8 @@ function resetAllFilters() {
     document.querySelectorAll('.filter-btn').forEach(b => { b.classList.toggle('active', b.dataset.val === FILTER_DEFAULTS[b.dataset.group]); });
     selectedCategoryFilters.clear();
     buildCategoryTabs();
+    filterState.sort = getDefaultSortForCategory('all');
+    syncNoticeSortChips();
     const dateFrom = document.getElementById('filter-date-from');
     const dateTo = document.getElementById('filter-date-to');
     if (dateFrom) dateFrom.value = '';
@@ -1284,7 +1342,9 @@ function hasDetailedNoticeFilters() {
         || selectedCategoryFilters.size > 0
         || dateFrom
         || dateTo
-        || Object.entries(filterState).some(([group, value]) => value !== FILTER_DEFAULTS[group]);
+        || Object.entries(filterState).some(([group, value]) =>
+            group !== 'sort' && value !== FILTER_DEFAULTS[group]
+        );
 }
 
 function clearSearchFilter() {
@@ -1343,7 +1403,7 @@ function renderNoticeCards(animate = false) {
         : baseNotices;
 
     visibleBaseNotices.forEach(notice => {
-        const dDay = calcDDay(notice.isAlwaysOpen ? null : notice.deadline);
+        const datePresentation = getNoticeDatePresentation(notice);
         const rawTitle = notice.title || "제목 없음";
         const safeTitle = escapeHtml(rawTitle);
         const hasImg = Object.hasOwn(notice, 'hasImages')
@@ -1359,16 +1419,13 @@ function renderNoticeCards(animate = false) {
 
         const cardClass = [
             'card',
-            dDay.isExpired ? 'card-expired' : '',
+            datePresentation.badgeClass === 'expired' ? 'card-expired' : '',
             notice.isArchived ? 'is-archived' : '',
             notice.isInGracePeriod ? 'is-grace-period' : ''
         ].filter(Boolean).join(' ');
-        const deadlineTagClass = dDay.isExpired ? 'expired' : dDay.isUrgent ? 'd-day' : '';
-
-        // 날짜는 요일까지 보여준다. 마감일이 있으면 마감일을, 없으면 등록일을 기준으로.
-        const dateLabel = notice.deadline
-            ? `마감 ${formatDateWithWeekday(notice.deadline)}`
-            : (notice.createdAt ? `등록 ${formatDateWithWeekday(notice.createdAt)}` : '상시 접수');
+        const dateTagHtml = datePresentation.badgeText
+            ? `<span class="tag ${datePresentation.badgeClass}">${escapeHtml(datePresentation.badgeText)}</span>`
+            : '';
         // 본문 발췌: 목록 응답은 원문을 담지 않으므로 AI 3줄 요약을 발췌로 쓴다.
         const excerpt = Array.isArray(notice.aiSummary) ? notice.aiSummary.join(' ') : '';
         // 이미지 카드만 본문 위에 제목을 다시 보여준다(텍스트 카드는 포스터가 곧 제목).
@@ -1399,12 +1456,13 @@ function renderNoticeCards(animate = false) {
             ${posterHtml}
             <div class="card-body">
                 <div class="tags">
-                    <span class="tag ${deadlineTagClass}">${dDay.text}</span>
+                    ${dateTagHtml}
+                    ${notice.isPinned ? '<span class="tag pinned">고정</span>' : ''}
                     <span class="tag target">${escapeHtml(notice.target || '전체')}</span>
                     ${notice.host ? `<span class="tag">${escapeHtml(notice.host)}</span>` : ''}
                 </div>
                 ${titleHtml}
-                <div class="card-date">${escapeHtml(dateLabel)}</div>
+                <div class="card-date">${escapeHtml(datePresentation.dateLabel)}</div>
                 ${excerpt ? `<p class="card-excerpt">${escapeHtml(excerpt)}</p>` : ''}
                 <div class="card-meta">
                     <span class="view-count">조회 ${Number(notice.views) || 0}</span>
@@ -1625,6 +1683,7 @@ async function openDetail(idStr) {
     }
 
     notice.views = (notice.views || 0) + 1;
+    const datePresentation = getNoticeDatePresentation(notice);
     renderNoticeCards();
 
     apiRequest(`/api/notices/${currentViewId}/view`, { method: 'POST' })
@@ -1634,7 +1693,7 @@ async function openDetail(idStr) {
             if (freshIdx !== -1) {
                 notices[freshIdx].views = result.notice.views;
                 if (String(currentViewId) === String(result.notice.id)) {
-                    document.getElementById('detail-meta').innerHTML = `마감일: ${escapeHtml(notice.deadline || '상시')} &nbsp;|&nbsp; 조회: ${Number(result.notice.views) || 0}`;
+                    document.getElementById('detail-meta').innerHTML = `${escapeHtml(datePresentation.dateLabel)} &nbsp;|&nbsp; 조회: ${Number(result.notice.views) || 0}`;
                 }
                 renderNoticeCards();
             }
@@ -1643,20 +1702,16 @@ async function openDetail(idStr) {
             console.error('조회수 반영 실패:', error);
         });
 
-    const dDay = calcDDay(notice.isAlwaysOpen ? null : notice.deadline);
-    const deadlineTagClass = dDay.isExpired
-        ? 'expired'
-        : dDay.isUrgent
-            ? 'd-day'
-            : '';
     document.getElementById('detail-tags').innerHTML = `
-        <span class="tag ${deadlineTagClass}">${dDay.text}</span>
+        ${datePresentation.badgeText
+            ? `<span class="tag ${datePresentation.badgeClass}">${escapeHtml(datePresentation.badgeText)}</span>`
+            : ''}
+        ${notice.isPinned ? '<span class="tag pinned">고정</span>' : ''}
         <span class="tag target">${escapeHtml(notice.target || '전체')}</span>
         ${notice.host ? `<span class="tag">${escapeHtml(notice.host)}</span>` : ''}
     `;
     document.getElementById('detail-title').innerText = notice.title || "";
-    const metaDate = notice.deadline ? `마감일: ${formatDateWithWeekday(notice.deadline)}` : '상시 접수';
-    document.getElementById('detail-meta').innerHTML = `${escapeHtml(metaDate)} &nbsp;|&nbsp; 조회: ${Number(notice.views) || 0}`;
+    document.getElementById('detail-meta').innerHTML = `${escapeHtml(datePresentation.dateLabel)} &nbsp;|&nbsp; 조회: ${Number(notice.views) || 0}`;
     document.getElementById('detail-summary').innerHTML = (notice.aiSummary || []).map(item => `<li>${escapeHtml(item)}</li>`).join('');
     document.getElementById('detail-content').innerHTML = linkify(notice.content || "");
 
@@ -2162,13 +2217,13 @@ function renderCompareSpace(blockIds = compareBlocks) {
     const blocks = blockIds.map((id, index) => {
         const notice = notices.find(n => String(n.id) === String(id));
         if (!notice) return '';
-        const dDay = calcDDay(notice.isAlwaysOpen ? null : notice.deadline);
+        const datePresentation = getNoticeDatePresentation(notice);
         const summary = (notice.aiSummary || []).map(item => `<li>${escapeHtml(item)}</li>`).join('')
             || '<li class="is-empty">요약 없음</li>';
         const thumb = (notice.images && notice.images.length > 0)
             ? `<img class="compare-col-thumb" src="${escapeHtml(notice.images[0])}" alt="">`
             : '';
-        const dateText = notice.deadline ? `마감 ${formatDateWithWeekday(notice.deadline)}` : '상시 접수';
+        const dateText = datePresentation.dateLabel;
         const safeId = escapeHtml(String(id));
         const expanded = expandedCompareBlocks.has(String(id));
         const dockClass = blockIds.length === 1
@@ -2186,7 +2241,12 @@ function renderCompareSpace(blockIds = compareBlocks) {
                 <button class="compare-col-remove" type="button" aria-label="문서에서 블록 제거"
                         title="블록 제거" onclick="removeFromCompareBlock('${safeId}')">×</button>
                 <div class="compare-col-body">
-                    <p class="compare-col-kicker">${escapeHtml([dDay.text, notice.target || '전체', notice.host || '기타'].join(' · '))}</p>
+                    <p class="compare-col-kicker">${escapeHtml([
+                        datePresentation.badgeText,
+                        notice.isPinned ? '고정' : '',
+                        notice.target || '전체',
+                        notice.host || '기타'
+                    ].filter(Boolean).join(' · '))}</p>
                     <h3 class="compare-col-title">${escapeHtml(notice.title || '')}</h3>
                     <div class="compare-col-meta">${escapeHtml(dateText)} · 조회 ${Number(notice.views) || 0}</div>
                     ${thumb}
@@ -2454,6 +2514,7 @@ document.addEventListener('DOMContentLoaded', async function () {
     await loadData();
     await loadCategories();
     buildCategoryTabs();
+    syncNoticeSortChips();
     renderRightRailAd();
     buildHostButtons();
     await filterCards();

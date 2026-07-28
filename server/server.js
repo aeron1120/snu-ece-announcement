@@ -428,6 +428,7 @@ function normalizeNoticeInput(body = {}) {
     const host = String(body.host || '기타').trim() || '기타';
     const deadlineAt = normalizeDeadlineAt(body.deadlineAt || body.deadline || null);
     const isAlwaysOpen = body.isAlwaysOpen === true || body.isAlwaysOpen === 'true';
+    const isPinned = body.isPinned === true || body.isPinned === 'true';
     const aiSummary = Array.isArray(body.aiSummary)
         ? body.aiSummary.map(item => String(item || '').trim()).filter(Boolean).slice(0, 3)
         : [];
@@ -448,6 +449,7 @@ function normalizeNoticeInput(body = {}) {
         deadline: deadlineAt ? deadlineAt.slice(0, 10) : '',
         deadlineAt,
         isAlwaysOpen,
+        isPinned,
         aiSummary,
         categoryIds,
         images
@@ -495,6 +497,7 @@ function toClientNotice(row) {
         deadlineAt: row.deadlineAt || row.deadline_at || null,
         expiresAt: row.expiresAt || row.expires_at || null,
         isAlwaysOpen: row.isAlwaysOpen === true || row.is_always_open === true,
+        isPinned: row.isPinned === true || row.is_pinned === true,
         isArchived: row.isArchived === true,
         isInGracePeriod: row.isInGracePeriod === true,
         aiSummary: Array.isArray(row.aiSummary)
@@ -530,6 +533,7 @@ function toNoticeSummary(row) {
         deadlineAt: notice.deadlineAt,
         expiresAt: notice.expiresAt,
         isAlwaysOpen: notice.isAlwaysOpen,
+        isPinned: notice.isPinned,
         isArchived: notice.isArchived,
         isInGracePeriod: notice.isInGracePeriod,
         aiSummary: notice.aiSummary,
@@ -819,7 +823,7 @@ function normalizeNoticeListFilters(input = {}) {
     const allowedDeadlineStates = new Set(['전체', '진행중', '마감임박', '상시', '마감됨']);
     const allowedImageStates = new Set(['전체', '있음', '없음']);
     const allowedViewStates = new Set(['전체', '100이상', '50이상', '10미만']);
-    const allowedSorts = new Set(['최신순', '마감임박순', '조회수순', '조회수낮은순']);
+    const allowedSorts = new Set(['최신순', '마감임박순', '조회순', '조회수순', '조회수낮은순']);
     const cleanDate = value => {
         const normalized = String(value || '').trim();
         return /^\d{4}-\d{2}-\d{2}$/.test(normalized) ? normalized : '';
@@ -909,6 +913,7 @@ function applyNoticeListFilters(rows, filters, { now = new Date() } = {}) {
         const b = toClientNotice(right);
         const aState = getNoticeLifecycleState(a, now);
         const bState = getNoticeLifecycleState(b, now);
+        if (a.isPinned !== b.isPinned) return a.isPinned ? -1 : 1;
         const lifecycleGroup = state => state.isExpired ? 2 : (state.isInGracePeriod ? 1 : 0);
         const lifecycleDifference = lifecycleGroup(aState) - lifecycleGroup(bState);
         if (lifecycleDifference !== 0) return lifecycleDifference;
@@ -922,7 +927,7 @@ function applyNoticeListFilters(rows, filters, { now = new Date() } = {}) {
             return leftDeadline - rightDeadline
                 || new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
         }
-        if (filters.sort === '조회수순') return b.views - a.views;
+        if (filters.sort === '조회순' || filters.sort === '조회수순') return b.views - a.views;
         if (filters.sort === '조회수낮은순') return a.views - b.views;
         return new Date(b.createdAt || b.sourcePublishedAt || 0).getTime()
             - new Date(a.createdAt || a.sourcePublishedAt || 0).getTime()
@@ -983,7 +988,7 @@ async function listNoticeFilterRows() {
         const { data, error } = await supabase
             .from(SUPABASE_NOTICES_TABLE)
             .select(`
-                id,title,content,target,targets,host,deadline,deadline_at,expires_at,is_always_open,
+                id,title,content,target,targets,host,deadline,deadline_at,expires_at,is_always_open,is_pinned,
                 ai_summary,keywords,views,
                 source_published_at,created_at,updated_at,has_images,notice_categories(category_id)
             `)
@@ -1153,6 +1158,7 @@ async function updateNotice(id, payload) {
             deadline_at: preparedPayload.deadlineAt,
             expires_at: preparedPayload.expiresAt,
             is_always_open: preparedPayload.isAlwaysOpen,
+            is_pinned: preparedPayload.isPinned,
             ai_summary: preparedPayload.aiSummary,
             images: preparedPayload.images,
             updated_at: new Date().toISOString()

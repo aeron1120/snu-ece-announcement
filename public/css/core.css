@@ -485,6 +485,34 @@ body {
 }
 /* 좌우 여백을 주면 "결과 4 건"처럼 숫자와 단위가 벌어진다. */
 .filter-result-count strong { color: var(--primary); }
+.notice-results-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    min-height: 42px;
+    margin: 14px 0 18px;
+}
+.notice-sort-chips {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.notice-sort-chips button {
+    min-height: 32px;
+    padding: 0 12px;
+    border: 1px solid var(--border);
+    background: white;
+    color: var(--text-sub);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: border-color 140ms ease, color 140ms ease, background-color 140ms ease;
+}
+.notice-sort-chips button:hover { border-color: var(--primary); color: var(--primary); }
+.notice-sort-chips button.active { border-color: var(--primary); background: var(--primary); color: white; }
+.tags .tag.pinned { color: #5b3b00; background: #fff3cc; }
 .filter-date-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .filter-date-row input[type="date"] {
     padding: 9px 12px; border: 1px solid var(--border); border-radius: 0;

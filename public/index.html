@@ -184,17 +184,6 @@
                 </div>
             </div>
 
-            <!-- 정렬 기준 -->
-            <div class="filter-group">
-                <div class="filter-group-label">정렬</div>
-                <div class="filter-btn-group" id="fg-sort">
-                    <button class="filter-btn active" data-group="sort" data-val="최신순" onclick="toggleFilterBtn(this)">최신순</button>
-                    <button class="filter-btn" data-group="sort" data-val="마감임박순" onclick="toggleFilterBtn(this)">마감 임박순</button>
-                    <button class="filter-btn" data-group="sort" data-val="조회수순" onclick="toggleFilterBtn(this)">조회수 많은순</button>
-                    <button class="filter-btn" data-group="sort" data-val="조회수낮은순" onclick="toggleFilterBtn(this)">조회수 낮은순</button>
-                </div>
-            </div>
-
             <!-- 마감일 범위 직접 입력 -->
             <div class="filter-group filter-group-wide">
                 <div class="filter-group-label">마감일 범위 직접 지정</div>
@@ -209,9 +198,17 @@
         </div>
 
         <div class="filter-panel-footer">
-            <span class="filter-result-count" id="filter-result-count"></span>
             <button class="btn btn-outline btn-small" onclick="resetAllFilters()">필터 전체 초기화</button>
         </div>
+    </div>
+</div>
+
+<div class="notice-results-toolbar" aria-label="공지 결과와 정렬">
+    <span class="filter-result-count" id="filter-result-count" aria-live="polite"></span>
+    <div class="notice-sort-chips" id="notice-sort-chips" aria-label="공지 정렬">
+        <button type="button" data-sort="마감임박순" onclick="setNoticeSort('마감임박순')">마감임박순</button>
+        <button type="button" class="active" data-sort="최신순" onclick="setNoticeSort('최신순')">최신순</button>
+        <button type="button" data-sort="조회순" onclick="setNoticeSort('조회순')">조회순</button>
     </div>
 </div>
 

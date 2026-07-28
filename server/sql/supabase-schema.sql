@@ -8,6 +8,7 @@ create table if not exists public.notices (
   deadline_at timestamptz,
   expires_at timestamptz,
   is_always_open boolean not null default false,
+  is_pinned boolean not null default false,
   ai_summary jsonb not null default '[]'::jsonb,
   images jsonb not null default '[]'::jsonb,
   has_images boolean generated always as (jsonb_array_length(images) > 0) stored,
@@ -104,7 +105,8 @@ alter table public.notices
   add column if not exists review_note text,
   add column if not exists deadline_at timestamptz,
   add column if not exists expires_at timestamptz,
-  add column if not exists is_always_open boolean not null default false;
+  add column if not exists is_always_open boolean not null default false,
+  add column if not exists is_pinned boolean not null default false;
 
 update public.notices
 set deadline_at = (
@@ -414,7 +416,7 @@ declare
 begin
   insert into public.notices (
     title, content, target, targets, host, deadline, deadline_at, expires_at,
-    is_always_open, ai_summary, images,
+    is_always_open, is_pinned, ai_summary, images,
     status, source_type, raw_title, raw_content, analysis_status,
     published_at, views, is_deleted
   ) values (
@@ -427,6 +429,7 @@ begin
     nullif(notice_payload->>'deadlineAt', '')::timestamptz,
     nullif(notice_payload->>'expiresAt', '')::timestamptz,
     coalesce((notice_payload->>'isAlwaysOpen')::boolean, false),
+    coalesce((notice_payload->>'isPinned')::boolean, false),
     coalesce(notice_payload->'aiSummary', '[]'::jsonb),
     coalesce(notice_payload->'images', '[]'::jsonb),
     'published',
@@ -501,6 +504,10 @@ begin
       is_always_open = case
         when edits ? 'isAlwaysOpen' then coalesce((edits->>'isAlwaysOpen')::boolean, false)
         else is_always_open
+      end,
+      is_pinned = case
+        when edits ? 'isPinned' then coalesce((edits->>'isPinned')::boolean, false)
+        else is_pinned
       end,
       ai_summary = case when edits ? 'aiSummary' then edits->'aiSummary' else ai_summary end,
       keywords = case when edits ? 'keywords' then edits->'keywords' else keywords end,

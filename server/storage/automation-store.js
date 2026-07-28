@@ -91,6 +91,7 @@ function toSupabaseNotice(row) {
         deadlineAt: row.deadline_at,
         expiresAt: row.expires_at,
         isAlwaysOpen: row.is_always_open === true,
+        isPinned: row.is_pinned === true,
         aiSummary: Array.isArray(row.ai_summary) ? row.ai_summary : [],
         keywords: Array.isArray(row.keywords) ? row.keywords : [],
         attachments: Array.isArray(row.attachments) ? row.attachments : [],
@@ -346,6 +347,7 @@ function createJsonStore(filePath, canonicalCategories = []) {
                 const editableFields = [
                     'title', 'content', 'target', 'targets', 'host', 'deadline',
                     'deadlineAt', 'expiresAt', 'isAlwaysOpen',
+                    'isPinned',
                     'aiSummary', 'keywords', 'attachments', 'analysisConfidence'
                 ];
                 for (const field of editableFields) {

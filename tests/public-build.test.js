@@ -412,6 +412,29 @@ test('the top inquiry button is gone and the banner CTA reads 배너 문의하�
     assert.match(app, /window\.location\.href = '\.\/banner-inquiry\.html'/);
 });
 
+test('sort chips are exposed beside result count and category tabs restore their defaults', async () => {
+    const html = await readFile('index.html', 'utf8');
+    const app = await readFile('js/core.js', 'utf8');
+    assert.match(html, /class="notice-results-toolbar"/);
+    assert.match(html, /data-sort="마감임박순"[\s\S]*data-sort="최신순"[\s\S]*data-sort="조회순"/);
+    assert.doesNotMatch(html, /id="fg-sort"/);
+    const defaults = readNamedFunction(app, 'getDefaultSortForCategory');
+    assert.match(defaults, /application[\s\S]*benefits-partnerships[\s\S]*campus/);
+    assert.match(app, /function selectCategoryTab[\s\S]*getDefaultSortForCategory\(value\)[\s\S]*syncNoticeSortChips/);
+});
+
+test('notice dates use one deadline, always-open, or registration presentation', async () => {
+    const app = await readFile('js/core.js', 'utf8');
+    const presentation = readNamedFunction(app, 'getNoticeDatePresentation');
+    const cards = readNamedFunction(app, 'renderNoticeCards');
+    assert.match(presentation, /notice\.isAlwaysOpen[\s\S]*badgeText: '상시'/);
+    assert.match(presentation, /dateLabel: `마감/);
+    assert.match(presentation, /dateLabel: createdLabel/);
+    assert.match(cards, /getNoticeDatePresentation\(notice\)/);
+    assert.match(app, /diffDays === 0[\s\S]*오늘 마감/);
+    assert.match(app, /return `\$\{y\}\.\$\{m\}\.\$\{d\}\(\$\{WEEKDAY_KO/);
+});
+
 test('the contact modal is an anonymous feedback box, not admin contact info', async () => {
     const html = await readFile('index.html', 'utf8');
     const app = await readFile('js/core.js', 'utf8');
@@ -1044,17 +1067,15 @@ test('expired notices use a neutral card and badge state in list and detail view
     const listStart = app.indexOf('function renderNoticeCards(');
     const detailStart = app.indexOf('async function openDetail');
     const compareStart = app.indexOf('function renderCompareSpace');
-    const expiredTagBinding = /dDay\.isExpired\s*\?\s*'expired'/;
+    const datePresentation = readNamedFunction(app, 'getNoticeDatePresentation');
 
     assert.match(app, /isExpired:\s*true/);
     assert.match(app, /card-expired/);
     assert.ok(listStart > 0 && detailStart > listStart && compareStart > detailStart);
-    // 목록·상세는 배지 상태를, 문서 블록은 장식 없는 텍스트 상태를 사용한다.
-    assert.match(app.slice(listStart, detailStart), expiredTagBinding);
-    assert.match(app.slice(detailStart, compareStart), expiredTagBinding);
-    assert.match(app.slice(compareStart), /compare-col-kicker[\s\S]*dDay\.text/);
-    assert.equal((app.match(/dDay\.isExpired\s*\?\s*'expired'/g) || []).length, 2);
-    assert.match(app, /dDay\.isUrgent\s*\?\s*'d-day'/);
+    assert.match(datePresentation, /dDay\.isExpired\s*\?\s*'expired'/);
+    assert.match(app.slice(listStart, detailStart), /datePresentation\.badgeClass/);
+    assert.match(app.slice(detailStart, compareStart), /datePresentation\.badgeClass/);
+    assert.match(app.slice(compareStart), /compare-col-kicker[\s\S]*datePresentation\.badgeText/);
     assert.match(css, /\.card\.card-expired\s*\{/);
     assert.match(css, /\.tags \.tag\.expired\s*\{/);
     assert.match(css, /\.card\.is-archived\s*\{[^}]*opacity\s*:/s);
@@ -1133,8 +1154,8 @@ test('image notices lazy-load a poster; imageless notices show a big title poste
         posterTitleLines('[화생회] WE–Meet Project 참가자 모집'),
         ['[화생회]', 'WE–Meet Project', '참가자 모집']
     );
-    // 날짜는 요일까지, 본문 발췌는 요약을 쓴다.
-    assert.match(filterCardsSource, /formatDateWithWeekday/);
+    // 날짜 표시는 공통 규칙을, 본문 발췌는 요약을 쓴다.
+    assert.match(filterCardsSource, /getNoticeDatePresentation/);
     assert.match(filterCardsSource, /card-excerpt/);
 });
 

@@ -314,6 +314,7 @@ function resetComposeForm() {
     document.getElementById('post-target').value = '전체';
     document.getElementById('post-deadline').value = '';
     document.getElementById('post-always-open').checked = false;
+    document.getElementById('post-pinned').checked = false;
     toggleAlwaysOpenState();
     renderAiDeadlineCandidate();
     document.getElementById('post-content').value = '';
@@ -671,6 +672,7 @@ async function generateAIAndSave() {
     const host = (isTitleManual() ? '' : getSelectedTitleHost()) || '기타';
     const deadline = document.getElementById('post-deadline').value;
     const isAlwaysOpen = document.getElementById('post-always-open').checked;
+    const isPinned = document.getElementById('post-pinned').checked;
     const content = document.getElementById('post-content').value.trim();
     const fileInput = document.getElementById('post-images');
 
@@ -742,6 +744,7 @@ async function generateAIAndSave() {
             deadline,
             deadlineAt: deadline || null,
             isAlwaysOpen,
+            isPinned,
             content,
             aiSummary,
             categoryIds,
@@ -873,6 +876,7 @@ async function editAdminNotice(id) {
     document.getElementById('post-target').value = notice.target || '전체';
     document.getElementById('post-deadline').value = notice.deadline || '';
     document.getElementById('post-always-open').checked = notice.isAlwaysOpen === true;
+    document.getElementById('post-pinned').checked = notice.isPinned === true;
     toggleAlwaysOpenState();
     document.getElementById('post-content').value = notice.content || '';
     document.getElementById('post-images').value = '';
@@ -1050,6 +1054,10 @@ function renderReviewEditor(notice) {
                     <input id="review-always-open" type="checkbox" ${notice.isAlwaysOpen ? 'checked' : ''}>
                     상시 공지
                 </label>
+                <label class="title-manual-row">
+                    <input id="review-pinned" type="checkbox" ${notice.isPinned ? 'checked' : ''}>
+                    상단 고정
+                </label>
             </div>
             <div class="form-group">
                 <label for="review-keywords">키워드 (쉼표로 구분)</label>
@@ -1098,6 +1106,7 @@ function collectReviewEdits() {
         deadline: document.getElementById('review-deadline').value || null,
         deadlineAt: document.getElementById('review-deadline').value || null,
         isAlwaysOpen: document.getElementById('review-always-open').checked,
+        isPinned: document.getElementById('review-pinned').checked,
         targets: splitReviewValues(document.getElementById('review-targets').value),
         keywords: splitReviewValues(document.getElementById('review-keywords').value),
         categoryIds: Array.from(
