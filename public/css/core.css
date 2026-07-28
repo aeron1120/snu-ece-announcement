@@ -504,6 +504,11 @@ body {
     color: var(--text-sub);
     font-size: 16px;
 }
+.notice-empty-state strong { display: block; color: var(--text-main); font-size: 17px; }
+.notice-empty-state p { margin: 9px 0 18px; font-size: 13px; }
+.notice-empty-state.is-error strong { color: #9f2d2d; }
+.notice-pagination[hidden],
+.filter-result-count[hidden] { display: none !important; }
 .notice-pagination {
     display: flex;
     align-items: center;

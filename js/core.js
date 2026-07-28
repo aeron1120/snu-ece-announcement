@@ -302,8 +302,17 @@ function createNoticeRepository(request) {
     let pageState = { page: 0, limit: pageSize, total: 0, totalPages: 0 };
     const detailRequests = new Map();
 
-    async function loadPage(page, { replace = false } = {}) {
-        const result = await request(`/api/notices?page=${page}&limit=${pageSize}`, { method: 'GET' });
+    async function loadPage(page, { replace = false, filters = {} } = {}) {
+        const params = new URLSearchParams({
+            page: String(page),
+            limit: String(pageSize)
+        });
+        Object.entries(filters).forEach(([key, value]) => {
+            if (value !== '' && value !== null && value !== undefined) {
+                params.set(key, String(value));
+            }
+        });
+        const result = await request(`/api/notices?${params.toString()}`, { method: 'GET' });
         const incoming = Array.isArray(result?.notices) ? result.notices : [];
         if (replace) {
             items = [...incoming];
@@ -355,6 +364,8 @@ function createNoticeRepository(request) {
 
 const noticeRepository = createNoticeRepository(apiRequest);
 let noticePageLoading = false;
+let noticeListRequestVersion = 0;
+let noticeSearchTimer = null;
 
 function updateNoticePaginationUI(
     pagination = noticeRepository.pagination,
@@ -364,11 +375,21 @@ function updateNoticePaginationUI(
     const next = document.getElementById('notice-page-next');
     const numbers = document.getElementById('notice-page-numbers');
     const status = document.getElementById('notice-page-status');
-    if (!previous || !next || !numbers || !status) return;
+    const container = document.getElementById('notice-pagination');
+    if (!previous || !next || !numbers || !status || !container) return;
 
     const page = Math.max(1, Number(pagination?.page) || 1);
     const totalPages = Number(pagination?.totalPages) || 0;
     const total = Number(pagination?.total) || 0;
+    container.hidden = total === 0;
+    if (total === 0) {
+        previous.hidden = true;
+        numbers.hidden = true;
+        next.hidden = true;
+        numbers.innerHTML = '';
+        status.textContent = '';
+        return;
+    }
     const hasMultiplePages = totalPages > 1;
     const visibleTotalPages = Math.max(1, totalPages);
     const windowSize = 5;
@@ -392,11 +413,29 @@ function updateNoticePaginationUI(
     next.disabled = Boolean(isLoading) || totalPages === 0 || page >= totalPages;
     status.textContent = totalPages > 0
         ? `${page} / ${totalPages} 페이지 · 전체 ${total}건`
-        : '표시할 공지가 없습니다.';
+        : '';
 }
 
-async function loadNoticePage(page, { replace = false } = {}) {
-    const result = await noticeRepository.loadPage(page, { replace });
+function getNoticeListFilters() {
+    return {
+        category: [...selectedCategoryFilters].join(','),
+        search: document.getElementById('searchInput')?.value.trim() || '',
+        target: document.getElementById('targetFilter')?.value || '전체',
+        deadlineStatus: filterState['deadline-status'],
+        host: filterState.host,
+        hasImage: filterState['has-image'],
+        views: filterState.views,
+        sort: filterState.sort,
+        dateFrom: document.getElementById('filter-date-from')?.value || '',
+        dateTo: document.getElementById('filter-date-to')?.value || ''
+    };
+}
+
+async function loadNoticePage(page, { replace = true } = {}) {
+    const result = await noticeRepository.loadPage(page, {
+        replace,
+        filters: getNoticeListFilters()
+    });
     notices = result.notices;
     updateNoticePaginationUI(result.pagination, noticePageLoading);
     return result;
@@ -417,9 +456,9 @@ async function goToNoticePage(page) {
             compareWorkspaceOpen = false;
             compareLayoutMode = 'stack';
         }
-        await loadNoticePage(targetPage, { replace: true });
+        await loadNoticePage(targetPage);
         buildHostButtons();
-        filterCards();
+        renderNoticeCards();
         document.getElementById('spatial-workspace')
             ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     } catch (error) {
@@ -1229,27 +1268,62 @@ function resetAllFilters() {
     document.querySelectorAll('.filter-btn').forEach(b => { b.classList.toggle('active', b.dataset.val === FILTER_DEFAULTS[b.dataset.group]); });
     selectedCategoryFilters.clear();
     buildCategoryTabs();
-    clearDateRange();
+    const dateFrom = document.getElementById('filter-date-from');
+    const dateTo = document.getElementById('filter-date-to');
+    if (dateFrom) dateFrom.value = '';
+    if (dateTo) dateTo.value = '';
     updateFilterChips();
     filterCards();
 }
 
-function filterCards() {
-    const animate = arguments[0] === true;
-    const inputVal = document.getElementById('searchInput');
-    if(!inputVal) return;
-
-    const rawText = (inputVal.value || "").trim().toLowerCase();
-    const keywords = rawText ? rawText.split(/\s+/) : [];
-    const targetFilter = document.getElementById('targetFilter').value;
-
-    const fDeadlineStatus = filterState['deadline-status'];
-    const fHost = filterState['host'];
-    const fHasImage = filterState['has-image'];
-    const fViews = filterState['views'];
-    const fSort = filterState['sort'];
+function hasDetailedNoticeFilters() {
+    const target = document.getElementById('targetFilter')?.value || '전체';
     const dateFrom = document.getElementById('filter-date-from')?.value || '';
     const dateTo = document.getElementById('filter-date-to')?.value || '';
+    return target !== '전체'
+        || selectedCategoryFilters.size > 0
+        || dateFrom
+        || dateTo
+        || Object.entries(filterState).some(([group, value]) => value !== FILTER_DEFAULTS[group]);
+}
+
+function clearSearchFilter() {
+    const input = document.getElementById('searchInput');
+    if (input) input.value = '';
+    filterCards(true);
+}
+
+function renderNoticeEmptyState() {
+    const rawSearch = document.getElementById('searchInput')?.value.trim() || '';
+    if (rawSearch) {
+        return `
+            <div class="notice-empty-state">
+                <strong>“${escapeHtml(rawSearch)}” 검색 결과가 없습니다.</strong>
+                <p>검색어를 줄이거나 다른 표현으로 다시 찾아보세요.</p>
+                <button class="btn btn-outline btn-small" type="button" onclick="clearSearchFilter()">검색어 지우기</button>
+            </div>
+        `;
+    }
+    if (hasDetailedNoticeFilters()) {
+        return `
+            <div class="notice-empty-state">
+                <strong>선택한 필터에 맞는 공지가 없습니다.</strong>
+                <p>카테고리나 상세 조건을 해제하면 더 많은 공지를 볼 수 있습니다.</p>
+                <button class="btn btn-outline btn-small" type="button" onclick="resetAllFilters()">필터 모두 해제</button>
+            </div>
+        `;
+    }
+    return `
+        <div class="notice-empty-state">
+            <strong>아직 등록된 공지가 없습니다.</strong>
+            <p>새 공지가 검수되면 이곳에 표시됩니다.</p>
+        </div>
+    `;
+}
+
+function renderNoticeCards(animate = false) {
+    const inputVal = document.getElementById('searchInput');
+    if(!inputVal) return;
 
     const grid = document.getElementById('notice-grid');
     grid.innerHTML = "";
@@ -1260,57 +1334,7 @@ function filterCards() {
     const blockSet = new Set(blockIds);
     renderCompareSpace(blockIds);
 
-    let filtered = [];
-
-    notices.forEach(notice => {
-        if (targetFilter !== "전체" && notice.target !== "전체" && notice.target !== targetFilter) return;
-
-        const safeTitle = notice.title || "";
-        const safeContent = notice.content || "";
-        const searchTarget = (safeTitle + " " + safeContent).toLowerCase();
-        const isMatch = keywords.length === 0 || keywords.every(kw => searchTarget.includes(kw));
-        if (!isMatch) return;
-
-        const dDay = calcDDay(notice.deadline);
-
-        if (!matchesDeadlineStatus(fDeadlineStatus, dDay, Boolean(notice.deadline))) return;
-
-        if (fHost !== '전체' && (notice.host || '기타') !== fHost) return;
-
-        if (selectedCategoryFilters.size > 0) {
-            const noticeCategoryIds = (notice.categoryIds || []).map(Number);
-            if (![...selectedCategoryFilters].some(id => noticeCategoryIds.includes(id))) return;
-        }
-
-        const hasImg = Object.hasOwn(notice, 'hasImages')
-            ? notice.hasImages
-            : Boolean(notice.images && notice.images.length > 0);
-        if (fHasImage === '있음' && !hasImg) return;
-        if (fHasImage === '없음' && hasImg) return;
-
-        const views = notice.views || 0;
-        if (fViews === '100이상' && views < 100) return;
-        if (fViews === '50이상' && views < 50) return;
-        if (fViews === '10미만' && views >= 10) return;
-
-        if (dateFrom && notice.deadline && notice.deadline < dateFrom) return;
-        if (dateTo && notice.deadline && notice.deadline > dateTo) return;
-        if (dateFrom && !notice.deadline) return;
-
-        filtered.push(notice);
-    });
-
-    if (fSort === '마감임박순') {
-        filtered.sort((a, b) => {
-            const da = a.deadline ? new Date(a.deadline + 'T00:00:00').getTime() : Infinity;
-            const db = b.deadline ? new Date(b.deadline + 'T00:00:00').getTime() : Infinity;
-            return da - db;
-        });
-    } else if (fSort === '조회수순') {
-        filtered.sort((a, b) => (b.views || 0) - (a.views || 0));
-    } else if (fSort === '조회수낮은순') {
-        filtered.sort((a, b) => (a.views || 0) - (b.views || 0));
-    }
+    const filtered = notices;
 
     const baseNotices = filtered.filter(notice => !blockSet.has(String(notice.id)));
     const singleBlockMode = blockIds.length === 1;
@@ -1391,8 +1415,8 @@ function filterCards() {
         grid.appendChild(card);
     });
 
-    if (grid.childElementCount === 0) {
-        grid.innerHTML = '<div class="notice-empty-state">조건에 맞는 공지가 없습니다.</div>';
+    if (Number(noticeRepository.pagination.total) === 0) {
+        grid.innerHTML = renderNoticeEmptyState();
     }
 
     grid.querySelectorAll?.('img[data-thumbnail-src]')
@@ -1409,7 +1433,48 @@ function filterCards() {
     }
 
     const countEl = document.getElementById('filter-result-count');
-    if (countEl) countEl.innerHTML = `결과 <strong>${filtered.length}</strong>건 / 전체 ${notices.length}건`;
+    if (countEl) {
+        const total = Number(noticeRepository.pagination.total) || 0;
+        countEl.hidden = total === 0;
+        countEl.innerHTML = total > 0 ? `결과 <strong>${total}</strong>건` : '';
+    }
+}
+
+async function filterCards() {
+    const animate = arguments[0] === true;
+    const requestVersion = ++noticeListRequestVersion;
+    noticePageLoading = true;
+    updateNoticePaginationUI(noticeRepository.pagination, true);
+    try {
+        const result = await loadNoticePage(1);
+        if (requestVersion !== noticeListRequestVersion) return;
+        notices = result.notices;
+        buildHostButtons();
+        renderNoticeCards(animate);
+    } catch (error) {
+        if (requestVersion !== noticeListRequestVersion) return;
+        console.error('공지 필터 적용 실패:', error);
+        const grid = document.getElementById('notice-grid');
+        if (grid) {
+            grid.innerHTML = `
+                <div class="notice-empty-state is-error">
+                    <strong>공지 목록을 불러오지 못했습니다.</strong>
+                    <p>잠시 후 다시 시도해주세요.</p>
+                    <button class="btn btn-outline btn-small" type="button" onclick="filterCards()">다시 시도</button>
+                </div>
+            `;
+        }
+    } finally {
+        if (requestVersion === noticeListRequestVersion) {
+            noticePageLoading = false;
+            updateNoticePaginationUI(noticeRepository.pagination, false);
+        }
+    }
+}
+
+function scheduleNoticeSearch() {
+    if (noticeSearchTimer) clearTimeout(noticeSearchTimer);
+    noticeSearchTimer = setTimeout(() => filterCards(true), 220);
 }
 
 // ========================================
@@ -1555,7 +1620,7 @@ async function openDetail(idStr) {
     }
 
     notice.views = (notice.views || 0) + 1;
-    filterCards();
+    renderNoticeCards();
 
     apiRequest(`/api/notices/${currentViewId}/view`, { method: 'POST' })
         .then(result => {
@@ -1566,7 +1631,7 @@ async function openDetail(idStr) {
                 if (String(currentViewId) === String(result.notice.id)) {
                     document.getElementById('detail-meta').innerHTML = `마감일: ${escapeHtml(notice.deadline || '상시')} &nbsp;|&nbsp; 조회: ${Number(result.notice.views) || 0}`;
                 }
-                filterCards();
+                renderNoticeCards();
             }
         })
         .catch(error => {
@@ -2028,7 +2093,7 @@ async function addNoticeToCompareBlock(id) {
 // 비교 블록 갱신은 즉시 반영한다. 브라우저 View Transition은 큰 영역을 캡처해
 // 드래그 직후 프레임을 떨어뜨릴 수 있으므로 사용하지 않는다.
 function renderCompareChange() {
-    filterCards();
+    renderNoticeCards();
 }
 
 function removeFromCompareBlock(idStr) {
@@ -2386,6 +2451,6 @@ document.addEventListener('DOMContentLoaded', async function () {
     buildCategoryTabs();
     renderRightRailAd();
     buildHostButtons();
-    filterCards();
+    await filterCards();
     openNoticeFromUrl();   // 카톡 링크로 들어온 경우 해당 공지를 바로 연다
 });

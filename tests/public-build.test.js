@@ -822,7 +822,7 @@ test('one fixed block keeps two base notice rows in the opposite half without a 
     const queueSource = readNamedFunction(app, 'queueNoticeHoverPreview');
     const dragSource = readNamedFunction(app, 'onNoticeSplitDragStart');
     const showDropSource = readNamedFunction(app, 'showSplitDropOverlay');
-    const filterSource = readNamedFunction(app, 'filterCards');
+    const filterSource = readNamedFunction(app, 'renderNoticeCards');
 
     assert.doesNotMatch(html, /id="split-notice-more"|showMoreSplitNotices/);
     assert.match(queueSource, /noticeDragInProgress \|\| activeNoticeSplitDragId/);
@@ -1039,7 +1039,7 @@ test('service worker loads app-shell files from the network before cached fallba
 test('expired notices use a neutral card and badge state in list and detail views', async () => {
     const app = await readFile('js/core.js', 'utf8');
     const css = await readFile('css/core.css', 'utf8');
-    const listStart = app.indexOf('function filterCards()');
+    const listStart = app.indexOf('function renderNoticeCards(');
     const detailStart = app.indexOf('async function openDetail');
     const compareStart = app.indexOf('function renderCompareSpace');
     const expiredTagBinding = /dDay\.isExpired\s*\?\s*'expired'/;
@@ -1100,78 +1100,19 @@ test('deadline-status filtering excludes expired notices from urgent results', a
     assert.equal(matchesDeadlineStatus('마감됨', expired, true), true);
 });
 
-test('deadline-soon sorting renders dated notices without an undefined current-date variable', async () => {
+test('notice filtering and sorting are requested from the server before cards render', async () => {
     const app = await readFile('js/core.js', 'utf8');
-    const start = app.indexOf('function filterCards()');
-    const end = app.indexOf('\nfunction navImage(', start);
-    const filterCardsSource = app.slice(start, end);
-    const cards = [];
-    const elements = {
-        searchInput: { value: '' },
-        targetFilter: { value: '전체' },
-        'notice-grid': {
-            innerHTML: '',
-            appendChild(card) {
-                cards.push(card);
-            }
-        },
-        'filter-result-count': { innerHTML: '' }
-    };
-    const document = {
-        getElementById(id) {
-            return elements[id] || null;
-        },
-        createElement() {
-            return {
-                addEventListener() {},
-                querySelector() {
-                    return { addEventListener() {} };
-                }
-            };
-        }
-    };
-    const filterCards = new Function(
-        'document', 'notices', 'filterState',
-        'selectedCategoryFilters', 'calcDDay', 'matchesDeadlineStatus',
-        'escapeHtml', 'openDetail', 'formatDateWithWeekday', 'compareBlocks',
-        'renderCompareSpace', 'noticeViewportLoader',
-        'renderPosterTitle', 'queueNoticeHoverPreview', 'cancelNoticeHoverPreview',
-        'onNoticeSplitDragStart', 'onNoticeSplitDragEnd',
-        `${filterCardsSource}; return filterCards;`
-    )(
-        document,
-        [
-            { id: 'later', title: 'Later deadline', deadline: '2026-07-30' },
-            { id: 'sooner', title: 'Sooner deadline', deadline: '2026-07-29' }
-        ],
-        {
-            'deadline-status': '전체', host: '전체', 'has-image': '전체',
-            views: '전체', sort: '마감임박순'
-        },
-        new Set(),
-        () => ({ text: 'D-2', isUrgent: true, isExpired: false }),
-        () => true,
-        value => String(value),
-        () => {},
-        value => String(value),
-        [],
-        () => ({}),
-        { observeThumbnail() {} },
-        value => String(value),
-        () => {},
-        () => {},
-        () => {},
-        () => {}
-    );
-
-    assert.doesNotThrow(() => filterCards());
-    assert.match(cards[0].innerHTML, /Sooner deadline/);
-    assert.match(cards[1].innerHTML, /Later deadline/);
+    const filtersSource = readNamedFunction(app, 'getNoticeListFilters');
+    const requestSource = readNamedFunction(app, 'filterCards');
+    const renderSource = readNamedFunction(app, 'renderNoticeCards');
+    assert.match(filtersSource, /sort:\s*filterState\.sort/);
+    assert.match(requestSource, /loadNoticePage\(1\)/);
+    assert.doesNotMatch(renderSource, /\.sort\(/);
 });
 
 test('image notices lazy-load a poster; imageless notices show a big title poster', async () => {
     const app = await readFile('js/core.js', 'utf8');
-    const start = app.indexOf('function filterCards()');
+    const start = app.indexOf('function renderNoticeCards(');
     const end = app.indexOf('\nfunction navImage(', start);
     const filterCardsSource = app.slice(start, end);
 
@@ -1272,7 +1213,7 @@ test('column counts live in the per-view layers, not in core', async () => {
 test('notice paging loads one page at a time without duplicate summaries', async () => {
     const app = await readFile('js/core.js', 'utf8');
     const source = readNamedFunction(app, 'createNoticeRepository');
-    const context = {};
+    const context = { URLSearchParams };
     runInNewContext(`${source}; this.createNoticeRepository = createNoticeRepository;`, context);
     const requestedPaths = [];
     const responses = {
@@ -1310,7 +1251,7 @@ test('notice paging loads one page at a time without duplicate summaries', async
 test('lazy notice detail shares an in-flight request and upgrades its summary', async () => {
     const app = await readFile('js/core.js', 'utf8');
     const source = readNamedFunction(app, 'createNoticeRepository');
-    const context = {};
+    const context = { URLSearchParams };
     runInNewContext(`${source}; this.createNoticeRepository = createNoticeRepository;`, context);
     const requestedPaths = [];
     const repository = context.createNoticeRepository(async path => {
@@ -1364,6 +1305,7 @@ test('notice pagination renders previous, numbered, and next page controls', asy
     const next = { disabled: false };
     const numbers = { innerHTML: '' };
     const status = { textContent: '' };
+    const container = { hidden: false };
     const context = {
         document: {
             getElementById(id) {
@@ -1371,6 +1313,7 @@ test('notice pagination renders previous, numbered, and next page controls', asy
                 if (id === 'notice-page-next') return next;
                 if (id === 'notice-page-numbers') return numbers;
                 if (id === 'notice-page-status') return status;
+                if (id === 'notice-pagination') return container;
                 return null;
             }
         }
@@ -1396,6 +1339,10 @@ test('notice pagination renders previous, numbered, and next page controls', asy
     assert.equal(previous.hidden, true);
     assert.equal(numbers.hidden, true);
     assert.equal(next.hidden, true);
+
+    context.updateNoticePaginationUI({ page: 1, totalPages: 0, total: 0 }, false);
+    assert.equal(container.hidden, true);
+    assert.equal(status.textContent, '');
 });
 
 test('notice viewport loader defers thumbnails until they intersect', async () => {

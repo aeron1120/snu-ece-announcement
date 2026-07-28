@@ -784,53 +784,154 @@ async function listNotices() {
     return (data || []).map(toClientNotice);
 }
 
-async function listNoticeSummaries({ page, limit, categoryIds = [] }) {
-    const offset = (page - 1) * limit;
+function getLocalDateKey(value = new Date()) {
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
 
-    if (!useSupabase) {
-        let notices = await listNotices();
-        if (categoryIds.length > 0) {
-            notices = notices.filter(notice => categoryIds.some(id =>
-                (notice.categoryIds || []).map(Number).includes(id)
-            ));
-        }
-        const total = notices.length;
-        return {
-            notices: notices.slice(offset, offset + limit).map(toNoticeSummary),
-            pagination: {
-                page,
-                limit,
-                total,
-                totalPages: Math.ceil(total / limit)
-            }
-        };
-    }
+function normalizeNoticeListFilters(input = {}) {
+    const categoryIds = String(input.category || '')
+        .split(',')
+        .map(Number)
+        .filter(id => Number.isSafeInteger(id) && id > 0);
+    const allowedDeadlineStates = new Set(['전체', '진행중', '마감임박', '상시', '마감됨']);
+    const allowedImageStates = new Set(['전체', '있음', '없음']);
+    const allowedViewStates = new Set(['전체', '100이상', '50이상', '10미만']);
+    const allowedSorts = new Set(['최신순', '마감임박순', '조회수순', '조회수낮은순']);
+    const cleanDate = value => {
+        const normalized = String(value || '').trim();
+        return /^\d{4}-\d{2}-\d{2}$/.test(normalized) ? normalized : '';
+    };
+    const deadlineStatus = String(input.deadlineStatus || '전체').trim();
+    const hasImage = String(input.hasImage || '전체').trim();
+    const views = String(input.views || '전체').trim();
+    const sort = String(input.sort || '최신순').trim();
 
-    const categoryJoin = categoryIds.length > 0
-        ? 'notice_categories!inner(category_id)'
-        : 'notice_categories(category_id)';
-    let query = supabase
-        .from(SUPABASE_NOTICES_TABLE)
-        .select(`
-            id,title,target,targets,host,deadline,ai_summary,keywords,views,
-            source_published_at,created_at,updated_at,has_images,${categoryJoin}
-        `, { count: 'exact' })
-        .eq('is_deleted', false)
-        .eq('status', 'published');
-
-    if (categoryIds.length > 0) {
-        query = query.in('notice_categories.category_id', categoryIds);
-    }
-
-    const { data, count, error } = await query
-        .order('created_at', { ascending: false })
-        .order('id', { ascending: false })
-        .range(offset, offset + limit - 1);
-
-    if (error) throw error;
-    const total = Number(count) || 0;
     return {
-        notices: (data || []).map(toNoticeSummary),
+        categoryIds: Array.from(new Set(categoryIds)),
+        search: String(input.search || '').trim().toLocaleLowerCase('ko-KR').slice(0, 200),
+        target: String(input.target || '전체').trim().slice(0, 40) || '전체',
+        deadlineStatus: allowedDeadlineStates.has(deadlineStatus) ? deadlineStatus : '전체',
+        host: String(input.host || '전체').trim().slice(0, 100) || '전체',
+        hasImage: allowedImageStates.has(hasImage) ? hasImage : '전체',
+        views: allowedViewStates.has(views) ? views : '전체',
+        sort: allowedSorts.has(sort) ? sort : '최신순',
+        dateFrom: cleanDate(input.dateFrom),
+        dateTo: cleanDate(input.dateTo)
+    };
+}
+
+function getNoticeDeadlineState(deadline, todayKey) {
+    const dateKey = String(deadline || '').slice(0, 10);
+    if (!dateKey) return { hasDeadline: false, isExpired: false, isUrgent: false };
+    const deadlineTime = new Date(`${dateKey}T00:00:00`).getTime();
+    const todayTime = new Date(`${todayKey}T00:00:00`).getTime();
+    const days = Math.round((deadlineTime - todayTime) / 86400000);
+    return {
+        hasDeadline: true,
+        isExpired: days < 0,
+        isUrgent: days >= 0 && days <= 3
+    };
+}
+
+function applyNoticeListFilters(rows, filters, { now = new Date() } = {}) {
+    const todayKey = getLocalDateKey(now);
+    const keywords = filters.search ? filters.search.split(/\s+/).filter(Boolean) : [];
+    const filtered = rows.filter(row => {
+        const notice = toClientNotice(row);
+        if (filters.target !== '전체'
+            && notice.target !== '전체'
+            && notice.target !== filters.target) return false;
+
+        if (keywords.length > 0) {
+            const searchTarget = `${notice.title} ${notice.content}`.toLocaleLowerCase('ko-KR');
+            if (!keywords.every(keyword => searchTarget.includes(keyword))) return false;
+        }
+
+        const deadlineState = getNoticeDeadlineState(notice.deadline, todayKey);
+        if (filters.deadlineStatus === '진행중' && deadlineState.isExpired) return false;
+        if (filters.deadlineStatus === '마감임박' && !deadlineState.isUrgent) return false;
+        if (filters.deadlineStatus === '상시' && deadlineState.hasDeadline) return false;
+        if (filters.deadlineStatus === '마감됨' && !deadlineState.isExpired) return false;
+
+        if (filters.host !== '전체' && notice.host !== filters.host) return false;
+        if (filters.categoryIds.length > 0
+            && !filters.categoryIds.some(id => notice.categoryIds.includes(id))) return false;
+
+        const hasImages = typeof row.hasImages === 'boolean'
+            ? row.hasImages
+            : (typeof row.has_images === 'boolean' ? row.has_images : notice.images.length > 0);
+        if (filters.hasImage === '있음' && !hasImages) return false;
+        if (filters.hasImage === '없음' && hasImages) return false;
+
+        if (filters.views === '100이상' && notice.views < 100) return false;
+        if (filters.views === '50이상' && notice.views < 50) return false;
+        if (filters.views === '10미만' && notice.views >= 10) return false;
+
+        const deadlineKey = String(notice.deadline || '').slice(0, 10);
+        if (filters.dateFrom && (!deadlineKey || deadlineKey < filters.dateFrom)) return false;
+        if (filters.dateTo && deadlineKey && deadlineKey > filters.dateTo) return false;
+        return true;
+    });
+
+    return filtered.sort((left, right) => {
+        const a = toClientNotice(left);
+        const b = toClientNotice(right);
+        if (filters.sort === '마감임박순') {
+            const leftDeadline = a.deadline
+                ? new Date(`${String(a.deadline).slice(0, 10)}T00:00:00`).getTime()
+                : Number.POSITIVE_INFINITY;
+            const rightDeadline = b.deadline
+                ? new Date(`${String(b.deadline).slice(0, 10)}T00:00:00`).getTime()
+                : Number.POSITIVE_INFINITY;
+            return leftDeadline - rightDeadline
+                || new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+        }
+        if (filters.sort === '조회수순') return b.views - a.views;
+        if (filters.sort === '조회수낮은순') return a.views - b.views;
+        return new Date(b.createdAt || b.sourcePublishedAt || 0).getTime()
+            - new Date(a.createdAt || a.sourcePublishedAt || 0).getTime()
+            || b.id - a.id;
+    });
+}
+
+async function listNoticeFilterRows() {
+    if (!useSupabase) return listNotices();
+
+    const rows = [];
+    const batchSize = 1000;
+    for (let offset = 0; ; offset += batchSize) {
+        const { data, error } = await supabase
+            .from(SUPABASE_NOTICES_TABLE)
+            .select(`
+                id,title,content,target,targets,host,deadline,ai_summary,keywords,views,
+                source_published_at,created_at,updated_at,has_images,notice_categories(category_id)
+            `)
+            .eq('is_deleted', false)
+            .eq('status', 'published')
+            .order('created_at', { ascending: false })
+            .order('id', { ascending: false })
+            .range(offset, offset + batchSize - 1);
+        if (error) throw error;
+        rows.push(...(data || []));
+        if ((data || []).length < batchSize) break;
+    }
+    return rows;
+}
+
+async function listNoticeSummaries({ page, limit, filters }) {
+    const offset = (page - 1) * limit;
+    const matchingRows = applyNoticeListFilters(
+        await listNoticeFilterRows(),
+        filters
+    );
+    const total = matchingRows.length;
+    return {
+        notices: matchingRows.slice(offset, offset + limit).map(toNoticeSummary),
         pagination: {
             page,
             limit,
@@ -1621,11 +1722,8 @@ app.get('/api/notices', async (req, res) => {
     try {
         const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
         const limit = Math.min(50, Math.max(1, Number.parseInt(req.query.limit, 10) || 20));
-        const categoryIds = String(req.query.category || '')
-            .split(',')
-            .map(Number)
-            .filter(id => Number.isSafeInteger(id) && id > 0);
-        res.json(await listNoticeSummaries({ page, limit, categoryIds }));
+        const filters = normalizeNoticeListFilters(req.query);
+        res.json(await listNoticeSummaries({ page, limit, filters }));
     } catch (error) {
         res.status(500).json({ error: error.message || '공지 조회 실패' });
     }
@@ -1859,12 +1957,14 @@ app.delete('/api/banner-slides/:id', requireBannerAdmin, async (req, res) => {
 });
 
 export {
+    applyNoticeListFilters,
     app,
     buildBannerSlideUpdate,
     cleanupExpiredBanners,
     createBannerSlide,
     isBannerExpiryActive,
     listBannerSlides,
+    normalizeNoticeListFilters,
     normalizeBannerPayload,
     toNoticeSummary,
     toClientBannerSlide
