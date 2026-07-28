@@ -8,7 +8,8 @@
   "scripts": {
     "start": "node server/server.js",
     "test": "node --test --test-concurrency=1",
-    "prepare:public": "node scripts/prepare-public.mjs"
+    "prepare:public": "node scripts/prepare-public.mjs",
+    "reclassify:local": "node scripts/reclassify-local-notices.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.8",

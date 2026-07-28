@@ -38,6 +38,7 @@ test('legacy banner rows default to header and preserve new metadata', () => {
             bgStyle: 'background:#fff;',
             textColor: '#111',
             src: null,
+            mobileSrc: null,
             order: 2,
             expiresAt: null,
             placement: 'header',

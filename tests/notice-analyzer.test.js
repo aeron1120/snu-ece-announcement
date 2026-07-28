@@ -13,6 +13,8 @@ test('validateNoticeAnalysis normalizes and constrains model output', () => {
         targets: ['25학번', '임의대상', '25학번'],
         keywords: [' 복수전공 ', '복수전공', ...Array.from({ length: 12 }, (_, i) => `키워드${i}`)],
         existingCategoryIds: [1, 999, 1],
+        verifiedNumbers: [' 8월 10일 ', '8월 10일'],
+        verificationWarnings: ['마감 시각 확인 필요'],
         confidence: 1.3
     }, new Set([1, 2]));
 
@@ -21,6 +23,8 @@ test('validateNoticeAnalysis normalizes and constrains model output', () => {
     assert.equal(analysis.keywords.length, 10);
     assert.equal(analysis.keywords[0], '복수전공');
     assert.deepEqual(analysis.existingCategoryIds, [1]);
+    assert.deepEqual(analysis.verifiedNumbers, ['8월 10일']);
+    assert.deepEqual(analysis.verificationWarnings, ['마감 시각 확인 필요']);
     assert.equal(analysis.confidence, 1);
     assert.equal(analysis.analysisStatus, 'succeeded');
 });
@@ -47,7 +51,9 @@ test('analyzer retries one schema-invalid response and returns corrected JSON', 
         requests.push({ url: String(url), body: JSON.parse(options.body) });
         const text = calls === 1
             ? '{"summary":[]}'
-            : '```json\n{"summary":["핵심"],"deadline":null,"targets":["전체"],"keywords":["수강신청"],"existingCategoryIds":[2],"confidence":0.8}\n```';
+            : (calls === 2
+                ? '```json\n{"summary":["초안"],"deadline":null,"targets":["전체"],"keywords":["수강신청"],"existingCategoryIds":[2],"confidence":0.8}\n```'
+                : '{"summary":["검증된 핵심"],"deadline":null,"targets":["전체"],"keywords":["수강신청"],"existingCategoryIds":[2],"verifiedNumbers":["2학기"],"verificationWarnings":[],"confidence":0.9}');
         return {
             ok: true,
             json: async () => ({
@@ -67,9 +73,10 @@ test('analyzer retries one schema-invalid response and returns corrected JSON', 
         content: '본문'
     });
 
-    assert.equal(calls, 2);
-    assert.deepEqual(result.summary, ['핵심']);
+    assert.equal(calls, 3);
+    assert.deepEqual(result.summary, ['검증된 핵심']);
     assert.deepEqual(result.existingCategoryIds, [2]);
+    assert.deepEqual(result.verifiedNumbers, ['2학기']);
     assert.match(requests[0].url, /gemini-test-model:generateContent/);
     assert.match(requests[0].body.contents[0].parts[0].text, /신청: 사용자가 링크·폼·메일/);
     assert.match(requests[0].body.contents[0].parts[0].text, /가능한 한 가장 핵심적인 한 범주만 선택/);
@@ -77,6 +84,7 @@ test('analyzer retries one schema-invalid response and returns corrected JSON', 
         requests[1].body.contents[0].parts[0].text,
         /이전 응답이 스키마를 만족하지 못했습니다/
     );
+    assert.match(requests[2].body.contents[0].parts[0].text, /독립적으로 재검수하는 두 번째 에이전트/);
 });
 
 test('analyzer fails after two invalid model responses', async () => {

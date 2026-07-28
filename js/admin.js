@@ -545,8 +545,37 @@ function parseAnalysisJson(text) {
     }
 }
 
-// 원문 한 번으로 마감일·핵심내용·유형·3줄요약을 함께 뽑는다(별도 요약 호출 없음).
-async function runNoticeAnalysis(content) {
+const NOTICE_ANALYSIS_CATEGORY_SLUGS = new Set([
+    'application', 'academics', 'benefits-partnerships', 'campus', 'governance', 'survey'
+]);
+
+function normalizeNoticeAnalysisResult(parsed = {}) {
+    const categorySlugs = Array.isArray(parsed.categorySlugs)
+        ? Array.from(new Set(parsed.categorySlugs
+            .map(value => String(value || '').trim())
+            .filter(value => NOTICE_ANALYSIS_CATEGORY_SLUGS.has(value))))
+        : [];
+    return {
+        deadline: (parsed.deadline && /^\d{4}-\d{2}-\d{2}$/.test(parsed.deadline)) ? parsed.deadline : '',
+        subject: parsed.subject ? String(parsed.subject).trim().slice(0, 60) : '',
+        type: (parsed.type && TITLE_KINDS.includes(parsed.type)) ? parsed.type : '',
+        summary: Array.isArray(parsed.summary)
+            ? parsed.summary.map(item => String(item).trim()).filter(Boolean).slice(0, 3)
+            : [],
+        surveyReward: String(parsed.surveyReward || '').trim().slice(0, 120),
+        categorySlugs,
+        verifiedNumbers: Array.isArray(parsed.verifiedNumbers)
+            ? parsed.verifiedNumbers.map(item => String(item).trim()).filter(Boolean).slice(0, 12)
+            : [],
+        verificationWarnings: Array.isArray(parsed.verificationWarnings)
+            ? parsed.verificationWarnings.map(item => String(item).trim()).filter(Boolean).slice(0, 8)
+            : []
+    };
+}
+
+// 1차 편집 결과를 그대로 쓰지 않고, 2차 독립 검수 에이전트가 원문을 다시 읽어
+// 날짜·금액·인원·학점·기간과 카테고리를 교차 검증한 결과만 최종값으로 사용한다.
+async function runNoticeAnalysis(content, onVerificationStart = null) {
     const today = new Date().toISOString().slice(0, 10);
     const prompt = `다음 공지 원문을 분석해서 JSON만 출력해. 코드블록·설명 없이 JSON 객체 하나만.
 형식: {"deadline":"YYYY-MM-DD 또는 빈문자열","subject":"포스터용 핵심 문구 10~28자","type":"${TITLE_KINDS.join('|')} 중 하나","summary":["요약1","요약2","요약3"],"categorySlugs":["application|academics|benefits-partnerships|campus|governance|survey 중 해당값"],"surveyReward":"설문 보상 또는 빈문자열"}
@@ -574,24 +603,47 @@ ${content}`;
         headers: getNoticeAdminHeaders(),
         body: JSON.stringify({ prompt, model: GEMINI_MODEL })
     });
-    const parsed = parseAnalysisJson(result?.text || '');
-    const allowedCategorySlugs = new Set([
-        'application', 'academics', 'benefits-partnerships', 'campus', 'governance', 'survey'
-    ]);
-    const categorySlugs = Array.isArray(parsed.categorySlugs)
-        ? Array.from(new Set(parsed.categorySlugs
-            .map(value => String(value || '').trim())
-            .filter(value => allowedCategorySlugs.has(value))))
-        : [];
+    const draft = normalizeNoticeAnalysisResult(parseAnalysisJson(result?.text || ''));
+    if (typeof onVerificationStart === 'function') onVerificationStart();
+
+    const verificationPrompt = `당신은 공지 편집 결과를 독립적으로 재검수하는 검증 에이전트입니다.
+아래 원문과 1차 분석을 처음부터 다시 대조하고 JSON 객체 하나만 출력하세요.
+1차 분석은 틀릴 수 있으므로 그대로 승인하지 마세요.
+
+반드시 확인할 항목:
+1. 날짜, 시각, 금액, 인원, 학점, 학기, 기간, 횟수, 비율, 연락처 등 주요 수치를 원문 그대로 대조합니다.
+2. 원문에 없는 수치나 조건이 summary에 추가됐으면 삭제하거나 바로잡습니다.
+3. deadline은 실제 신청/제출 마감일일 때만 YYYY-MM-DD로 적고 불명확하면 빈 문자열입니다.
+4. categorySlugs는 아래 기준으로 다시 판정합니다. 중복은 가능하지만 근거가 약하면 하나만 고릅니다.
+   - application: 링크·폼·메일 등으로 직접 제출해야 하고 마감이 있음
+   - academics: 학점·졸업·수강에 직접 영향
+   - benefits-partnerships: 돈·물건·할인·제휴 혜택
+   - campus: 특정 날짜에 출입·시설·교통·정전 등 캠퍼스 상태가 달라짐
+   - governance: 대의원·학생회·집행부 등 자치기구가 주 수신 대상
+   - survey: 연구·경험·만족도 자료를 모으는 설문·인터뷰·참가자 조사
+5. 설문 보상이 원문에 있을 때만 surveyReward에 조건과 상품명을 적습니다.
+
+출력 형식:
+{"deadline":"YYYY-MM-DD 또는 빈 문자열","subject":"핵심 명사구","type":"${TITLE_KINDS.join('|')} 중 하나","summary":["정확한 요약1","정확한 요약2","정확한 요약3"],"categorySlugs":["해당 slug"],"surveyReward":"보상 또는 빈 문자열","verifiedNumbers":["원문에서 대조한 주요 수치"],"verificationWarnings":["불명확하거나 관리자 확인이 필요한 점"]}
+
+원문:
+${content}
+
+1차 분석:
+${JSON.stringify(draft)}`;
+
+    const verificationResult = await apiRequest('/api/summary', {
+        method: 'POST',
+        headers: getNoticeAdminHeaders(),
+        body: JSON.stringify({ prompt: verificationPrompt, model: GEMINI_MODEL })
+    });
+    const verified = normalizeNoticeAnalysisResult(parseAnalysisJson(verificationResult?.text || ''));
+    if (!verified.subject && !verified.type && verified.summary.length === 0) {
+        throw new Error('2차 검수 결과를 해석하지 못했습니다. 다시 분석해주세요.');
+    }
     return {
-        deadline: (parsed.deadline && /^\d{4}-\d{2}-\d{2}$/.test(parsed.deadline)) ? parsed.deadline : '',
-        subject: parsed.subject ? String(parsed.subject).slice(0, 60) : '',
-        type: (parsed.type && TITLE_KINDS.includes(parsed.type)) ? parsed.type : '',
-        summary: Array.isArray(parsed.summary)
-            ? parsed.summary.map(item => String(item).trim()).filter(Boolean).slice(0, 3)
-            : [],
-        surveyReward: String(parsed.surveyReward || '').trim().slice(0, 120),
-        categoryIds: categorySlugs
+        ...verified,
+        categoryIds: verified.categorySlugs
             .map(slug => activeCategories.find(category => category.slug === slug)?.id)
             .map(Number)
             .filter(Number.isSafeInteger)
@@ -618,7 +670,9 @@ async function analyzeNotice() {
     beginAiProgress('공지 원문을 준비하고 있습니다.');
     try {
         updateAiProgress(18, 'Gemini가 원문을 분석하고 있습니다.', 'analyze', 76);
-        const parsed = await runNoticeAnalysis(content);
+        const parsed = await runNoticeAnalysis(content, () => {
+            updateAiProgress(52, '두 번째 AI가 주요 수치와 카테고리를 다시 확인하고 있습니다.', 'analyze', 78);
+        });
         updateAiProgress(82, '분석 결과를 입력 항목에 정리하고 있습니다.', 'process', 94);
 
         if (parsed.subject) document.getElementById('title-subject').value = parsed.subject;
@@ -635,8 +689,11 @@ async function analyzeNotice() {
         refreshTitlePreview();
 
         const gotSomething = parsed.subject || parsed.type || parsed.deadline;
+        const verificationLabel = parsed.verifiedNumbers.length
+            ? ` 주요 수치 ${parsed.verifiedNumbers.length}건을 교차 검증했습니다.`
+            : ' 수치와 카테고리 교차 검증을 완료했습니다.';
         setStatus(gotSomething
-            ? 'AI 분석 완료. 값을 확인하고 필요하면 직접 고치세요.'
+            ? `AI 2단계 분석 완료.${verificationLabel} 값을 확인하고 필요하면 직접 고치세요.`
             : 'AI가 값을 추출하지 못했습니다. 직접 입력해주세요.', !gotSomething);
         finishAiProgress('Gemini 분석이 완료되었습니다.');
         await new Promise(resolve => setTimeout(resolve, 250));
@@ -729,8 +786,10 @@ function renderAdminFeedback() {
                             <div><dt>희망 기간</dt><dd>${escapeHtml(inquiry.startDate)} ~ ${escapeHtml(inquiry.endDate)}</dd></div>
                             ${safeLink ? `<div><dt>연결 링크</dt><dd><a href="${safeLink}" target="_blank" rel="noopener noreferrer">${safeLink}</a></dd></div>` : ''}
                         </dl>
-                        ${item.hasImage ? `<button class="btn btn-outline btn-small" type="button"
-                            onclick="openBannerInquiryImage('${escapeHtml(item.id)}')">제출 이미지 보기</button>` : ''}
+                        ${item.hasDesktopImage ? `<button class="btn btn-outline btn-small" type="button"
+                            onclick="openBannerInquiryImage('${escapeHtml(item.id)}', 'desktop')">데스크탑 이미지</button>` : ''}
+                        ${item.hasMobileImage ? `<button class="btn btn-outline btn-small" type="button"
+                            onclick="openBannerInquiryImage('${escapeHtml(item.id)}', 'mobile')">모바일 이미지</button>` : ''}
                     ` : ''}
                     <div class="admin-feedback-foot">
                         <span>${escapeHtml(String(item.createdAt || '').slice(0, 16).replace('T', ' '))}</span>
@@ -764,7 +823,9 @@ function renderBannerInquiryAdmin() {
                 <div class="admin-feedback-foot">
                     <span>${escapeHtml(String(item.createdAt || '').slice(0, 16).replace('T', ' '))}</span>
                     <div>
-                        ${item.hasImage ? `<button class="btn btn-outline btn-small" type="button" onclick="openBannerInquiryImage('${escapeHtml(item.id)}')">제출 이미지</button>` : ''}
+                        ${item.hasDesktopImage ? `<button class="btn btn-outline btn-small" type="button" onclick="openBannerInquiryImage('${escapeHtml(item.id)}', 'desktop')">데스크탑 이미지</button>` : ''}
+                        ${item.hasMobileImage ? `<button class="btn btn-outline btn-small" type="button" onclick="openBannerInquiryImage('${escapeHtml(item.id)}', 'mobile')">모바일 이미지</button>` : ''}
+                        ${item.hasImage && !item.hasDesktopImage && !item.hasMobileImage ? `<button class="btn btn-outline btn-small" type="button" onclick="openBannerInquiryImage('${escapeHtml(item.id)}', 'desktop')">제출 이미지</button>` : ''}
                         ${item.bannerSlideId ? `<button class="btn btn-small" type="button" onclick="focusBannerSlide('${Number(item.bannerSlideId)}')">배너 검토</button>` : ''}
                         <button class="btn btn-danger btn-small" type="button" onclick="deleteFeedback('${escapeHtml(item.id)}')">접수 삭제</button>
                     </div>
@@ -784,11 +845,11 @@ function focusBannerSlide(id) {
     window.setTimeout(() => element.classList.remove('is-highlighted'), 1400);
 }
 
-async function openBannerInquiryImage(id) {
+async function openBannerInquiryImage(id, variant = 'desktop') {
     const previewWindow = window.open('', '_blank');
     if (previewWindow) previewWindow.opener = null;
     try {
-        const response = await fetch(buildApiUrl(`/api/admin/feedback/${encodeURIComponent(id)}/image`), {
+        const response = await fetch(buildApiUrl(`/api/admin/feedback/${encodeURIComponent(id)}/image?variant=${encodeURIComponent(variant)}`), {
             method: 'GET',
             headers: getNoticeAdminHeaders()
         });
@@ -798,11 +859,11 @@ async function openBannerInquiryImage(id) {
         }
         const imageUrl = URL.createObjectURL(await response.blob());
         if (previewWindow) {
-            previewWindow.document.title = '제출 배너 이미지';
+            previewWindow.document.title = variant === 'mobile' ? '모바일 배너 이미지' : '데스크탑 배너 이미지';
             previewWindow.document.body.style.cssText = 'margin:0;display:grid;min-height:100vh;place-items:center;background:#111827';
             const image = previewWindow.document.createElement('img');
             image.src = imageUrl;
-            image.alt = '제출된 배너 이미지';
+            image.alt = variant === 'mobile' ? '제출된 모바일 배너 이미지' : '제출된 데스크탑 배너 이미지';
             image.style.cssText = 'display:block;max-width:96vw;max-height:96vh;object-fit:contain';
             previewWindow.addEventListener('beforeunload', () => URL.revokeObjectURL(imageUrl), { once: true });
             previewWindow.document.body.appendChild(image);
@@ -1574,6 +1635,7 @@ function renderBannerSection(placement, title) {
         const localExpiresAt = toDateTimeLocalValue(slide.expiresAt);
         const localStartsAt = toDateTimeLocalValue(slide.startsAt);
         const safeImage = slide.src ? escapeHtml(slide.src) : '';
+        const safeMobileImage = slide.mobileSrc ? escapeHtml(slide.mobileSrc) : '';
         const slideItem = document.createElement('div');
         slideItem.className = 'banner-item';
         slideItem.id = `banner-slide-${safeId}`;
@@ -1590,22 +1652,44 @@ function renderBannerSection(placement, title) {
             </div>
             <div class="banner-editor-layout">
                 <div class="banner-visual-column">
-                    <div class="banner-image-preview ${safeImage ? '' : 'is-empty'}" id="banner-preview-${safeId}">
-                        ${safeImage
-                            ? `<img src="${safeImage}" alt="">`
-                            : '<span>이미지 미등록<br><small>권장 4:5 세로형</small></span>'}
-                    </div>
-                    <label class="banner-upload-button">
-                        사진 교체
-                        <input type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml"
-                               class="banner-input-file-${safeId}"
-                               onchange="previewBannerUpload(this, 'banner-preview-${safeId}')">
-                    </label>
-                    ${safeImage ? `
-                        <label class="banner-remove-image">
-                            <input type="checkbox" class="banner-input-remove-${safeId}"> 기존 사진 제거
+                    <section class="banner-format-editor">
+                        <strong>데스크탑 · 4:5</strong>
+                        <div class="banner-image-preview ${safeImage ? '' : 'is-empty'}" id="banner-preview-${safeId}">
+                            ${safeImage
+                                ? `<img src="${safeImage}" alt="">`
+                                : '<span>이미지 미등록<br><small>권장 800×1000px</small></span>'}
+                        </div>
+                        <label class="banner-upload-button">
+                            데스크탑 사진 교체
+                            <input type="file" accept="image/png,image/jpeg,image/webp"
+                                   class="banner-input-file-${safeId}"
+                                   onchange="previewBannerUpload(this, 'banner-preview-${safeId}')">
                         </label>
-                    ` : ''}
+                        ${safeImage ? `
+                            <label class="banner-remove-image">
+                                <input type="checkbox" class="banner-input-remove-${safeId}"> 데스크탑 사진 제거
+                            </label>
+                        ` : ''}
+                    </section>
+                    <section class="banner-format-editor">
+                        <strong>모바일 · 16:9</strong>
+                        <div class="banner-image-preview is-mobile ${safeMobileImage ? '' : 'is-empty'}" id="banner-mobile-preview-${safeId}">
+                            ${safeMobileImage
+                                ? `<img src="${safeMobileImage}" alt="">`
+                                : '<span>이미지 미등록<br><small>권장 1200×675px</small></span>'}
+                        </div>
+                        <label class="banner-upload-button">
+                            모바일 사진 교체
+                            <input type="file" accept="image/png,image/jpeg,image/webp"
+                                   class="banner-input-mobile-file-${safeId}"
+                                   onchange="previewBannerUpload(this, 'banner-mobile-preview-${safeId}')">
+                        </label>
+                        ${safeMobileImage ? `
+                            <label class="banner-remove-image">
+                                <input type="checkbox" class="banner-input-mobile-remove-${safeId}"> 모바일 사진 제거
+                            </label>
+                        ` : ''}
+                    </section>
                 </div>
                 <div class="banner-item-form">
                     <label class="banner-field">
@@ -1678,15 +1762,30 @@ function renderBannerSection(placement, title) {
         </div>
         <div class="banner-editor-layout ${isAtLimit ? 'is-disabled' : ''}">
             <div class="banner-visual-column">
-                <div class="banner-image-preview is-empty" id="new-banner-preview">
-                    <span>사진 미리보기<br><small>권장 800×1000px</small></span>
-                </div>
-                <label class="banner-upload-button ${isAtLimit ? 'is-disabled' : ''}">
-                    사진 업로드
-                    <input type="file" id="new-right_rail-image"
-                           accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml"
-                           onchange="previewBannerUpload(this, 'new-banner-preview')" ${isAtLimit ? 'disabled' : ''}>
-                </label>
+                <section class="banner-format-editor">
+                    <strong>데스크탑 · 4:5</strong>
+                    <div class="banner-image-preview is-empty" id="new-banner-preview">
+                        <span>사진 미리보기<br><small>권장 800×1000px</small></span>
+                    </div>
+                    <label class="banner-upload-button ${isAtLimit ? 'is-disabled' : ''}">
+                        데스크탑 사진 업로드
+                        <input type="file" id="new-right_rail-image"
+                               accept="image/png,image/jpeg,image/webp"
+                               onchange="previewBannerUpload(this, 'new-banner-preview')" ${isAtLimit ? 'disabled' : ''}>
+                    </label>
+                </section>
+                <section class="banner-format-editor">
+                    <strong>모바일 · 16:9</strong>
+                    <div class="banner-image-preview is-mobile is-empty" id="new-banner-mobile-preview">
+                        <span>사진 미리보기<br><small>권장 1200×675px</small></span>
+                    </div>
+                    <label class="banner-upload-button ${isAtLimit ? 'is-disabled' : ''}">
+                        모바일 사진 업로드
+                        <input type="file" id="new-right_rail-mobile-image"
+                               accept="image/png,image/jpeg,image/webp"
+                               onchange="previewBannerUpload(this, 'new-banner-mobile-preview')" ${isAtLimit ? 'disabled' : ''}>
+                    </label>
+                </section>
             </div>
             <div class="banner-item-form">
                 <label class="banner-field">
@@ -1792,18 +1891,21 @@ async function addNewBannerSlide(placement) {
     const status = document.getElementById(`new-${placement}-status`)?.value || 'pending';
     const imageInput = document.getElementById(`new-${placement}-image`);
     const imageFile = imageInput?.files?.[0] || null;
-    if (!validateBannerImageFile(imageFile)) return;
+    const mobileImageInput = document.getElementById(`new-${placement}-mobile-image`);
+    const mobileImageFile = mobileImageInput?.files?.[0] || null;
+    if (!validateBannerImageFile(imageFile) || !validateBannerImageFile(mobileImageFile)) return;
 
     if (!owner) {
         alert('홍보 주체를 입력해주세요.');
         return;
     }
-    if (!text && !imageFile) {
-        alert('홍보 제목 또는 이미지를 입력해주세요.');
+    if (!imageFile || !mobileImageFile) {
+        alert('데스크탑과 모바일 배너 이미지를 모두 등록해주세요.');
         return;
     }
 
     const imageSrc = imageFile ? await getBase64(imageFile) : null;
+    const mobileImageSrc = mobileImageFile ? await getBase64(mobileImageFile) : null;
     const normalizedText = text || '이미지 배너';
 
     try {
@@ -1816,6 +1918,7 @@ async function addNewBannerSlide(placement) {
                 bgStyle: `background: ${bgColor};`,
                 textColor,
                 src: imageSrc,
+                mobileSrc: mobileImageSrc,
                 order: getBannerSlidesByPlacement(placement).length,
                 placement,
                 description,
@@ -1863,9 +1966,13 @@ async function updateBannerSlide(slideId) {
     const status = document.querySelector(`.banner-input-status-${slideId}`)?.value || prevSlide.status || 'pending';
     const imageInput = document.querySelector(`.banner-input-file-${slideId}`);
     const imageFile = imageInput?.files?.[0] || null;
-    if (!validateBannerImageFile(imageFile)) return;
+    const mobileImageInput = document.querySelector(`.banner-input-mobile-file-${slideId}`);
+    const mobileImageFile = mobileImageInput?.files?.[0] || null;
+    if (!validateBannerImageFile(imageFile) || !validateBannerImageFile(mobileImageFile)) return;
     const imageSrc = imageFile ? await getBase64(imageFile) : null;
+    const mobileImageSrc = mobileImageFile ? await getBase64(mobileImageFile) : null;
     const removeExistingImage = Boolean(document.querySelector(`.banner-input-remove-${slideId}`)?.checked);
+    const removeExistingMobileImage = Boolean(document.querySelector(`.banner-input-mobile-remove-${slideId}`)?.checked);
 
     if (!owner) {
         alert('홍보 주체를 입력해주세요.');
@@ -1886,6 +1993,7 @@ async function updateBannerSlide(slideId) {
                 textColor: newColor,
                 bgStyle: prevSlide.bgStyle || 'background: #ffffff;',
                 src: imageSrc || (removeExistingImage ? null : (prevSlide.src || null)),
+                mobileSrc: mobileImageSrc || (removeExistingMobileImage ? null : (prevSlide.mobileSrc || prevSlide.src || null)),
                 order: Number(prevSlide.order) || 0,
                 placement: prevSlide.placement || 'header',
                 description: descriptionInput ? descriptionInput.value.trim() : (prevSlide.description || ''),

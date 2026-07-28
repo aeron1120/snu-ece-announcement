@@ -70,6 +70,7 @@ const noticeThumbnailService = createNoticeThumbnailService({
 const noticeAnalyzer = process.env.GEMINI_API_KEY
     ? createNoticeAnalyzer({
         apiKey: process.env.GEMINI_API_KEY,
+        model: process.env.GEMINI_MODEL || 'gemini-flash-latest',
         categoryProvider: async () => {
             const categories = await automationStore.listCategories();
             const canonicalSlugs = new Set(
@@ -139,6 +140,7 @@ const defaultBannerSlides = [
         bgStyle: 'background: #1f3f8f;',
         textColor: '#ffffff',
         src: '/icons/banner-campus.svg',
+        mobileSrc: '/icons/banner-campus.svg',
         order: 0,
         placement: 'right_rail',
         linkUrl: '',
@@ -156,6 +158,7 @@ const defaultBannerSlides = [
         bgStyle: 'background: #ffffff;',
         textColor: '#17337a',
         src: '/icons/banner-recruit.svg',
+        mobileSrc: '/icons/banner-recruit.svg',
         order: 1,
         placement: 'right_rail',
         linkUrl: '',
@@ -173,6 +176,7 @@ const defaultBannerSlides = [
         bgStyle: 'background: #132959;',
         textColor: '#ffffff',
         src: '/icons/banner-partnership.svg',
+        mobileSrc: '/icons/banner-partnership.svg',
         order: 2,
         placement: 'right_rail',
         linkUrl: '',
@@ -243,7 +247,7 @@ const feedbackLimiter = rateLimit({
 
 app.use(
     ['/api/notices', '/api/banner-slides', '/api/admin/review-notices'],
-    express.json({ limit: '10mb' })
+    express.json({ limit: '20mb' })
 );
 app.use('/api/push/subscriptions', express.json({ limit: '32kb' }));
 app.use(express.json({ limit: '256kb' }));
@@ -467,6 +471,7 @@ function createDefaultBannerFileRows() {
         bgStyle: slide.bgStyle,
         textColor: slide.textColor,
         src: slide.src,
+        mobileSrc: slide.mobileSrc || slide.src,
         order: Number.isFinite(Number(slide.order)) ? Number(slide.order) : index,
         placement: slide.placement || 'header',
         linkUrl: slide.linkUrl || '',
@@ -535,6 +540,7 @@ function normalizeBannerPayload(body = {}) {
         bgStyle: String(body.bgStyle || '').trim(),
         textColor: String(body.textColor || '').trim(),
         src: body.src || null,
+        mobileSrc: body.mobileSrc || null,
         order: Number(body.order) || 0,
         placement,
         linkUrl,
@@ -935,6 +941,7 @@ async function ensureDefaultData() {
             bg_style: slide.bgStyle,
             text_color: slide.textColor,
             image_url: slide.src,
+            mobile_image_url: slide.mobileSrc || slide.src,
             order: slide.order,
             placement: slide.placement || 'header',
             link_url: slide.linkUrl || '',
@@ -1248,10 +1255,8 @@ async function listNoticeFilterRows() {
 
 async function listNoticeSummaries({ page, limit, filters }) {
     const offset = (page - 1) * limit;
-    const matchingRows = applyNoticeListFilters(
-        await listNoticeFilterRows(),
-        filters
-    );
+    const allRows = await listNoticeFilterRows();
+    const matchingRows = applyNoticeListFilters(allRows, filters);
     const total = matchingRows.length;
     return {
         notices: matchingRows.slice(offset, offset + limit).map(toNoticeSummary),
@@ -1260,6 +1265,13 @@ async function listNoticeSummaries({ page, limit, filters }) {
             limit,
             total,
             totalPages: Math.ceil(total / limit)
+        },
+        facets: {
+            hosts: Array.from(new Set(allRows
+                .filter(row => !row?.isHidden && !row?.isArchived)
+                .map(row => String(row?.host || '기타').trim())
+                .filter(Boolean)))
+                .sort((a, b) => a.localeCompare(b, 'ko'))
         }
     };
 }
@@ -1611,6 +1623,7 @@ async function createBannerSlide(payload) {
             bgStyle: String(payload.bgStyle || '').trim(),
             textColor: String(payload.textColor || '').trim(),
             src: payload.src || null,
+            mobileSrc: payload.mobileSrc || payload.src || null,
             order: Number(payload.order) || 0,
             createdAt: new Date().toISOString(),
             expiresAt: payload.expiresAt || sevenDaysLater.toISOString(),
@@ -1641,6 +1654,7 @@ async function createBannerSlide(payload) {
             bg_style: String(payload.bgStyle || '').trim(),
             text_color: String(payload.textColor || '').trim(),
             image_url: payload.src || null,
+            mobile_image_url: payload.mobileSrc || payload.src || null,
             order: Number(payload.order) || 0,
             ends_at: payload.expiresAt || sevenDaysLater.toISOString(),
             placement: 'right_rail',
@@ -1674,6 +1688,7 @@ function buildBannerSlideUpdate(payload, expiresAtField) {
         bgStyle: String(payload.bgStyle || '').trim(),
         textColor: String(payload.textColor || '').trim(),
         src: payload.src || null,
+        mobileSrc: payload.mobileSrc || null,
         order: Number(payload.order) || 0,
         placement: payload.placement || 'header',
         linkUrl: payload.linkUrl || '',
@@ -1726,6 +1741,7 @@ async function updateBannerSlide(id, payload) {
             bg_style: update.bgStyle,
             text_color: update.textColor,
             image_url: update.src,
+            mobile_image_url: update.mobileSrc,
             order: update.order,
             placement: update.placement,
             link_url: update.linkUrl,
@@ -1877,6 +1893,7 @@ function toClientBannerSlide(row) {
         bgStyle: row.bg_style || row.bgStyle || '',
         textColor: row.text_color || row.textColor || '',
         src: row.image_url || row.src || null,
+        mobileSrc: row.mobile_image_url || row.mobileSrc || row.image_url || row.src || null,
         order: Number(row.order) || 0,
         expiresAt: row.ends_at || row.expires_at || row.expiresAt || null,
         placement: row.placement || 'header',
@@ -2197,7 +2214,7 @@ app.post('/api/notices/:id/summary-report', feedbackLimiter, async (req, res) =>
 });
 
 const bannerInquiryJson = express.json({
-    limit: '2mb',
+    limit: '4mb',
     type: 'application/vnd.ece-banner+json'
 });
 
@@ -2219,7 +2236,8 @@ app.post('/api/banner-inquiries', bannerInquiryJson, async (req, res) => {
             startDate: cleanBannerInquiryText(req.body?.startDate, 10),
             endDate: cleanBannerInquiryText(req.body?.endDate, 10)
         };
-        const imageDataUrl = String(req.body?.imageDataUrl || '');
+        const desktopImageDataUrl = String(req.body?.desktopImageDataUrl || req.body?.imageDataUrl || '');
+        const mobileImageDataUrl = String(req.body?.mobileImageDataUrl || '');
 
         if (inquiry.name.length < 2 || inquiry.organization.length < 2) {
             return res.status(400).json({ error: '실명과 소속/단체명을 확인해주세요.' });
@@ -2260,25 +2278,41 @@ app.post('/api/banner-inquiries', bannerInquiryJson, async (req, res) => {
         if (req.body?.consent !== true) {
             return res.status(400).json({ error: '개인정보 수집 및 이용 동의가 필요합니다.' });
         }
-        if (!/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(imageDataUrl)
-            || imageDataUrl.length > 1_900_000) {
-            return res.status(400).json({ error: '홍보 이미지를 다시 선택해주세요.' });
+        const submittedImages = [
+            ['데스크탑', desktopImageDataUrl],
+            ['모바일', mobileImageDataUrl]
+        ];
+        for (const [label, dataUrl] of submittedImages) {
+            if (!/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(dataUrl)
+                || dataUrl.length > 1_900_000) {
+                return res.status(400).json({ error: `${label} 홍보 이미지를 다시 선택해주세요.` });
+            }
         }
 
         const id = crypto.randomUUID();
-        const imageBuffer = Buffer.from(imageDataUrl.slice(imageDataUrl.indexOf(',') + 1), 'base64');
-        if (imageBuffer.length === 0 || imageBuffer.length > 1_400_000
-            || imageBuffer[0] !== 0xff || imageBuffer[1] !== 0xd8 || imageBuffer[2] !== 0xff) {
-            return res.status(400).json({ error: '홍보 이미지 형식을 확인해주세요.' });
+        const imageBuffers = submittedImages.map(([label, dataUrl]) => [
+            label,
+            Buffer.from(dataUrl.slice(dataUrl.indexOf(',') + 1), 'base64')
+        ]);
+        for (const [label, imageBuffer] of imageBuffers) {
+            if (imageBuffer.length === 0 || imageBuffer.length > 1_400_000
+                || imageBuffer[0] !== 0xff || imageBuffer[1] !== 0xd8 || imageBuffer[2] !== 0xff) {
+                return res.status(400).json({ error: `${label} 홍보 이미지 형식을 확인해주세요.` });
+            }
         }
         await fs.mkdir(bannerInquiryImageDir, { recursive: true });
-        const imageFileName = `${id}.jpg`;
-        await fs.writeFile(path.join(bannerInquiryImageDir, imageFileName), imageBuffer);
+        const desktopImageFileName = `${id}-desktop.jpg`;
+        const mobileImageFileName = `${id}-mobile.jpg`;
+        await Promise.all([
+            fs.writeFile(path.join(bannerInquiryImageDir, desktopImageFileName), imageBuffers[0][1]),
+            fs.writeFile(path.join(bannerInquiryImageDir, mobileImageFileName), imageBuffers[1][1])
+        ]);
 
         const pendingSlide = await createBannerSlide(normalizeBannerPayload({
             name: `${inquiry.organization} · ${inquiry.title}`.slice(0, 50),
             text: inquiry.title,
-            src: imageDataUrl,
+            src: desktopImageDataUrl,
+            mobileSrc: mobileImageDataUrl,
             placement: 'right_rail',
             linkUrl: inquiry.linkUrl,
             altText: `${inquiry.organization} ${inquiry.title}`,
@@ -2298,7 +2332,8 @@ app.post('/api/banner-inquiries', bannerInquiryJson, async (req, res) => {
             message: `${inquiry.title}\n${inquiry.description}`,
             inquiry,
             bannerSlideId: pendingSlide.id,
-            imageFileName,
+            desktopImageFileName,
+            mobileImageFileName,
             createdAt: new Date().toISOString()
         });
         await writeFeedback(items.slice(0, 1000));
@@ -2314,7 +2349,14 @@ app.get('/api/admin/feedback', requireNoticeAdmin, async (req, res) => {
         res.json({
             feedback: items.map(({ imageDataUrl, ...item }) => ({
                 ...item,
-                hasImage: Boolean(item.imageFileName || imageDataUrl)
+                hasImage: Boolean(
+                    item.desktopImageFileName
+                    || item.mobileImageFileName
+                    || item.imageFileName
+                    || imageDataUrl
+                ),
+                hasDesktopImage: Boolean(item.desktopImageFileName || item.imageFileName || imageDataUrl),
+                hasMobileImage: Boolean(item.mobileImageFileName)
             }))
         });
     } catch (error) {
@@ -2330,10 +2372,14 @@ app.get('/api/admin/feedback/:id/image', requireNoticeAdmin, async (req, res) =>
             const legacyBuffer = Buffer.from(item.imageDataUrl.slice(item.imageDataUrl.indexOf(',') + 1), 'base64');
             return res.type('jpeg').send(legacyBuffer);
         }
-        if (!item?.imageFileName || path.basename(item.imageFileName) !== item.imageFileName) {
+        const variant = req.query?.variant === 'mobile' ? 'mobile' : 'desktop';
+        const imageFileName = variant === 'mobile'
+            ? item?.mobileImageFileName
+            : (item?.desktopImageFileName || item?.imageFileName);
+        if (!imageFileName || path.basename(imageFileName) !== imageFileName) {
             return res.status(404).json({ error: '배너 이미지를 찾을 수 없습니다.' });
         }
-        const imagePath = path.join(bannerInquiryImageDir, item.imageFileName);
+        const imagePath = path.join(bannerInquiryImageDir, imageFileName);
         try {
             await fs.access(imagePath);
         } catch {
@@ -2352,9 +2398,14 @@ app.delete('/api/admin/feedback/:id', requireNoticeAdmin, async (req, res) => {
         const removed = items.find(item => String(item.id) === id);
         const next = items.filter(item => String(item.id) !== id);
         await writeFeedback(next);
-        if (removed?.imageFileName && path.basename(removed.imageFileName) === removed.imageFileName) {
-            await fs.rm(path.join(bannerInquiryImageDir, removed.imageFileName), { force: true }).catch(() => {});
-        }
+        const removableImages = [
+            removed?.imageFileName,
+            removed?.desktopImageFileName,
+            removed?.mobileImageFileName
+        ].filter(fileName => fileName && path.basename(fileName) === fileName);
+        await Promise.all(removableImages.map(fileName =>
+            fs.rm(path.join(bannerInquiryImageDir, fileName), { force: true }).catch(() => {})
+        ));
         res.status(204).send();
     } catch (error) {
         res.status(500).json({ error: error.message || '피드백 삭제 실패' });

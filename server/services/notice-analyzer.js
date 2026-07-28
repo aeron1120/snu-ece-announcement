@@ -68,9 +68,56 @@ export function validateNoticeAnalysis(value, activeCategoryIds = new Set()) {
         keywords,
         existingCategoryIds,
         surveyReward: String(value.surveyReward || '').trim().slice(0, 120),
+        verifiedNumbers: uniqueStrings(value.verifiedNumbers, { limit: 12, maxLength: 120 }),
+        verificationWarnings: uniqueStrings(value.verificationWarnings, { limit: 8, maxLength: 200 }),
         confidence: Math.min(1, Math.max(0, rawConfidence)),
         analysisStatus: 'succeeded'
     };
+}
+
+function buildVerificationPrompt({ title, content, categories, draft }) {
+    const categoryList = categories.length > 0
+        ? categories.map(category =>
+            `${category.id}: ${category.name} — ${category.definition || '이름의 의미를 엄격하게 적용'}`
+        ).join('\n')
+        : '없음';
+    return `당신은 공지 분석 결과를 독립적으로 재검수하는 두 번째 에이전트입니다.
+원문을 처음부터 다시 읽고 1차 결과의 날짜·시각·금액·인원·학점·기간·비율·연락처와 카테고리를 대조하세요.
+1차 결과는 틀릴 수 있으므로 그대로 승인하지 말고, 잘못된 항목을 고친 최종 JSON 하나만 출력하세요.
+
+형식:
+{
+  "editedTitle": "원문의 의미를 유지한 제목",
+  "editedContent": "원문의 수치·URL·조건을 보존한 읽기 쉬운 본문",
+  "summary": ["검증된 요약 1", "검증된 요약 2", "검증된 요약 3"],
+  "deadline": "YYYY-MM-DD 또는 null",
+  "targets": ["전체 또는 NN학번"],
+  "keywords": ["최대 10개"],
+  "existingCategoryIds": [검증된 기존 카테고리 ID],
+  "surveyReward": "원문에 있는 설문 보상 또는 빈 문자열",
+  "verifiedNumbers": ["원문과 대조한 주요 수치"],
+  "verificationWarnings": ["관리자 확인이 필요한 불명확한 점"],
+  "confidence": 0과 1 사이 숫자
+}
+
+검수 원칙:
+- 원문에 없는 사실·수치·조건은 모두 제거합니다.
+- deadline은 실제 신청 또는 제출 마감이 명확할 때만 지정합니다.
+- 신청은 직접 제출 행동과 마감이 모두 있을 때, 학사는 학점·졸업·수강에 직접 영향을 줄 때만 선택합니다.
+- 혜택/제휴는 경제적 이익, 캠퍼스는 특정 날짜의 시설·출입 변화, 자치는 자치기구 대상, 설문조사는 의견·경험 자료 수집일 때만 선택합니다.
+- 카테고리는 중복 가능하지만 약한 연관성으로 늘리지 않습니다.
+
+활성 카테고리:
+${categoryList}
+
+원문 제목:
+${String(title || '').slice(0, 500)}
+
+원문 본문:
+${String(content || '').slice(0, 30000)}
+
+1차 분석:
+${JSON.stringify(draft)}`.trim();
 }
 
 function parseModelJson(text) {
@@ -178,6 +225,7 @@ export function createNoticeAnalyzer({
                 .filter(category => Number.isFinite(category.id) && category.name);
             const activeCategoryIds = new Set(categories.map(category => category.id));
             let lastError;
+            let draft = null;
 
             for (let attempt = 0; attempt < 2; attempt += 1) {
                 try {
@@ -187,19 +235,40 @@ export function createNoticeAnalyzer({
                         categories,
                         correction: attempt > 0
                     });
-                    return validateNoticeAnalysis(
+                    draft = validateNoticeAnalysis(
                         parseModelJson(await generate(prompt)),
                         activeCategoryIds
                     );
+                    break;
                 } catch (error) {
                     lastError = error;
                 }
             }
 
-            throw new NoticeAnalysisError(
-                'Gemini analysis did not satisfy the required schema',
-                { cause: lastError }
-            );
+            if (!draft) {
+                throw new NoticeAnalysisError(
+                    'Gemini analysis did not satisfy the required schema',
+                    { cause: lastError }
+                );
+            }
+
+            try {
+                const verificationPrompt = buildVerificationPrompt({
+                    title,
+                    content,
+                    categories,
+                    draft
+                });
+                return validateNoticeAnalysis(
+                    parseModelJson(await generate(verificationPrompt)),
+                    activeCategoryIds
+                );
+            } catch (error) {
+                throw new NoticeAnalysisError(
+                    'Gemini verification did not satisfy the required schema',
+                    { cause: error }
+                );
+            }
         }
     };
 }

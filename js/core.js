@@ -316,6 +316,7 @@ function createNoticeRepository(request) {
     const pageSize = 16;
     let items = [];
     let pageState = { page: 0, limit: pageSize, total: 0, totalPages: 0 };
+    let facetState = { hosts: [] };
     const detailRequests = new Map();
 
     async function loadPage(page, { replace = false, filters = {} } = {}) {
@@ -345,7 +346,12 @@ function createNoticeRepository(request) {
             total: Number(result?.pagination?.total) || 0,
             totalPages: Number(result?.pagination?.totalPages) || 0
         };
-        return { notices: items, pagination: pageState };
+        facetState = {
+            hosts: Array.isArray(result?.facets?.hosts)
+                ? result.facets.hosts.map(value => String(value || '').trim()).filter(Boolean)
+                : facetState.hosts
+        };
+        return { notices: items, pagination: pageState, facets: facetState };
     }
 
     async function getDetail(id) {
@@ -374,7 +380,8 @@ function createNoticeRepository(request) {
         loadPage,
         getDetail,
         get notices() { return items; },
-        get pagination() { return pageState; }
+        get pagination() { return pageState; },
+        get facets() { return facetState; }
     };
 }
 
@@ -692,8 +699,12 @@ function renderRightRailAd({ restartRotation = true, transitionDirection = 0 } =
         return;
     }
 
-    const image = slide.src
-        ? `<img class="rail-ad-image" src="${escapeHtml(slide.src)}" alt="${escapeHtml(slide.altText || slide.name || '학내 홍보 이미지')}" onerror="renderRightRailInquiryFallback()">`
+    const useMobileBanner = document.documentElement.dataset.view === 'mobile';
+    const bannerImageSrc = useMobileBanner
+        ? (slide.mobileSrc || slide.src)
+        : (slide.src || slide.mobileSrc);
+    const image = bannerImageSrc
+        ? `<img class="rail-ad-image" src="${escapeHtml(bannerImageSrc)}" alt="${escapeHtml(slide.altText || slide.name || '학내 홍보 이미지')}" onerror="renderRightRailInquiryFallback()">`
         : '';
     const controls = slides.length > 1 ? `
         <div class="rail-ad-controls" role="group" aria-label="배너 넘기기">
@@ -1294,15 +1305,27 @@ function toggleFilterPanel() {
 }
 
 function buildHostButtons() {
-    const container = document.getElementById('fg-host');
-    if (!container) return;
-    const hosts = [...new Set(notices.map(n => n.host || '기타').filter(Boolean))].sort();
-    const current = filterState['host'];
-    container.innerHTML = `<button class="filter-btn ${current === '전체' ? 'active' : ''}" data-group="host" data-val="전체" onclick="toggleFilterBtn(this)">전체</button>`;
-    hosts.forEach(h => {
-        const safeHost = escapeHtml(h);
-        container.innerHTML += `<button class="filter-btn ${current === h ? 'active' : ''}" data-group="host" data-val="${safeHost}" onclick="toggleFilterBtn(this)">${safeHost}</button>`;
-    });
+    const select = document.getElementById('hostFilter');
+    if (!select) return;
+    const hosts = [...new Set(
+        (noticeRepository.facets.hosts.length
+            ? noticeRepository.facets.hosts
+            : notices.map(n => n.host || '기타'))
+            .filter(Boolean)
+    )].sort((a, b) => a.localeCompare(b, 'ko'));
+    const current = filterState.host;
+    select.innerHTML = [
+        '<option value="전체">전체 기관</option>',
+        ...hosts.map(host => `<option value="${escapeHtml(host)}">${escapeHtml(host)}</option>`)
+    ].join('');
+    select.value = hosts.includes(current) ? current : '전체';
+    if (select.value !== current) filterState.host = select.value;
+}
+
+function setHostFilter(value) {
+    filterState.host = String(value || '전체');
+    filterCards();
+    updateFilterChips();
 }
 
 async function loadCategories() {
@@ -1440,6 +1463,10 @@ function updateFilterChips() {
 function resetFilterGroup(group) {
     filterState[group] = FILTER_DEFAULTS[group];
     document.querySelectorAll(`[data-group="${group}"]`).forEach(b => { b.classList.toggle('active', b.dataset.val === FILTER_DEFAULTS[group]); });
+    if (group === 'host') {
+        const hostFilter = document.getElementById('hostFilter');
+        if (hostFilter) hostFilter.value = FILTER_DEFAULTS.host;
+    }
     filterCards();
     updateFilterChips();
 }
@@ -1484,6 +1511,8 @@ function resetAllFilters() {
     if (dateTo) dateTo.value = '';
     const target = document.getElementById('targetFilter');
     if (target) target.value = '전체';
+    const hostFilter = document.getElementById('hostFilter');
+    if (hostFilter) hostFilter.value = FILTER_DEFAULTS.host;
     updateFilterChips();
     filterCards();
 }
@@ -2261,6 +2290,7 @@ function onCompareBlockDragEnd() {
     document.body.classList.remove('reordering-compare-block');
     document.querySelector('.compare-col.is-dragging')?.classList.remove('is-dragging');
     clearCompareDropIndicator();
+    document.getElementById('compare-trash-zone')?.classList.remove('active');
     compareDragOverlay?.remove();
     compareDragOverlay = null;
 }
@@ -2281,7 +2311,7 @@ function onCompareBlockDrop(event, targetId) {
     const position = activeCompareDropPosition;
     clearCompareDropIndicator();
     if (!sourceId || sourceId === String(targetId)) return;
-    moveCompareBlock(sourceId, targetId, position);
+    moveCompareBlock(sourceId, targetId, compareBlocks.length === 2 ? 'swap' : position);
 }
 
 function onCompareStageDragOver(event) {
@@ -2315,6 +2345,7 @@ function onCompareHandlePointerDown(event, id) {
     const block = pointerDragHandle.closest('.compare-col');
     createCompareDragOverlay(block).classList.add('is-pointer-overlay');
     block?.classList.add('is-dragging');
+    document.body.classList.add('reordering-compare-block');
     positionComparePointerOverlay(event.clientX, event.clientY);
     pointerDragHandle.addEventListener('pointermove', onCompareHandlePointerMove);
     pointerDragHandle.addEventListener('pointerup', onCompareHandlePointerEnd, { once: true });
@@ -2325,7 +2356,15 @@ function onCompareHandlePointerMove(event) {
     if (!pointerDraggedCompareId) return;
     event.preventDefault();
     positionComparePointerOverlay(event.clientX, event.clientY);
-    const target = document.elementFromPoint?.(event.clientX, event.clientY)?.closest?.('.compare-col');
+    const hoveredElement = document.elementFromPoint?.(event.clientX, event.clientY);
+    const trash = hoveredElement?.closest?.('#compare-trash-zone');
+    const trashZone = document.getElementById('compare-trash-zone');
+    trashZone?.classList.toggle('active', Boolean(trash));
+    if (trash) {
+        clearCompareDropIndicator();
+        return;
+    }
+    const target = hoveredElement?.closest?.('.compare-col');
     if (target && String(target.dataset.compareId) !== pointerDraggedCompareId) {
         setCompareDropIndicator(target, event.clientY);
     } else {
@@ -2338,9 +2377,12 @@ function onCompareHandlePointerEnd(event) {
     const sourceId = pointerDraggedCompareId;
     const targetId = activeCompareDropTargetId;
     const position = activeCompareDropPosition;
+    const shouldRemove = document.getElementById('compare-trash-zone')?.classList.contains('active');
     cleanupComparePointerDrag();
-    if (sourceId && targetId && sourceId !== targetId) {
-        moveCompareBlock(sourceId, targetId, position);
+    if (sourceId && shouldRemove) {
+        removeFromCompareBlock(sourceId);
+    } else if (sourceId && targetId && sourceId !== targetId) {
+        moveCompareBlock(sourceId, targetId, compareBlocks.length === 2 ? 'swap' : position);
     }
 }
 
@@ -2350,6 +2392,8 @@ function cleanupComparePointerDrag() {
     pointerDragHandle?.removeEventListener('pointercancel', cleanupComparePointerDrag);
     pointerDraggedCompareId = '';
     pointerDragHandle = null;
+    document.body.classList.remove('reordering-compare-block');
+    document.getElementById('compare-trash-zone')?.classList.remove('active');
     document.querySelector('.compare-col.is-dragging')?.classList.remove('is-dragging');
     clearCompareDropIndicator();
     compareDragOverlay?.remove();
@@ -2359,6 +2403,11 @@ function cleanupComparePointerDrag() {
 function moveCompareBlock(sourceId, targetId, position = 'after') {
     const source = String(sourceId);
     const target = String(targetId);
+    if (position === 'swap' && compareBlocks.length === 2) {
+        compareBlocks = [...compareBlocks].reverse();
+        renderCompareChange();
+        return;
+    }
     const withoutSource = compareBlocks.filter(id => id !== source);
     if (!withoutSource.length || !compareBlocks.includes(source)) return;
     if (position === 'end') {
@@ -2373,6 +2422,28 @@ function moveCompareBlock(sourceId, targetId, position = 'after') {
     withoutSource.splice(targetIndex + (insertAfter ? 1 : 0), 0, source);
     compareBlocks = withoutSource;
     renderCompareChange();
+}
+
+function onCompareTrashDragOver(event) {
+    if (!hasDragType(event, COMPARE_BLOCK_DRAG_TYPE)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.dataTransfer.dropEffect = 'move';
+    event.currentTarget.classList.add('active');
+    clearCompareDropIndicator();
+}
+
+function onCompareTrashDragLeave(event) {
+    event.currentTarget.classList.remove('active');
+}
+
+function onCompareTrashDrop(event) {
+    if (!hasDragType(event, COMPARE_BLOCK_DRAG_TYPE)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const sourceId = event.dataTransfer.getData(COMPARE_BLOCK_DRAG_TYPE);
+    event.currentTarget.classList.remove('active');
+    if (sourceId) removeFromCompareBlock(sourceId);
 }
 
 async function addNoticeToCompareBlock(id) {
@@ -2402,15 +2473,10 @@ function renderCompareChange() {
 
 function removeFromCompareBlock(idStr) {
     expandedCompareBlocks.delete(String(idStr));
-    const wasEstablished = compareBlocks.length >= 2;
     compareBlocks = compareBlocks.filter(x => x !== String(idStr));
-    // 한 번 비교가 성립한 뒤 하나만 남으면 남은 공지도 목록으로 돌려보내고 공간을 닫는다.
-    if (wasEstablished && compareBlocks.length === 1) {
-        compareBlocks = [];
-        expandedCompareBlocks.clear();
-        compareWorkspaceOpen = false;
-        compareLayoutMode = 'stack';
-    } else if (compareBlocks.length === 0) {
+    // 두 블록 중 하나를 목록으로 돌려보내도 남은 한 블록의 공간은 그대로 유지한다.
+    // 마지막 블록까지 제거했을 때만 일반 공지 목록으로 완전히 복귀한다.
+    if (compareBlocks.length === 0) {
         compareWorkspaceOpen = false;
         compareLayoutMode = 'stack';
     }
@@ -2496,7 +2562,6 @@ function renderCompareSpace(blockIds = compareBlocks) {
                     ${thumb}
                     <div class="compare-summary-heading">
                         <h4 class="compare-col-label">AI 3줄 요약</h4>
-                        <span>원문 확인 필수</span>
                     </div>
                     <ul class="compare-col-summary">${summary}</ul>
                     <button class="summary-mismatch-button" type="button"

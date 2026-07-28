@@ -130,19 +130,50 @@
                 </fieldset>
 
                 <fieldset>
-                    <legend>홍보 이미지</legend>
-                    <label class="image-upload" for="inquiry-image">
-                        <input id="inquiry-image" name="image" type="file" accept="image/png,image/jpeg,image/webp" required>
-                        <span class="upload-plus" aria-hidden="true">+</span>
-                        <strong>홍보 이미지 선택</strong>
-                        <small>세로형 9:16 권장 · 최대 5MB</small>
-                    </label>
-                    <div class="image-preview" id="inquiry-image-preview" hidden>
-                        <img id="inquiry-image-preview-img" alt="선택한 학내 홍보 이미지 미리보기">
-                        <div>
-                            <strong id="inquiry-image-name"></strong>
-                            <span id="inquiry-image-meta"></span>
-                            <button type="button" id="inquiry-image-remove">이미지 다시 선택</button>
+                    <legend>기기별 홍보 이미지</legend>
+                    <p class="field-help">오른쪽 레일용 데스크탑 이미지와 작은 화면용 모바일 이미지를 각각 제출해주세요.</p>
+                    <div class="banner-format-grid">
+                        <div class="banner-format-card">
+                            <div class="banner-format-heading">
+                                <strong>데스크탑 배너 <span>*</span></strong>
+                                <small>4:5 세로형 · 권장 800×1000px</small>
+                            </div>
+                            <label class="image-upload is-desktop" for="inquiry-desktop-image">
+                                <input id="inquiry-desktop-image" name="desktopImage" type="file"
+                                       accept="image/png,image/jpeg,image/webp" required>
+                                <span class="upload-plus" aria-hidden="true">+</span>
+                                <strong>데스크탑 이미지 선택</strong>
+                                <small>최대 5MB</small>
+                            </label>
+                            <div class="image-preview" id="inquiry-desktop-image-preview" hidden>
+                                <img id="inquiry-desktop-image-preview-img" alt="선택한 데스크탑 배너 미리보기">
+                                <div>
+                                    <strong id="inquiry-desktop-image-name"></strong>
+                                    <span id="inquiry-desktop-image-meta"></span>
+                                    <button type="button" id="inquiry-desktop-image-remove">이미지 다시 선택</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="banner-format-card">
+                            <div class="banner-format-heading">
+                                <strong>모바일 배너 <span>*</span></strong>
+                                <small>16:9 가로형 · 권장 1200×675px</small>
+                            </div>
+                            <label class="image-upload is-mobile" for="inquiry-mobile-image">
+                                <input id="inquiry-mobile-image" name="mobileImage" type="file"
+                                       accept="image/png,image/jpeg,image/webp" required>
+                                <span class="upload-plus" aria-hidden="true">+</span>
+                                <strong>모바일 이미지 선택</strong>
+                                <small>최대 5MB</small>
+                            </label>
+                            <div class="image-preview" id="inquiry-mobile-image-preview" hidden>
+                                <img id="inquiry-mobile-image-preview-img" alt="선택한 모바일 배너 미리보기">
+                                <div>
+                                    <strong id="inquiry-mobile-image-name"></strong>
+                                    <span id="inquiry-mobile-image-meta"></span>
+                                    <button type="button" id="inquiry-mobile-image-remove">이미지 다시 선택</button>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </fieldset>

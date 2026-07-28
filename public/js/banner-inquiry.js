@@ -1,13 +1,27 @@
 const bannerInquiryForm = document.getElementById('banner-inquiry-form');
-const bannerImageInput = document.getElementById('inquiry-image');
-const bannerImagePreview = document.getElementById('inquiry-image-preview');
-const bannerImagePreviewImg = document.getElementById('inquiry-image-preview-img');
 const bannerInquiryStatus = document.getElementById('banner-inquiry-status');
 const bannerInquirySubmit = document.getElementById('banner-inquiry-submit');
 const bannerInquiryApiBase = (
     typeof window.API_BASE_URL === 'string' ? window.API_BASE_URL : ''
 ).trim().replace(/\/$/, '');
-let preparedBannerImage = '';
+const bannerImageFields = {
+    desktop: {
+        input: document.getElementById('inquiry-desktop-image'),
+        preview: document.getElementById('inquiry-desktop-image-preview'),
+        image: document.getElementById('inquiry-desktop-image-preview-img'),
+        name: document.getElementById('inquiry-desktop-image-name'),
+        meta: document.getElementById('inquiry-desktop-image-meta'),
+        prepared: ''
+    },
+    mobile: {
+        input: document.getElementById('inquiry-mobile-image'),
+        preview: document.getElementById('inquiry-mobile-image-preview'),
+        image: document.getElementById('inquiry-mobile-image-preview-img'),
+        name: document.getElementById('inquiry-mobile-image-name'),
+        meta: document.getElementById('inquiry-mobile-image-meta'),
+        prepared: ''
+    }
+};
 
 function setBannerInquiryStatus(message, isError = false) {
     bannerInquiryStatus.textContent = message;
@@ -63,42 +77,44 @@ async function prepareImage(file) {
     };
 }
 
-async function handleBannerImageChange() {
-    const file = bannerImageInput.files?.[0];
-    preparedBannerImage = '';
-    bannerImagePreview.hidden = true;
+async function handleBannerImageChange(kind) {
+    const field = bannerImageFields[kind];
+    const file = field.input.files?.[0];
+    field.prepared = '';
+    field.preview.hidden = true;
     if (!file) return;
     if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
         setBannerInquiryStatus('PNG, JPG 또는 WEBP 이미지만 제출할 수 있습니다.', true);
-        bannerImageInput.value = '';
+        field.input.value = '';
         return;
     }
     if (file.size > 5 * 1024 * 1024) {
         setBannerInquiryStatus('이미지 원본은 5MB 이하로 선택해주세요.', true);
-        bannerImageInput.value = '';
+        field.input.value = '';
         return;
     }
     try {
         setBannerInquiryStatus('이미지 미리보기를 준비하고 있습니다.');
         const prepared = await prepareImage(file);
-        preparedBannerImage = prepared.dataUrl;
-        bannerImagePreviewImg.src = prepared.dataUrl;
-        document.getElementById('inquiry-image-name').textContent = file.name;
-        document.getElementById('inquiry-image-meta').textContent =
+        field.prepared = prepared.dataUrl;
+        field.image.src = prepared.dataUrl;
+        field.name.textContent = file.name;
+        field.meta.textContent =
             `${prepared.width} × ${prepared.height}px · ${formatBytes(file.size)}`;
-        bannerImagePreview.hidden = false;
+        field.preview.hidden = false;
         setBannerInquiryStatus('');
     } catch {
-        bannerImageInput.value = '';
+        field.input.value = '';
         setBannerInquiryStatus('이미지를 읽지 못했습니다. 다른 파일을 선택해주세요.', true);
     }
 }
 
-function resetBannerImage() {
-    bannerImageInput.value = '';
-    preparedBannerImage = '';
-    bannerImagePreview.hidden = true;
-    bannerImageInput.click();
+function resetBannerImage(kind) {
+    const field = bannerImageFields[kind];
+    field.input.value = '';
+    field.prepared = '';
+    field.preview.hidden = true;
+    field.input.click();
 }
 
 function getBannerInquiryPayload() {
@@ -113,7 +129,8 @@ function getBannerInquiryPayload() {
         linkUrl: document.getElementById('inquiry-link').value.trim(),
         startDate: document.getElementById('inquiry-start').value,
         endDate: document.getElementById('inquiry-end').value,
-        imageDataUrl: preparedBannerImage,
+        desktopImageDataUrl: bannerImageFields.desktop.prepared,
+        mobileImageDataUrl: bannerImageFields.mobile.prepared,
         consent: document.getElementById('inquiry-consent').checked
     };
 }
@@ -135,7 +152,8 @@ function validateBannerInquiry(payload) {
     if (!Number.isFinite(exposureDays) || exposureDays > 14) {
         return '게재 기간은 시작일과 종료일을 포함해 최대 14일까지 선택할 수 있습니다.';
     }
-    if (!payload.imageDataUrl) return '홍보 이미지를 선택해주세요.';
+    if (!payload.desktopImageDataUrl) return '데스크탑 홍보 이미지를 선택해주세요.';
+    if (!payload.mobileImageDataUrl) return '모바일 홍보 이미지를 선택해주세요.';
     if (!payload.consent) return '개인정보 수집 및 이용에 동의해주세요.';
     return '';
 }
@@ -160,8 +178,10 @@ async function submitBannerInquiry(event) {
         const result = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(result.error || '학내 홍보 신청을 제출하지 못했습니다.');
         bannerInquiryForm.reset();
-        preparedBannerImage = '';
-        bannerImagePreview.hidden = true;
+        Object.values(bannerImageFields).forEach(field => {
+            field.prepared = '';
+            field.preview.hidden = true;
+        });
         setBannerInquiryStatus('접수가 완료되었습니다. 담당자가 확인 후 입력하신 연락처로 회신합니다.');
         window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
     } catch (error) {
@@ -171,6 +191,8 @@ async function submitBannerInquiry(event) {
     }
 }
 
-bannerImageInput.addEventListener('change', handleBannerImageChange);
-document.getElementById('inquiry-image-remove').addEventListener('click', resetBannerImage);
+bannerImageFields.desktop.input.addEventListener('change', () => handleBannerImageChange('desktop'));
+bannerImageFields.mobile.input.addEventListener('change', () => handleBannerImageChange('mobile'));
+document.getElementById('inquiry-desktop-image-remove').addEventListener('click', () => resetBannerImage('desktop'));
+document.getElementById('inquiry-mobile-image-remove').addEventListener('click', () => resetBannerImage('mobile'));
 bannerInquiryForm.addEventListener('submit', submitBannerInquiry);

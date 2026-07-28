@@ -282,8 +282,10 @@ test('notice blocks use six-dot handles and expose only left/right split targets
     assert.doesNotMatch(app, /document\.startViewTransition/);
 });
 
-test('an established comparison closes automatically when removal would leave one block', async () => {
+test('removing one compared notice keeps the remaining block and exposes a trash return target', async () => {
+    const html = await readFile('index.html', 'utf8');
     const app = await readFile('js/core.js', 'utf8');
+    const css = await readFile('css/core.css', 'utf8');
     const removeSource = readNamedFunction(app, 'removeFromCompareBlock');
     const result = new Function(`
         let compareBlocks = ['one', 'two'];
@@ -296,9 +298,14 @@ test('an established comparison closes automatically when removal would leave on
         return { compareBlocks, compareWorkspaceOpen, renderCount };
     `)();
 
-    assert.deepEqual(result.compareBlocks, []);
-    assert.equal(result.compareWorkspaceOpen, false);
+    assert.deepEqual(result.compareBlocks, ['one']);
+    assert.equal(result.compareWorkspaceOpen, true);
     assert.equal(result.renderCount, 1);
+    assert.match(html, /id="compare-trash-zone"/);
+    assert.match(app, /function onCompareTrashDrop/);
+    assert.match(app, /shouldRemove[\s\S]*removeFromCompareBlock/);
+    assert.match(css, /body\.reordering-compare-block \.compare-trash-zone/);
+    assert.match(css, /\.compare-col-remove\s*\{[^}]*opacity:\s*1/s);
 });
 
 test('compare blocks reorder before, after, and at the document end', async () => {
@@ -326,6 +333,23 @@ test('compare blocks reorder before, after, and at the document end', async () =
     assert.deepEqual(result.before, ['three', 'two', 'one']);
     assert.deepEqual(result.end, ['two', 'one', 'three']);
     assert.equal(result.renderCount, 3);
+});
+
+test('dropping either of two compared blocks on the other swaps left and right', async () => {
+    const app = await readFile('js/core.js', 'utf8');
+    const moveCompareBlockSource = readNamedFunction(app, 'moveCompareBlock');
+    const result = new Function(`
+        let compareBlocks = ['left', 'right'];
+        let renderCount = 0;
+        function renderCompareChange() { renderCount += 1; }
+        ${moveCompareBlockSource}
+        moveCompareBlock('left', 'right', 'swap');
+        return { compareBlocks, renderCount };
+    `)();
+
+    assert.deepEqual(result.compareBlocks, ['right', 'left']);
+    assert.equal(result.renderCount, 1);
+    assert.match(app, /compareBlocks\.length === 2 \? 'swap' : position/);
 });
 
 test('drag listeners and overlays are attached only through six-dot handles', async () => {
@@ -487,7 +511,7 @@ test('AI summaries disclose their limits and can be reported for admin review', 
 
     assert.match(html, />AI 3줄 요약</);
     assert.doesNotMatch(html, /Gemini AI 3줄 요약/);
-    assert.match(html, /원문 확인 필수/);
+    assert.doesNotMatch(html, /원문 확인 필수/);
     assert.match(html, /요약이 원문과 다릅니다/);
     assert.match(html, /aria-label="서울대학교 관련 링크"[\s\S]*href="\.\/service-guide\.html">서비스 안내/);
     const inquiryLinks = html.slice(
@@ -497,7 +521,7 @@ test('AI summaries disclose their limits and can be reported for admin review', 
     assert.doesNotMatch(inquiryLinks, /서비스 안내/);
     assert.match(app, /function reportSummaryMismatch/);
     assert.match(app, /\/summary-report/);
-    assert.match(app, /compare-summary-heading[\s\S]*원문 확인 필수/);
+    assert.doesNotMatch(app, /원문 확인 필수/);
     assert.match(server, /app\.post\('\/api\/notices\/:id\/summary-report', feedbackLimiter/);
     assert.match(server, /category: 'summary_mismatch'/);
     assert.match(adminHtml, /data-feedback-filter="summary_mismatch"/);
@@ -518,8 +542,10 @@ test('banner inquiries use a dedicated identified submission page and protected 
     assert.match(html, /id="inquiry-name"[^>]*required/);
     assert.match(html, /id="inquiry-organization"[^>]*required/);
     assert.match(html, /id="inquiry-type"[^>]*required/);
-    assert.match(html, /id="inquiry-image"[^>]*type="file"/);
-    assert.match(html, /세로형 9 : 16/);
+    assert.match(html, /id="inquiry-desktop-image"[^>]*type="file"/);
+    assert.match(html, /id="inquiry-mobile-image"[^>]*type="file"/);
+    assert.match(html, /4:5 세로형/);
+    assert.match(html, /16:9 가로형/);
     assert.match(html, /개인정보 수집 및 이용/);
     assert.match(html, /무료 학내 홍보 운영 규칙/);
     assert.match(html, /선착순이 아닙니다/);
@@ -532,12 +558,14 @@ test('banner inquiries use a dedicated identified submission page and protected 
     assert.match(server, /app\.post\('\/api\/banner-inquiries', bannerInquiryJson/);
     assert.match(server, /category: 'banner'/);
     assert.match(server, /bannerInquiryImageDir/);
-    assert.match(server, /imageFileName/);
+    assert.match(server, /desktopImageFileName/);
+    assert.match(server, /mobileImageFileName/);
     assert.match(server, /status: 'pending'/);
     assert.match(server, /exposureDays > 14/);
     assert.match(server, /await createBannerSlide\(normalizeBannerPayload/);
     assert.match(server, /app\.get\('\/api\/admin\/feedback\/:id\/image', requireNoticeAdmin/);
     assert.match(admin, /function openBannerInquiryImage/);
+    assert.match(admin, /variant = 'desktop'/);
     assert.match(admin, /class="banner-inquiry-details"/);
     assert.match(css, /\.inquiry-layout\s*\{[^}]*grid-template-columns:/s);
 });
@@ -585,7 +613,9 @@ test('manual Gemini analysis saves canonical category ids with the notice', asyn
 
     assert.match(admin, /"categorySlugs":\["application\|academics\|benefits-partnerships\|campus\|governance/);
     assert.match(admin, /가능한 한 핵심 범주 하나만 선택/);
-    assert.match(admin, /categoryIds:\s*categorySlugs/);
+    assert.match(admin, /categoryIds:\s*verified\.categorySlugs/);
+    assert.match(admin, /verificationPrompt/);
+    assert.match(admin, /verifiedNumbers/);
     assert.match(admin, /const newNoticeData = \{[\s\S]*categoryIds,/);
     assert.match(server, /const categoryIds = Array\.from\(new Set/);
     assert.match(schema, /notice_payload \? 'categoryIds'[\s\S]*insert into public\.notice_categories/);
@@ -845,7 +875,7 @@ test('right-rail banners start randomly, auto-rotate, and keep manual arrows dir
     assert.match(app, /setInterval\([\s\S]*6500\)/);
     assert.match(app, /class="rail-ad-image-stage\$\{transitionClass\}"[\s\S]*\$\{imageContent\}[\s\S]*\$\{controls\}/);
     assert.doesNotMatch(app, /class="rail-ad-dot/);
-    assert.match(css, /\.rail-ad-image\s*\{[^}]*width:\s*100%[^}]*height:\s*auto[^}]*object-fit:\s*cover/s);
+    assert.match(css, /\.rail-ad-image\s*\{[^}]*width:\s*calc\(100% \+ 2px\)[^}]*height:\s*auto[^}]*object-fit:\s*cover/s);
     assert.match(css, /\.rail-ad-controls\s*\{[^}]*grid-template-columns:\s*34px 1fr 34px/s);
     assert.match(css, /\.rail-ad-image-stage\.is-leaving-left\s*\{[^}]*translateX\(-42px\)/s);
     assert.match(css, /\.rail-ad-image-stage\.is-entering-right\s*\{[^}]*rail-banner-enter-right/s);
@@ -1343,7 +1373,7 @@ test('column counts live in the per-view layers, not in core', async () => {
     assert.match(desktop, /html\[data-view="desktop"\] \.grid\s*\{[^}]*grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\)/s);
     assert.match(desktop, /@media \(max-width:\s*1500px\)[\s\S]*grid-template-columns:\s*repeat\(2/);
     assert.doesNotMatch(desktop, /grid-template-columns:\s*repeat\(3/);
-    assert.match(mobile, /html\[data-view="mobile"\] \.grid\s*\{[^}]*grid-template-columns:\s*1fr/s);
+    assert.match(mobile, /html\[data-view="mobile"\] \.grid\s*\{[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/s);
     assert.match(mobile, /html\[data-view="mobile"\] \.category-tabs\s*\{[^}]*overflow-x:\s*auto/s);
     assert.match(mobile, /@media \(max-width:\s*420px\)[\s\S]*\.category-tabs-inner\s*\{[^}]*width:\s*max-content;[^}]*justify-content:\s*flex-start/s);
     assert.match(desktop, /\.spatial-workspace\.is-split\[data-blocks="1"\] \.notice-base-block > \.grid\s*\{[^}]*repeat\(2,/s);

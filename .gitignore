@@ -7,3 +7,4 @@ server/data/
 .worktrees/
 server/data/automation.json
 server/data/automation.json.tmp
+tmp/*.log

@@ -118,6 +118,7 @@ create table if not exists public.promo_slots (
   type text not null check (type in ('club', 'project', 'council')),
   title text not null,
   image_url text,
+  mobile_image_url text,
   link_url text,
   owner text not null,
   starts_at timestamptz not null,
@@ -139,13 +140,17 @@ create table if not exists public.promo_slots (
 create index if not exists promo_slots_public_period_idx
   on public.promo_slots (status, starts_at, ends_at, is_deleted, "order" asc);
 
+alter table if exists public.promo_slots
+  add column if not exists mobile_image_url text;
+
 insert into public.promo_slots (
-  type, title, image_url, link_url, owner, starts_at, ends_at, status,
+  type, title, image_url, mobile_image_url, link_url, owner, starts_at, ends_at, status,
   internal_name, description, alt_text, "order", placement, bg_style, text_color, created_at, is_deleted
 )
 select
   coalesce(type, 'council'),
   text,
+  src,
   src,
   link_url,
   coalesce(nullif(owner, ''), 'SNU ECE 학생회'),
