@@ -35,9 +35,8 @@
     pointer-events: none;
     box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.92), 0 0 0 6px rgba(90, 140, 255, 0.35);
     opacity: 0;
-    /* 자리 옮기기는 자바스크립트가 매 프레임 직접 그린다. 여기서 전환을
-       걸어 두면 프레임마다 새 전환이 시작돼 뭉개진다. */
-    transition: opacity 0.2s ease;
+    /* 자리도 진하기도 자바스크립트가 매 프레임 직접 그린다. 여기서 전환을
+       걸어 두면 프레임마다 새 전환이 시작돼 한 박자씩 늦게 따라온다. */
 }
 
 .tutorial-layer.is-open .tutorial-ring { opacity: 1; }

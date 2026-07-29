@@ -120,6 +120,7 @@
     let currentSpot = null;   // 지금 카드가 앉은 자리
     let currentAlpha = 1;     // 지금 테두리의 진하기
     let correctedStep = -1;   // 어긋남을 이미 바로잡은 단계
+    let lastTarget = null;    // 직전 단계가 짚던 자리
 
     function buildLayer() {
         if (layer) return;
@@ -274,72 +275,87 @@
         return rect.top - (cardHeight + CARD_GAP + EDGE);
     }
 
-    function padded(rect) {
+    /* 테두리가 감쌀 자리. 화면 밖으로 나간 값도 그대로 둔다.
+       여기서 미리 잘라 버리면 두 자리를 섞을 때 모양이 일그러진다.
+       자르는 일은 실제로 그릴 때 한 번만 한다. */
+    function holeAround(rect) {
         return {
-            top: Math.max(0, rect.top - RING_PADDING),
-            left: Math.max(0, rect.left - RING_PADDING),
-            right: Math.min(window.innerWidth, rect.right + RING_PADDING),
-            bottom: Math.min(window.innerHeight, rect.bottom + RING_PADDING)
+            top: rect.top - RING_PADDING,
+            left: rect.left - RING_PADDING,
+            right: rect.right + RING_PADDING,
+            bottom: rect.bottom + RING_PADDING
         };
     }
 
-    /* 화면에 실제로 그리는 곳. 여기서는 계산하지 않고 받은 값만 옮긴다.
-       마지막 단계는 뚫을 자리가 없는데, 그때는 화면 한가운데에 크기 없는
-       구멍을 주면 가림판 넉 장이 저절로 화면을 다 덮는다. 덕분에 마지막으로
-       넘어갈 때도 다른 단계와 똑같은 방식으로 이어서 움직인다. */
-    function applyFrame(hole, spot, alpha = 1) {
+    // 마지막 단계에는 짚을 자리가 없다. 화면 한가운데의 크기 없는 구멍을 주면
+    // 가림판 넉 장이 저절로 화면을 다 덮는다.
+    function holeOf(element) {
+        if (element) return holeAround(element.getBoundingClientRect());
+        return { top: window.innerHeight / 2, left: window.innerWidth / 2,
+                 right: window.innerWidth / 2, bottom: window.innerHeight / 2 };
+    }
+
+    /* 화면에 실제로 그리는 곳. 여기서는 계산하지 않고 받은 값만 옮긴다. */
+    function applyFrame(hole, spot, alpha) {
         const vw = window.innerWidth;
         const vh = window.innerHeight;
+        const clampV = value => Math.min(Math.max(0, value), vh);
+        const clampH = value => Math.min(Math.max(0, value), vw);
 
-        ring.style.opacity = String(alpha);
-        const { top, left, right, bottom } = hole;
-        const width = Math.max(0, right - left);
-        const height = Math.max(0, bottom - top);
+        const top = clampV(hole.top);
+        const bottom = Math.max(top, clampV(hole.bottom));
+        const left = clampH(hole.left);
+        const right = Math.max(left, clampH(hole.right));
+        const width = right - left;
+        const height = bottom - top;
 
         Object.assign(shades.top.style, { top: '0px', left: '0px', width: `${vw}px`, height: `${top}px` });
-        Object.assign(shades.bottom.style, { top: `${bottom}px`, left: '0px', width: `${vw}px`, height: `${Math.max(0, vh - bottom)}px` });
+        Object.assign(shades.bottom.style, { top: `${bottom}px`, left: '0px', width: `${vw}px`, height: `${vh - bottom}px` });
         Object.assign(shades.left.style, { top: `${top}px`, left: '0px', width: `${left}px`, height: `${height}px` });
-        Object.assign(shades.right.style, { top: `${top}px`, left: `${right}px`, width: `${Math.max(0, vw - right)}px`, height: `${height}px` });
-        Object.assign(ring.style, { top: `${top}px`, left: `${left}px`, width: `${width}px`, height: `${height}px` });
+        Object.assign(shades.right.style, { top: `${top}px`, left: `${right}px`, width: `${vw - right}px`, height: `${height}px` });
+        Object.assign(ring.style, {
+            top: `${top}px`, left: `${left}px`, width: `${width}px`, height: `${height}px`,
+            opacity: String(alpha)
+        });
 
         card.style.top = `${spot.top}px`;
         card.style.left = `${spot.left}px`;
     }
 
-    /* 다 옮기고 났을 때의 모습을 미리 알아낸다.
-       화면을 도착 지점으로 한 번 옮겨 재고 곧바로 되돌리는데, 같은 프레임
-       안에서 끝나므로 화면에는 그려지지 않는다. 스크롤을 따라오지 않고
-       한자리에 붙어 있는 것(오른쪽 홍보 칸 같은)도 이렇게 재야 정확하다. */
-    function finalFrameFor(target) {
-        const cardRect = card.getBoundingClientRect();
-        const startY = window.scrollY;
-        const limit = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
-        const delta = scrollAmountFor(target.getBoundingClientRect(), cardRect.width, cardRect.height);
-        const endY = Math.min(Math.max(0, startY + delta), limit);
-
-        if (endY !== startY) window.scrollTo(0, endY);
-        const rect = target.getBoundingClientRect();
-        const hole = padded(rect);
-        const spot = pickCardSpot(rect, cardRect.width, cardRect.height, window.innerWidth, window.innerHeight);
-        if (endY !== startY) window.scrollTo(0, startY);
-
-        return { startY, endY, hole, spot };
+    /* 화면에 붙박여 스크롤을 따라오지 않는 것인지.
+       오른쪽 홍보 칸은 데스크탑에서 그렇다. 어차피 늘 같은 자리에 보이므로
+       그런 것을 짚을 때는 화면을 굴릴 까닭이 없다. 굳이 굴리면 맨 위로
+       올라갔다가 다음 단계에서 다시 맨 아래로 내려가는 헛걸음이 생긴다. */
+    function isPinned(element) {
+        for (let node = element; node && node !== document.body; node = node.parentElement) {
+            if (getComputedStyle(node).position === 'fixed') return true;
+        }
+        return false;
     }
 
-    /* 마지막 단계의 도착 모습. 구멍은 화면 한가운데로 오므라들고 테두리는
-       사라지며, 카드는 가운데에 선다. */
-    function farewellFrame() {
-        card.classList.add('is-centered');
-        const rect = card.getBoundingClientRect();
-        const vw = window.innerWidth;
-        const vh = window.innerHeight;
-        return {
-            startY: window.scrollY,
-            endY: window.scrollY,
-            hole: { top: vh / 2, left: vw / 2, right: vw / 2, bottom: vh / 2 },
-            spot: { top: (vh - rect.height) / 2, left: (vw - rect.width) / 2 },
-            alpha: 0
-        };
+    function scrollGoalFor(target) {
+        const startY = window.scrollY;
+        if (!target || isPinned(target)) return startY;
+        const cardRect = card.getBoundingClientRect();
+        const limit = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+        const delta = scrollAmountFor(target.getBoundingClientRect(), cardRect.width, cardRect.height);
+        return Math.min(Math.max(0, startY + delta), limit);
+    }
+
+    /* 다 굴리고 났을 때의 모습을 미리 알아낸다.
+       화면을 도착 지점으로 한 번 옮겨 재고 곧바로 되돌리는데, 같은 프레임
+       안에서 끝나므로 화면에는 그려지지 않는다. */
+    function measureAtGoal(target, startY, endY) {
+        const cardRect = card.getBoundingClientRect();
+        const moved = endY !== startY;
+        if (moved) window.scrollTo(0, endY);
+        const hole = holeOf(target);
+        const spot = target
+            ? pickCardSpot(target.getBoundingClientRect(), cardRect.width, cardRect.height,
+                           window.innerWidth, window.innerHeight)
+            : { top: (window.innerHeight - cardRect.height) / 2, left: (window.innerWidth - cardRect.width) / 2 };
+        if (moved) window.scrollTo(0, startY);
+        return { hole, spot };
     }
 
     const lerp = (from, to, t) => from + (to - from) * t;
@@ -353,51 +369,65 @@
         };
     }
 
+    const middleOf = hole => ({ x: (hole.left + hole.right) / 2, y: (hole.top + hole.bottom) / 2 });
+
     // 시작과 끝이 부드럽게 붙는 곡선. 가운데가 빠르고 양끝이 느리다.
     const ease = t => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 
-    /* 화면 굴리기와 테두리·카드 옮기기를 한 시계로 함께 움직인다.
-       예전에는 브라우저에 굴리라고 맡겨 두고 그 결과를 매 프레임 쫓아갔다.
-       그래서 굴릴 거리가 없는 단계에서는 쫓아갈 것도 없어 테두리가 그냥
-       순간이동했다. 이제는 굴리든 말든 같은 곡선을 따라 이어서 움직인다. */
+    /* 한 단계에서 다음 단계로.
+
+       테두리는 매 프레임 두 대상의 '지금 자리'를 재서 섞는다. 미리 잰 값을
+       직선으로 이으면 화면이 굴러가는 동안 테두리만 따로 날아가 내용에서
+       떨어져 보인다. 지금 자리를 섞으면 굴러가는 내용에 붙은 채 옮겨 간다.
+
+       걸리는 시간은 거리에 비례한다. 먼 길을 짧은 시간에 밀어붙이면 한
+       프레임에 수백 픽셀씩 건너뛰어, 끌어당긴 게 아니라 장면이 잘린 것처럼
+       보인다. 대신 아주 먼 길에서는 가는 동안 테두리를 옅게 낮춘다.
+       흐르는 내용 위를 테두리가 가로지르는 모습이 어지럽기 때문이다. */
     function moveTo(target) {
         window.cancelAnimationFrame(followTimer);
-        if (target) card.classList.remove('is-centered');
 
-        const { startY, endY, hole, spot, alpha = 1 } = target ? finalFrameFor(target) : farewellFrame();
-        const fromHole = currentHole;
-        const fromSpot = currentSpot;
-        const fromAlpha = currentAlpha;
-        currentHole = hole;
-        currentSpot = spot;
-        currentAlpha = alpha;
+        const from = lastTarget && lastTarget.isConnected ? lastTarget : null;
+        const startY = window.scrollY;
+        const endY = scrollGoalFor(target);
+        const { hole: holeGoal, spot: spotGoal } = measureAtGoal(target, startY, endY);
+        const spotFrom = currentSpot || spotGoal;
+        const alphaFrom = currentAlpha;
+        const alphaGoal = target ? 1 : 0;
 
-        const skip = !fromHole || !fromSpot
-            || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-        if (skip) {
-            if (endY !== startY) window.scrollTo(0, endY);
-            applyFrame(hole, spot, alpha);
+        lastTarget = target;
+        currentSpot = spotGoal;
+        currentAlpha = alphaGoal;
+
+        const draw = e => {
+            if (endY !== startY) window.scrollTo(0, lerp(startY, endY, e));
+            const live = holeOf(target);
+            currentHole = from && e < 1 ? lerpHole(holeOf(from), live, e) : live;
+            applyFrame(
+                currentHole,
+                { top: lerp(spotFrom.top, spotGoal.top, e), left: lerp(spotFrom.left, spotGoal.left, e) },
+                alphaAt(e)
+            );
+        };
+
+        const holeStart = from ? holeOf(from) : holeGoal;
+        const a = middleOf(holeStart);
+        const b = middleOf(holeGoal);
+        const travel = Math.hypot(b.x - a.x, b.y - a.y) + Math.abs(endY - startY);
+        const dip = Math.min(0.8, travel / 1800);
+        const alphaAt = e => lerp(alphaFrom, alphaGoal, e) * (1 - dip * Math.sin(Math.PI * e));
+
+        if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+            draw(1);
             return;
         }
 
-        /* 걸리는 시간은 가는 거리에 맞춘다. 화면 끝에서 끝까지 가는 길을
-           짧은 시간에 밀어붙이면 한 프레임에 수백 픽셀씩 건너뛰어, 움직였다기보다
-           장면이 바뀐 것처럼 보인다. 반대로 가까운 거리를 오래 끌면 굼뜨다. */
-        const travel = Math.hypot(
-            Math.abs(endY - startY) + Math.abs(hole.top - fromHole.top),
-            Math.abs(hole.left - fromHole.left)
-        );
-        const span = Math.min(MOVE_MAX_MS, MOVE_MIN_MS + Math.sqrt(travel) * 16);
-
+        // 초당 1700픽셀쯤으로 일정하게 끈다. 너무 짧거나 길지 않게 잘라 둔다.
+        const span = Math.min(1500, Math.max(380, travel / 1.7));
         const began = performance.now();
         const tick = now => {
             const t = Math.min(1, (now - began) / span);
-            const e = ease(t);
-            if (endY !== startY) window.scrollTo(0, lerp(startY, endY, e));
-            applyFrame(lerpHole(fromHole, hole, e), {
-                top: lerp(fromSpot.top, spot.top, e),
-                left: lerp(fromSpot.left, spot.left, e)
-            }, lerp(fromAlpha, alpha, e));
+            draw(ease(t));
             if (t < 1) followTimer = window.requestAnimationFrame(tick);
             else settleAfterMove(target);
         };
@@ -405,34 +435,30 @@
     }
 
     /* 도착하고 나서 한 번 확인한다.
-       멀리 굴러가는 동안 그림이 늦게 떠서 문서 길이가 달라지면, 미리 재 둔
-       도착 자리가 어긋난다. 그런 때만 조용히 다시 맞춘다. 한 단계에 한 번만
-       손대므로 서로 밀며 되풀이될 일은 없다. */
+       멀리 굴러가는 동안 그림이 늦게 떠서 문서 길이가 달라지면 짚는 자리가
+       화면 밖으로 밀려날 수 있다. 그런 때만 조용히 다시 맞춘다. 한 단계에
+       한 번만 손대므로 서로 밀며 되풀이될 일은 없다. */
     function settleAfterMove(target) {
         if (!target || target !== currentTarget || correctedStep === index) return;
         const rect = target.getBoundingClientRect();
-        const drifted = Math.abs(rect.top - RING_PADDING - currentHole.top) > 2
-            || rect.bottom < 0 || rect.top > window.innerHeight;
-        if (!drifted) return;
+        const missed = rect.bottom < 0 || rect.top > window.innerHeight;
+        if (!missed) return;
         correctedStep = index;
+        lastTarget = null;   // 이미 제자리를 잃었으니 섞을 것이 없다
         moveTo(target);
     }
 
     // 창 크기가 바뀌면 계산이 통째로 어긋나므로 움직임 없이 다시 맞춘다.
     function reposition() {
         window.cancelAnimationFrame(followTimer);
-        if (!currentTarget) {
-            const { hole, spot, alpha } = farewellFrame();
-            currentHole = hole; currentSpot = spot; currentAlpha = alpha;
-            applyFrame(hole, spot, alpha);
-            return;
-        }
-        const rect = currentTarget.getBoundingClientRect();
         const cardRect = card.getBoundingClientRect();
-        currentHole = padded(rect);
-        currentSpot = pickCardSpot(rect, cardRect.width, cardRect.height, window.innerWidth, window.innerHeight);
-        currentAlpha = 1;
-        applyFrame(currentHole, currentSpot, 1);
+        currentHole = holeOf(currentTarget);
+        currentSpot = currentTarget
+            ? pickCardSpot(currentTarget.getBoundingClientRect(), cardRect.width, cardRect.height,
+                           window.innerWidth, window.innerHeight)
+            : { top: (window.innerHeight - cardRect.height) / 2, left: (window.innerWidth - cardRect.width) / 2 };
+        currentAlpha = currentTarget ? 1 : 0;
+        applyFrame(currentHole, currentSpot, currentAlpha);
     }
 
     function render() {
@@ -498,7 +524,8 @@
         index = 0;
         currentHole = null;
         currentSpot = null;
-        currentAlpha = 1;
+        currentAlpha = 0;
+        lastTarget = null;
         layer.hidden = false;
         requestAnimationFrame(() => layer.classList.add('is-open'));
         window.addEventListener('scroll', reposition, true);
@@ -514,6 +541,7 @@
         window.cancelAnimationFrame(followTimer);
         currentHole = null;
         currentSpot = null;
+        lastTarget = null;
         window.removeEventListener('scroll', reposition, true);
         window.removeEventListener('resize', reposition);
         document.removeEventListener('keydown', onKeyDown, true);
