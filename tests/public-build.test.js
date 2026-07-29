@@ -2425,8 +2425,22 @@ test('the operator page names who runs the site and the footer points at it', as
     assert.match(operator, /최재원/);
     // 학부 공식 서비스로 오해받으면 안 된다.
     assert.match(operator, /비공식/);
-    // 개인 연락처는 싣지 않는다. 문의는 기존 창구로 받는다.
+    // 학교 메일은 공개하되 개인 휴대폰 번호는 싣지 않는다.
+    assert.match(operator, /mailto:aeron1120@snu\.ac\.kr/);
+    assert.match(operator, /mailto:legojmon@snu\.ac\.kr/);
     assert.doesNotMatch(operator, /010-\d{4}-\d{4}/);
+
+    // 권한이 셋으로 나뉘어 있다는 것이 한눈에 보여야 한다.
+    for (const role of ['운영자 · 개발자', '공지 관리자', '배너 관리자']) {
+        assert.match(operator, new RegExp(`<dt>${role}</dt>`), `${role} 항목이 없다`);
+    }
+
+    // 긴 문단 대신 훑을 수 있는 구조를 쓴다.
+    const css = await readFile('css/service-guide.css', 'utf8');
+    for (const selector of ['.guide-people', '.guide-defs']) {
+        assert.match(operator, new RegExp(`class="${selector.slice(1)}"`));
+        assert.match(css, new RegExp(`\\${selector}\\b`), `${selector} 스타일이 없다`);
+    }
 
     // 푸터의 '운영 주체 안내'가 서비스 안내가 아니라 이 페이지를 가리켜야 한다.
     const operationColumn = html.slice(
