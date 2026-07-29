@@ -303,16 +303,19 @@ insert into public.categories (name, slug, is_active)
 values
   ('학사', 'academic', true),
   ('기회', 'opportunity', true),
-  ('혜택', 'benefit', true),
+  ('설문', 'survey', true),
   ('행사', 'community', true)
 on conflict (slug) do update
 set name = excluded.name,
     is_active = true,
     updated_at = now();
 
+-- '혜택'은 기회와 갈라지지 않아 없앴다. 그 자리에 '설문'이 들어왔고
+-- 제휴·할인은 '행사'로 옮겼다. 옛 칸은 지우지 않고 꺼 두어, 이미 그 칸으로
+-- 분류된 공지가 있어도 참조가 끊기지 않게 한다.
 update public.categories
 set is_active = false, updated_at = now()
-where slug not in ('academic', 'opportunity', 'benefit', 'community');
+where slug not in ('academic', 'opportunity', 'survey', 'community');
 
 create table if not exists public.category_aliases (
   id bigint generated always as identity primary key,
@@ -569,7 +572,7 @@ declare
   category_value jsonb;
 begin
   insert into public.notices (
-    title, content, target, targets, host, deadline, deadline_at, expires_at,
+    title, content, target, targets, host, deadline, deadline_at, start_date, expires_at,
     is_always_open, is_pinned, is_hidden, category, has_reward, reward_note,
     requires_action, survey_reward, ai_summary, images,
     status, source_type, raw_title, raw_content, analysis_status,
@@ -582,6 +585,7 @@ begin
     coalesce(nullif(notice_payload->>'host', ''), '기타'),
     nullif(notice_payload->>'deadline', '')::date,
     nullif(notice_payload->>'deadlineAt', '')::timestamptz,
+    nullif(notice_payload->>'startDate', '')::date,
     nullif(notice_payload->>'expiresAt', '')::timestamptz,
     coalesce((notice_payload->>'isAlwaysOpen')::boolean, false),
     coalesce((notice_payload->>'isPinned')::boolean, false),

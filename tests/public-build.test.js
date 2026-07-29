@@ -609,6 +609,22 @@ test('notice cards show when a notice is open, as a single day or a period', asy
     // 상세 화면에서는 등록일도 함께 보여 오래된 공지인지 알 수 있게 한다.
     const meta = readNamedFunction(app, 'formatDetailMeta');
     assert.match(meta, /등록 \$\{escapeHtml\(formatDateWithWeekday\(registeredOn\)\)\}/);
+
+    /* 시작일은 저장까지 이어져야 한다. 화면만 고치고 쓰기 경로를 빠뜨리면
+       로컬(JSON)에서는 통째로 저장돼 멀쩡해 보이는데 운영(Supabase)에서만
+       조용히 사라진다. 넣는 길과 고치는 길을 모두 확인한다. */
+    const server = await readFile('server/server.js', 'utf8');
+    const schema = await readFile('server/sql/supabase-schema.sql', 'utf8');
+    assert.match(server, /start_date: preparedPayload\.startDate \|\| null/);
+    assert.match(schema, /add column if not exists start_date date/);
+    assert.match(schema, /deadline, deadline_at, start_date, expires_at/);
+    assert.match(schema, /nullif\(notice_payload->>'startDate', ''\)::date/);
+    assert.match(server, /startDate: String\(row\.startDate \|\| row\.start_date/);
+
+    // 스키마를 다시 돌려도 카테고리가 옛 목록으로 되돌아가지 않아야 한다.
+    assert.match(schema, /\('설문', 'survey', true\)/);
+    assert.doesNotMatch(schema, /\('혜택', 'benefit', true\)/);
+    assert.match(schema, /slug not in \('academic', 'opportunity', 'survey', 'community'\)/);
 });
 
 test('the contact modal is an anonymous feedback box, not admin contact info', async () => {
