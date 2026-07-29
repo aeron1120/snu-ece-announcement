@@ -534,6 +534,14 @@ create index if not exists notification_jobs_due_idx
 create index if not exists notification_deliveries_due_idx
   on public.notification_deliveries (status, next_attempt_at);
 
+-- 서버는 service_role 키로만 붙고 그 역할은 RLS를 우회한다. 프런트는 Supabase에
+-- 직접 붙지 않으므로, 정책을 하나도 두지 않은 채 RLS만 켜면 anon 키로 오는
+-- PostgREST 요청이 전부 막힌다. app_settings에는 평문 배너 비밀번호와 관리자
+-- 토큰 해시가 들어 있으니 이 네 개가 빠지면 안 된다.
+alter table public.app_settings enable row level security;
+alter table public.notices enable row level security;
+alter table public.banner_slides enable row level security;
+alter table public.promo_slots enable row level security;
 alter table public.crawl_runs enable row level security;
 alter table public.crawl_items enable row level security;
 alter table public.categories enable row level security;
@@ -546,6 +554,12 @@ alter table public.notification_jobs enable row level security;
 alter table public.notification_deliveries enable row level security;
 alter table public.automation_audit_logs enable row level security;
 
+-- RLS를 켜도 Supabase가 public 스키마의 새 테이블에 기본으로 준 권한은 남는다.
+-- 두 가지를 함께 걸어야 anon 키가 쓸모없어진다.
+revoke all on public.app_settings from anon, authenticated;
+revoke all on public.notices from anon, authenticated;
+revoke all on public.banner_slides from anon, authenticated;
+revoke all on public.promo_slots from anon, authenticated;
 revoke all on public.crawl_runs from anon, authenticated;
 revoke all on public.crawl_items from anon, authenticated;
 revoke all on public.categories from anon, authenticated;
