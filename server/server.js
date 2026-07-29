@@ -23,6 +23,7 @@ import { createNoticeAnalyzer } from './services/notice-analyzer.js';
 import { createAutomationRouter } from './routes/automation-routes.js';
 import { createNoticeThumbnailRouter } from './routes/notice-thumbnail-route.js';
 import { createNoticeThumbnailService } from './services/notice-thumbnail-service.js';
+import { createNoticeImageStore } from './services/notice-image-store.js';
 import webPush from 'web-push';
 import { createPushService } from './services/push-service.js';
 import {
@@ -65,8 +66,18 @@ const kakaoBotWebhookService = createKakaoBotWebhookService({
     publicBaseUrl: publicSiteUrl,
     categoryProvider: () => automationStore.listCategories()
 });
+const noticeImageStore = createNoticeImageStore({
+    supabase,
+    supabaseUrl: SUPABASE_URL
+});
 const noticeThumbnailService = createNoticeThumbnailService({
-    cacheDir: thumbnailCacheDir
+    cacheDir: thumbnailCacheDir,
+    isOwnedUrl: url => noticeImageStore.isOwnedUrl(url),
+    fetchImage: async url => {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`thumbnail source ${response.status}`);
+        return Buffer.from(await response.arrayBuffer());
+    }
 });
 const noticeAnalyzer = process.env.GEMINI_API_KEY
     ? createNoticeAnalyzer({
@@ -1578,6 +1589,26 @@ async function getPublishedNoticeById(id) {
     return data ? toClientNotice(data) : null;
 }
 
+// 지울 공지의 사진 주소만 읽는다. 숨긴 공지도 지울 수 있으므로 status를 보지
+// 않는다 — getPublishedNoticeById는 published만 돌려줘서 숨긴 공지의 파일이
+// 공개 버킷에 그대로 남는다.
+async function getNoticeImagesById(id) {
+    if (!useSupabase) return [];
+
+    const { data, error } = await supabase
+        .from(SUPABASE_NOTICES_TABLE)
+        .select('images')
+        .eq('id', id)
+        .maybeSingle();
+
+    // 주소를 못 읽으면 파일은 남지만, 그것 때문에 공지 삭제까지 막지는 않는다.
+    if (error) {
+        console.warn('공지 이미지 주소 조회 실패:', error.message || error);
+        return [];
+    }
+    return Array.isArray(data?.images) ? data.images : [];
+}
+
 async function loadPublishedNoticeThumbnailSource(id) {
     if (!useSupabase) {
         const notice = await getPublishedNoticeById(id);
@@ -3035,6 +3066,9 @@ app.post('/api/notices', requireNoticeAdmin, async (req, res) => {
             return res.status(400).json({ error: 'title과 content는 필수입니다.' });
         }
 
+        // 사진은 DB가 아니라 버킷에 두고 주소만 저장한다.
+        payload.images = await noticeImageStore.persistImages(payload.images);
+
         const newNotice = await createNotice(payload);
         const webhookResult = await kakaoBotWebhookService.notifyPublishedNotice(newNotice);
         if (webhookResult.reason === 'webhook_error') {
@@ -3059,6 +3093,8 @@ app.put('/api/notices/:id', requireNoticeAdmin, async (req, res) => {
             return res.status(400).json({ error: 'title과 content는 필수입니다.' });
         }
 
+        payload.images = await noticeImageStore.persistImages(payload.images);
+
         const updated = await updateNotice(id, payload);
         if (!updated) {
             return res.status(404).json({ error: '공지 없음' });
@@ -3078,10 +3114,16 @@ app.delete('/api/notices/:id', requireNoticeAdmin, async (req, res) => {
             return res.status(400).json({ error: '유효하지 않은 id입니다.' });
         }
 
+        // 소프트 삭제라 행은 남지만 되살리는 경로가 없다. 공개 버킷에 파일만
+        // 남으면 주소를 아는 사람은 계속 볼 수 있으므로 지운다.
+        const doomedImages = await getNoticeImagesById(id);
+
         const deleted = await softDeleteNotice(id);
         if (!deleted) {
             return res.status(404).json({ error: '공지 없음' });
         }
+
+        await noticeImageStore.removeImages(doomedImages);
 
         res.status(204).send();
     } catch (error) {

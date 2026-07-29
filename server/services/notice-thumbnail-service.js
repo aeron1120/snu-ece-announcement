@@ -19,8 +19,22 @@ function decodeImageDataUrl(image) {
     return source.length > 0 ? source : null;
 }
 
-export function createNoticeThumbnailService({ cacheDir }) {
+export function createNoticeThumbnailService({ cacheDir, isOwnedUrl = null, fetchImage = null }) {
     if (!cacheDir) throw new TypeError('cacheDir is required');
+
+    // data URL이면 해독하고, 우리 버킷 주소면 받아온다.
+    // 남의 주소를 따라가면 이 엔드포인트가 요청 대행 통로가 된다.
+    async function readSource(image) {
+        const decoded = decodeImageDataUrl(image);
+        if (decoded) return decoded;
+        if (!isOwnedUrl || !fetchImage || !isOwnedUrl(image)) return null;
+        try {
+            const body = await fetchImage(image);
+            return body && body.length > 0 ? body : null;
+        } catch {
+            return null;
+        }
+    }
 
     return {
         async getThumbnail({ id, updatedAt, image }) {
@@ -38,7 +52,7 @@ export function createNoticeThumbnailService({ cacheDir }) {
                 if (error.code !== 'ENOENT') return { kind: 'default' };
             }
 
-            const source = decodeImageDataUrl(image);
+            const source = await readSource(image);
             if (!source) return { kind: 'default' };
 
             let temporaryPath = '';
