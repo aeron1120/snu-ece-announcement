@@ -1623,8 +1623,11 @@ test('image notices lazy-load a poster; imageless notices show a big title poste
     // 사진 없는 카드: 포스터 자리에 제목을 크게.
     assert.match(filterCardsSource, /card-poster is-text/);
     // 포스터 제목은 renderPosterTitle이 통째로 만든다(길이에 맞춘 크기 포함).
-    // 학생회 홍보물 결: 가로줄 - 제목 - 등록일 순으로 쌓는다.
+    // 학생회 홍보물 결: 가로줄 - 제목 - 날짜 순으로 쌓는다.
     assert.match(filterCardsSource, /card-poster is-text[\s\S]*?card-poster-rule[\s\S]*?renderPosterTitle\(rawTitle\)[\s\S]*?card-poster-date/);
+    // 공개 화면에서 등록일을 없앴으므로 마감일이 없으면 날짜 칸이 비어 있다.
+    // 빈 칸을 그리면 포스터 아래에 빈 줄만 남으므로 아예 넣지 않는다.
+    assert.match(filterCardsSource, /datePresentation\.dateLabel\s*\?\s*`<span class="card-poster-date"/);
     assert.match(readNamedFunction(app, 'renderPosterTitle'), /--poster-title-size:\$\{fit\.size\}px/);
     assert.match(filterCardsSource, /renderPosterTitle\(rawTitle\)/);
     // 줄 나누기는 글자 폭 계산에 기대므로 함께 넣어 준다.

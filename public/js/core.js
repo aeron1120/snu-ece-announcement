@@ -2246,7 +2246,9 @@ function renderNoticeCards(animate = false) {
             : `<div class="card-poster is-text">
                    <span class="card-poster-rule" aria-hidden="true"></span>
                    ${renderPosterTitle(rawTitle)}
-                   <span class="card-poster-date">${escapeHtml(datePresentation.dateLabel)}</span>
+                   ${datePresentation.dateLabel
+                       ? `<span class="card-poster-date">${escapeHtml(datePresentation.dateLabel)}</span>`
+                       : ''}
                </div>`;
 
         const cardClass = [
