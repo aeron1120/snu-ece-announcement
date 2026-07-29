@@ -210,7 +210,7 @@
     background: var(--primary-light); border: 1px solid #d2ddef; border-left: 3px solid var(--primary);
 }
 .analyze-bar .btn { white-space: nowrap; }
-/* 이 줄은 가운데 정렬이라 라벨과 선택기가 버튼과 같은 높이에 서야 한다. */
+/* 선택기 글자 크기를 버튼 라벨과 맞춰서 같은 줄에서 높이가 튀지 않게 한다. */
 .analyze-bar .ai-mode-field { font-size: 13.5px; font-weight: 650; white-space: nowrap; }
 .analyze-bar select { padding: 7px 10px; border: 1px solid var(--border); background: #fff; font-size: 13.5px; }
 .analysis-fields { padding: 16px; border: 1px solid var(--border); background: #fafbfc; margin-bottom: 22px; }

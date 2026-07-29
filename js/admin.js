@@ -661,7 +661,7 @@ function withResolvedCategoryIds(analysis) {
     };
 }
 
-// AI 분석 범위. summary는 폼에 입력란이 없는 항목만 채우고 내가 쓴 값은 건드리지 않는다.
+// AI 분석 범위. summary는 폼에 입력란이 없는 항목만 묻는 모드다(입력값 보존은 이후 단계에서 적용).
 const AI_MODES = ['full-verified', 'full', 'summary'];
 
 function currentAiMode() {
@@ -689,7 +689,7 @@ function restoreAiModeChoice() {
 
 // 기본은 2단계다. 1차 편집 결과를 그대로 쓰지 않고 2차 독립 검수 에이전트가 원문을
 // 다시 읽어 날짜·금액·인원·학점·기간과 카테고리를 교차 검증한 결과만 최종값으로 쓴다.
-// '2차 검수 생략'을 켜면 1차 결과로 끝내고 Gemini 호출을 2회에서 1회로 줄인다.
+// 'full-verified'가 아닌 모드를 고르면 1차 결과로 끝내고 Gemini 호출을 1회로 줄인다.
 async function runNoticeAnalysis(content, onVerificationStart = null) {
     const today = new Date().toISOString().slice(0, 10);
     const prompt = `다음 공지 원문을 분석해서 JSON만 출력해. 코드블록·설명 없이 JSON 객체 하나만.
@@ -718,7 +718,7 @@ ${content}`;
         body: JSON.stringify({ prompt, model: GEMINI_MODEL })
     });
     const draft = normalizeNoticeAnalysisResult(parseAnalysisJson(result?.text || ''));
-    // 생략을 켰으면 여기서 끝낸다. 2차 호출을 아예 하지 않는다.
+    // 'full-verified'가 아니면 여기서 끝낸다. 2차 호출을 아예 하지 않는다.
     if (currentAiMode() !== 'full-verified') return withResolvedCategoryIds(draft);
     if (typeof onVerificationStart === 'function') onVerificationStart();
 
