@@ -746,6 +746,27 @@ test('the compose form picks an analysis mode instead of a verification checkbox
     assert.match(migrate, /removeItem/);
 });
 
+test('summary mode asks only for the fields the compose form cannot collect', async () => {
+    const admin = await readFile('js/admin.js', 'utf8');
+    const source = readNamedFunction(admin, 'runNoticeAnalysis');
+
+    // 요약 전용 프롬프트는 요약·카테고리·리워드만 요구한다.
+    assert.match(admin, /function buildSummaryOnlyPrompt/);
+    const prompt = readNamedFunction(admin, 'buildSummaryOnlyPrompt');
+    assert.match(prompt, /"summary"/);
+    assert.match(prompt, /"categorySlugs"/);
+    assert.match(prompt, /"hasReward"/);
+    assert.match(prompt, /"requiresAction"/);
+    // 내가 직접 입력하는 항목은 요구하지 않는다.
+    assert.doesNotMatch(prompt, /"subject"/);
+    assert.doesNotMatch(prompt, /"type"/);
+    assert.doesNotMatch(prompt, /"deadline"/);
+
+    // summary 모드는 1차에서 끝나고 2차 검수를 부르지 않는다.
+    assert.match(source, /mode === 'summary'/);
+    assert.match(source, /mode !== 'full-verified'/);
+});
+
 test('admin AI work shows progress while login is isolated in a server-session page', async () => {
     const html = await readFile('admin.html', 'utf8');
     const loginHtml = await readFile('admin-login.html', 'utf8');

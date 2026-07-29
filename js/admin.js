@@ -687,10 +687,31 @@ function restoreAiModeChoice() {
     select.value = stored;
 }
 
+// 폼에 입력란이 없는 항목만 요구하는 짧은 프롬프트. 핵심내용·유형·마감일은 묻지 않는다.
+function buildSummaryOnlyPrompt(content) {
+    return `다음 공지 원문을 읽고 JSON만 출력해. 코드블록·설명 없이 JSON 객체 하나만.
+형식: {"summary":["요약1","요약2","요약3"],"categorySlugs":["academic|opportunity|benefit|community 중 핵심 하나"],"hasReward":false,"rewardNote":null,"requiresAction":false}
+- summary는 각 줄 명사형 종결의 3줄 요약.
+- 사진 없는 카드에서 2~3줄로 자연스럽게 나뉘도록, 긴 한 덩어리 대신 의미가 분명한 짧은 어절 묶음으로 작성.
+- 격식적인 보도자료 문체보다 학생이 빠르게 읽는 자연스럽고 캐주얼한 표현을 사용.
+- 물음표 반복, 깨진 문자, 불완전한 조사, 같은 단어 반복을 절대 포함하지 말 것. 원문 글자가 깨졌다면 문맥상 확실한 내용만 한국어로 복원.
+- academic: 수강·학점·졸업·성적·전공진입에 직접 영향.
+- opportunity: 인턴·연구실·모집·공모전·대회·장학·교환 등 참여 기회.
+- benefit: 할인·지원·물품·제휴처럼 놓쳐도 학사상 불이익이 없는 혜택.
+- community: 학생 자치, 학내 행사, 시설·출입·교통 등 공동체와 캠퍼스 생활.
+- categorySlugs는 반드시 핵심 범주 하나만 선택.
+- 신청·제출·응답이 필요하면 requiresAction=true.
+- 상품·기프티콘·사례비·지원금·할인이 확인되면 hasReward=true와 rewardNote를 채움.
+
+원문:
+${content}`;
+}
+
 // 기본은 2단계다. 1차 편집 결과를 그대로 쓰지 않고 2차 독립 검수 에이전트가 원문을
 // 다시 읽어 날짜·금액·인원·학점·기간과 카테고리를 교차 검증한 결과만 최종값으로 쓴다.
 // 'full-verified'가 아닌 모드를 고르면 1차 결과로 끝내고 Gemini 호출을 1회로 줄인다.
 async function runNoticeAnalysis(content, onVerificationStart = null) {
+    const mode = currentAiMode();
     const today = new Date().toISOString().slice(0, 10);
     const prompt = `다음 공지 원문을 분석해서 JSON만 출력해. 코드블록·설명 없이 JSON 객체 하나만.
 형식: {"deadline":"YYYY-MM-DD 또는 빈문자열","subject":"포스터용 핵심 문구 10~28자","type":"${TITLE_KINDS.join('|')} 중 하나","summary":["요약1","요약2","요약3"],"categorySlugs":["academic|opportunity|benefit|community 중 핵심 하나"],"hasReward":false,"rewardNote":null,"requiresAction":false}
@@ -715,11 +736,14 @@ ${content}`;
     const result = await apiRequest('/api/summary', {
         method: 'POST',
         headers: getNoticeAdminHeaders(),
-        body: JSON.stringify({ prompt, model: GEMINI_MODEL })
+        body: JSON.stringify({
+            prompt: mode === 'summary' ? buildSummaryOnlyPrompt(content) : prompt,
+            model: GEMINI_MODEL
+        })
     });
     const draft = normalizeNoticeAnalysisResult(parseAnalysisJson(result?.text || ''));
-    // 'full-verified'가 아니면 여기서 끝낸다. 2차 호출을 아예 하지 않는다.
-    if (currentAiMode() !== 'full-verified') return withResolvedCategoryIds(draft);
+    // 2차 검수는 full-verified에서만 돈다. 나머지 모드는 여기서 끝난다.
+    if (mode !== 'full-verified') return withResolvedCategoryIds(draft);
     if (typeof onVerificationStart === 'function') onVerificationStart();
 
     const verificationPrompt = `당신은 공지 편집 결과를 독립적으로 재검수하는 검증 에이전트입니다.
