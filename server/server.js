@@ -1740,6 +1740,7 @@ async function updateNotice(id, payload) {
             host: preparedPayload.host,
             deadline: normalizeDeadline(preparedPayload.deadline),
             deadline_at: preparedPayload.deadlineAt,
+            start_date: preparedPayload.startDate || null,
             expires_at: preparedPayload.expiresAt,
             is_always_open: preparedPayload.isAlwaysOpen,
             is_pinned: preparedPayload.isPinned,
