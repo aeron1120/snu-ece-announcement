@@ -17,7 +17,11 @@
 <body class="admin-body" data-page="admin">
 
 <header class="admin-topbar">
-    <h1>SNU ECE 공지방</h1>
+    <!-- 남색 막대 위에 얹히므로 흰색 워드마크를 쓴다. -->
+    <h1>
+        <img class="admin-topbar-mark" src="/icons/brand-wordmark-admin.png" alt="SNU ECE 공지방"
+             draggable="false" onerror="this.replaceWith(document.createTextNode('SNU ECE 공지방'))">
+    </h1>
     <span class="admin-badge">ADMIN</span>
     <div class="admin-topbar-actions">
         <button type="button" id="staff-report-open" onclick="openStaffReport()">마스터에게 문의</button>

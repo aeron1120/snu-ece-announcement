@@ -1854,11 +1854,14 @@ body.reordering-compare-block .compare-trash-zone {
     background: #fff0ee;
     border-color: #c94a3d;
 }
+/* 높이 변화만 CSS가 맡는다. 자바스크립트는 시작·끝 높이만 정해 준다. */
 .compare-col-body {
     display: block;
     min-width: 0;
     max-height: 440px;
     overflow: hidden;
+    transition: max-height 0.28s cubic-bezier(0.32, 0.72, 0.24, 1);
+    will-change: max-height;
     padding: 0 34px 0 0;
     color: var(--text-main);
     background: transparent;

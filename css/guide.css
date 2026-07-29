@@ -85,3 +85,10 @@
     .faq-item p { font-size: 14px; }
     .guide-closing { padding: 18px 16px; }
 }
+
+/* 문서에서 화면 안내로 건너뛰는 줄. */
+.guide-live-link { margin: -4px 0 22px; }
+.guide-live-link a {
+    font-size: 13.5px; font-weight: 700; color: #1f3f8f;
+    text-decoration: underline; text-underline-offset: 3px;
+}

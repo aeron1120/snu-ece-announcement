@@ -1361,6 +1361,13 @@ const GUIDE_HINT_KEY = 'eceGuideHintSeen';
 function openUserGuide(event) {
     event?.preventDefault();
     dismissGuideHint();
+    /* 문서로 보내는 대신 이 화면 위에서 바로 짚어준다. 읽고 나서 다시 돌아와
+       찾아야 하는 수고가 없어야 설명서가 실제로 쓰인다. 튜토리얼을 아직
+       못 불러온 상황에서만 글로 된 설명서로 넘긴다. */
+    if (typeof window.startTutorial === 'function') {
+        window.startTutorial();
+        return;
+    }
     location.href = './guide.html';
 }
 
@@ -2926,23 +2933,34 @@ function onNoticeHandlePointerMove(event) {
    조금이라도 겹치면 그 표적을 켠다. 겹치는 표적이 여럿이면 더 많이
    겹친 쪽을 고른다. 커서를 정확히 올려야만 반응하면 큰 카드를 들고
    작은 버튼을 맞추기가 어렵다. */
+/* 표적을 고르는 규칙은 하는 일에 따라 다르다.
+
+   놓기(왼쪽·오른쪽)는 커서가 표적 위에 있어야 한다. 카드 전체로 판정하면
+   목록 위를 지나가기만 해도 표적이 켜져, 어디에 놓이는지 종잡을 수 없다.
+
+   버리기는 카드가 겹치기만 해도 켜진다. 화면 아래 구석까지 커서를 정확히
+   끌고 가는 것보다, 카드를 그쪽으로 던지는 편이 자연스럽다. */
 function findDropZoneUnderDrag(clientX, clientY, ghostElement = noticeSplitDragOverlay) {
     const zones = Array.from(document.querySelectorAll('.split-drop-zone, .compare-empty-slot'))
         .filter(zone => zone.offsetParent !== null || zone.getClientRects().length);
     if (!zones.length) return null;
 
-    const ghost = ghostElement?.getBoundingClientRect();
-    // 분신이 아직 없으면 커서를 아주 작은 사각형으로 본다.
-    const dragRect = ghost && ghost.width
-        ? ghost
-        : { left: clientX, right: clientX + 1, top: clientY, bottom: clientY + 1 };
+    // 놓기 표적은 커서가 직접 올라가 있을 때만 잡는다.
+    const pointed = document.elementFromPoint?.(clientX, clientY)
+        ?.closest?.('.split-drop-zone, .compare-empty-slot');
+    if (pointed) return pointed;
 
+    const ghost = ghostElement?.getBoundingClientRect();
+    if (!ghost || !ghost.width) return null;
+
+    // 남은 것은 버리기뿐이다. 카드가 겹친 넓이가 가장 큰 것을 고른다.
     let best = null;
     let bestArea = 0;
     for (const zone of zones) {
+        if (zone.dataset?.splitSide !== 'trash') continue;
         const rect = zone.getBoundingClientRect();
-        const overlapX = Math.min(dragRect.right, rect.right) - Math.max(dragRect.left, rect.left);
-        const overlapY = Math.min(dragRect.bottom, rect.bottom) - Math.max(dragRect.top, rect.top);
+        const overlapX = Math.min(ghost.right, rect.right) - Math.max(ghost.left, rect.left);
+        const overlapY = Math.min(ghost.bottom, rect.bottom) - Math.max(ghost.top, rect.top);
         if (overlapX <= 0 || overlapY <= 0) continue;
         const area = overlapX * overlapY;
         if (area > bestArea) {
@@ -2950,11 +2968,7 @@ function findDropZoneUnderDrag(clientX, clientY, ghostElement = noticeSplitDragO
             best = zone;
         }
     }
-    // 겹치는 게 없으면 커서가 직접 올라가 있는지 마지막으로 확인한다.
-    return best
-        || document.elementFromPoint?.(clientX, clientY)
-            ?.closest?.('.split-drop-zone, .compare-empty-slot')
-        || null;
+    return best;
 }
 
 function onNoticeHandlePointerEnd(event) {
@@ -3386,14 +3400,67 @@ function clearCompareBlock() {
     renderCompareChange();
 }
 
+/* 더보기·접기.
+   예전에는 누를 때마다 비교 공간을 통째로 다시 그렸다. 글이 길면 그리는 데
+   시간이 걸려 툭 끊긴 느낌이 났고 스크롤 위치도 튀었다. 지금은 다시 그리지
+   않고 해당 블록의 높이만 옮긴다. 높이는 한 번만 재고 나머지는 CSS가 맡는다. */
+const COMPARE_BODY_COLLAPSED_HEIGHT = 440;
+
 function toggleCompareBlockExpansion(idStr) {
     const id = String(idStr);
-    if (expandedCompareBlocks.has(id)) {
-        expandedCompareBlocks.delete(id);
-    } else {
-        expandedCompareBlocks.add(id);
+    const expanding = !expandedCompareBlocks.has(id);
+    if (expanding) expandedCompareBlocks.add(id);
+    else expandedCompareBlocks.delete(id);
+
+    const block = document.querySelector(`.compare-col[data-compare-id="${CSS.escape(id)}"]`);
+    const body = block?.querySelector('.compare-col-body');
+    if (!block || !body) {
+        // 화면에 없으면 예전처럼 다시 그린다.
+        renderCompareSpace(compareBlocks);
+        return;
     }
-    renderCompareSpace(compareBlocks);
+
+    const button = block.querySelector('.compare-col-more');
+    if (button) {
+        button.textContent = expanding ? '접기' : '더보기';
+        button.setAttribute('aria-expanded', expanding ? 'true' : 'false');
+    }
+    animateCompareBodyHeight(block, body, expanding);
+}
+
+function animateCompareBodyHeight(block, body, expanding) {
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+        block.classList.toggle('is-expanded', expanding);
+        body.style.removeProperty('max-height');
+        return;
+    }
+
+    const startHeight = body.getBoundingClientRect().height;
+    // 펼쳤을 때의 실제 높이를 재려면 잠시 제한을 풀어야 한다. 재는 동안에는
+    // 전환을 꺼 두어 중간 상태가 화면에 비치지 않게 한다.
+    body.style.transition = 'none';
+    body.style.maxHeight = 'none';
+    block.classList.toggle('is-expanded', expanding);
+    const endHeight = expanding ? body.scrollHeight : COMPARE_BODY_COLLAPSED_HEIGHT;
+
+    body.style.maxHeight = `${startHeight}px`;
+    body.style.overflow = 'hidden';
+    // 강제로 한 번 읽어 위 값이 시작점으로 굳게 만든다.
+    void body.offsetHeight;
+    body.style.removeProperty('transition');
+
+    requestAnimationFrame(() => {
+        body.style.maxHeight = `${endHeight}px`;
+    });
+
+    const settle = event => {
+        if (event.propertyName !== 'max-height') return;
+        body.removeEventListener('transitionend', settle);
+        // 펼친 뒤에는 제한을 아예 풀어야 내용이 더 늘어나도 잘리지 않는다.
+        body.style.removeProperty('max-height');
+        body.style.removeProperty('overflow');
+    };
+    body.addEventListener('transitionend', settle);
 }
 
 function renderCompareSpace(blockIds = compareBlocks) {

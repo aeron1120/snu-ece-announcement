@@ -774,3 +774,10 @@
     .staging-actions .btn { flex: 1 1 46%; min-height: 44px; }
     .staging-preview img { height: 76px; }
 }
+
+/* 상단 막대의 워드마크. 남색 위에 얹히는 흰색 판이다. */
+.admin-topbar h1 { display: flex; align-items: center; }
+.admin-topbar-mark { display: block; width: auto; height: 26px; -webkit-user-drag: none; }
+@media (max-width: 760px) {
+    .admin-topbar-mark { height: 21px; }
+}
