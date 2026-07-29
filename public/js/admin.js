@@ -16,8 +16,6 @@ let pendingEditNoticeId = null;
 // 클립보드에서 붙여넣은 이미지들(base64 data URL). 파일 첨부와 함께 저장된다.
 let pastedImages = [];
 const MAX_NOTICE_IMAGES = 20;
-// AI 분석이 만든 3줄 요약. 저장 때 재분석 없이 그대로 쓴다.
-let composeAiSummary = [];
 let composeAiCategoryIds = [];
 let composeSurveyReward = '';
 let composeHasReward = false;
@@ -176,7 +174,7 @@ async function enterAdminWorkspace() {
     document.getElementById('admin-mode-exit').textContent = '관리자 모드 나가기';
 
     applyAdminRoleToChrome();
-    restoreSkipVerificationChoice();
+    restoreAiModeChoice();
     // 첫 화면은 그 역할이 실제로 쓸 수 있는 탭이어야 한다.
     selectAdminTab(allowedAdminTabs()[0]);
 
@@ -482,7 +480,7 @@ function applyTitleToBuilder(rawTitle) {
 function resetComposeForm() {
     editingNoticeId = null;
     pastedImages = [];
-    composeAiSummary = [];
+    writeSummaryField([]);
     composeAiCategoryIds = [];
     composeSurveyReward = '';
     composeHasReward = false;
@@ -650,6 +648,20 @@ function normalizeNoticeAnalysisResult(parsed = {}) {
     };
 }
 
+// 3줄 요약은 이 입력칸이 유일한 진실 공급원이다. 한 줄이 요약 한 줄.
+function readSummaryField() {
+    return String(document.getElementById('post-ai-summary')?.value || '')
+        .split('\n')
+        .map(line => line.trim())
+        .filter(Boolean)
+        .slice(0, 3);
+}
+
+function writeSummaryField(lines) {
+    const box = document.getElementById('post-ai-summary');
+    if (box) box.value = (Array.isArray(lines) ? lines : []).join('\n');
+}
+
 // 분석 결과의 categorySlugs를 실제 카테고리 id로 옮긴다. 1차·2차 어느 결과에도 쓴다.
 function withResolvedCategoryIds(analysis) {
     return {
@@ -661,24 +673,57 @@ function withResolvedCategoryIds(analysis) {
     };
 }
 
-// 2차 검수를 생략하면 Gemini 호출이 2회에서 1회로 준다. 할당량이 빠듯할 때 쓴다.
-function skipsVerification() {
-    return document.getElementById('ai-skip-verification')?.checked === true;
+// AI 분석 범위. summary는 폼에 입력란이 없는 항목만 묻는 모드다(입력값 보존은 이후 단계에서 적용).
+const AI_MODES = ['full-verified', 'full', 'summary'];
+
+function currentAiMode() {
+    const value = document.getElementById('ai-mode')?.value;
+    // 선택기가 없거나 모르는 값이면 가장 정확한 모드로 떨어진다.
+    return AI_MODES.includes(value) ? value : 'full-verified';
 }
 
-function onSkipVerificationToggle() {
-    localStorage.setItem('eceAiSkipVerification', skipsVerification() ? '1' : '0');
+function onAiModeChange() {
+    localStorage.setItem('eceAiMode', currentAiMode());
 }
 
-function restoreSkipVerificationChoice() {
-    const box = document.getElementById('ai-skip-verification');
-    if (box) box.checked = localStorage.getItem('eceAiSkipVerification') === '1';
+function restoreAiModeChoice() {
+    const select = document.getElementById('ai-mode');
+    if (!select) return;
+    let stored = localStorage.getItem('eceAiMode');
+    if (!AI_MODES.includes(stored)) {
+        // 체크박스를 쓰던 브라우저의 설정을 한 번만 옮겨온다.
+        stored = localStorage.getItem('eceAiSkipVerification') === '1' ? 'full' : 'full-verified';
+        localStorage.setItem('eceAiMode', stored);
+    }
+    localStorage.removeItem('eceAiSkipVerification');
+    select.value = stored;
+}
+
+// 폼에 입력란이 없는 항목만 요구하는 짧은 프롬프트. 핵심내용·유형·마감일은 묻지 않는다.
+function buildSummaryOnlyPrompt(content) {
+    return `다음 공지 원문을 읽고 JSON만 출력해. 코드블록·설명 없이 JSON 객체 하나만.
+형식: {"summary":["요약1","요약2","요약3"],"categorySlugs":["academic|opportunity|benefit|community 중 핵심 하나"],"hasReward":false,"rewardNote":null,"requiresAction":false}
+- summary는 각 줄 명사형 종결의 3줄 요약.
+- 사진 없는 카드에서 2~3줄로 자연스럽게 나뉘도록, 긴 한 덩어리 대신 의미가 분명한 짧은 어절 묶음으로 작성.
+- 격식적인 보도자료 문체보다 학생이 빠르게 읽는 자연스럽고 캐주얼한 표현을 사용.
+- 물음표 반복, 깨진 문자, 불완전한 조사, 같은 단어 반복을 절대 포함하지 말 것. 원문 글자가 깨졌다면 문맥상 확실한 내용만 한국어로 복원.
+- academic: 수강·학점·졸업·성적·전공진입에 직접 영향.
+- opportunity: 인턴·연구실·모집·공모전·대회·장학·교환 등 참여 기회.
+- benefit: 할인·지원·물품·제휴처럼 놓쳐도 학사상 불이익이 없는 혜택.
+- community: 학생 자치, 학내 행사, 시설·출입·교통 등 공동체와 캠퍼스 생활.
+- categorySlugs는 반드시 핵심 범주 하나만 선택.
+- 신청·제출·응답이 필요하면 requiresAction=true.
+- 상품·기프티콘·사례비·지원금·할인이 확인되면 hasReward=true와 rewardNote를 채움.
+
+원문:
+${content}`;
 }
 
 // 기본은 2단계다. 1차 편집 결과를 그대로 쓰지 않고 2차 독립 검수 에이전트가 원문을
 // 다시 읽어 날짜·금액·인원·학점·기간과 카테고리를 교차 검증한 결과만 최종값으로 쓴다.
-// '2차 검수 생략'을 켜면 1차 결과로 끝내고 Gemini 호출을 2회에서 1회로 줄인다.
+// 'full-verified'가 아닌 모드를 고르면 1차 결과로 끝내고 Gemini 호출을 1회로 줄인다.
 async function runNoticeAnalysis(content, onVerificationStart = null) {
+    const mode = currentAiMode();
     const today = new Date().toISOString().slice(0, 10);
     const prompt = `다음 공지 원문을 분석해서 JSON만 출력해. 코드블록·설명 없이 JSON 객체 하나만.
 형식: {"deadline":"YYYY-MM-DD 또는 빈문자열","subject":"포스터용 핵심 문구 10~28자","type":"${TITLE_KINDS.join('|')} 중 하나","summary":["요약1","요약2","요약3"],"categorySlugs":["academic|opportunity|benefit|community 중 핵심 하나"],"hasReward":false,"rewardNote":null,"requiresAction":false}
@@ -703,11 +748,14 @@ ${content}`;
     const result = await apiRequest('/api/summary', {
         method: 'POST',
         headers: getNoticeAdminHeaders(),
-        body: JSON.stringify({ prompt, model: GEMINI_MODEL })
+        body: JSON.stringify({
+            prompt: mode === 'summary' ? buildSummaryOnlyPrompt(content) : prompt,
+            model: GEMINI_MODEL
+        })
     });
     const draft = normalizeNoticeAnalysisResult(parseAnalysisJson(result?.text || ''));
-    // 생략을 켰으면 여기서 끝낸다. 2차 호출을 아예 하지 않는다.
-    if (skipsVerification()) return withResolvedCategoryIds(draft);
+    // 2차 검수는 full-verified에서만 돈다. 나머지 모드는 여기서 끝난다.
+    if (mode !== 'full-verified') return withResolvedCategoryIds(draft);
     if (typeof onVerificationStart === 'function') onVerificationStart();
 
     const verificationPrompt = `당신은 공지 편집 결과를 독립적으로 재검수하는 검증 에이전트입니다.
@@ -767,11 +815,15 @@ async function analyzeNotice() {
         });
         updateAiProgress(82, '분석 결과를 입력 항목에 정리하고 있습니다.', 'process', 94);
 
-        if (parsed.subject) document.getElementById('title-subject').value = parsed.subject;
-        if (parsed.type) document.getElementById('title-kind').value = parsed.type;
-        aiDeadlineCandidate = parsed.deadline || '';
-        renderAiDeadlineCandidate();
-        composeAiSummary = parsed.summary;
+        // summary 모드는 내가 직접 넣은 값을 덮어쓰지 않는 것이 존재 이유다.
+        const mode = currentAiMode();
+        if (mode !== 'summary') {
+            if (parsed.subject) document.getElementById('title-subject').value = parsed.subject;
+            if (parsed.type) document.getElementById('title-kind').value = parsed.type;
+            aiDeadlineCandidate = parsed.deadline || '';
+            renderAiDeadlineCandidate();
+        }
+        writeSummaryField(parsed.summary);
         composeAiCategoryIds = parsed.categoryIds;
         composeSurveyReward = parsed.surveyReward;
         composeHasReward = parsed.hasReward;
@@ -783,13 +835,18 @@ async function analyzeNotice() {
         document.getElementById('post-title-manual').classList.remove('is-editable');
         refreshTitlePreview();
 
-        const gotSomething = parsed.subject || parsed.type || parsed.deadline;
-        // 검수를 건너뛴 경우 교차 검증했다고 말하면 안 된다.
-        const doneLabel = skipsVerification()
-            ? 'AI 1단계 분석 완료. 2차 검수를 생략했으니 수치를 직접 확인하세요.'
-            : `AI 2단계 분석 완료.${parsed.verifiedNumbers.length
+        // 모드마다 성공의 기준이 다르다. summary는 요약이 나왔으면 성공이다.
+        const gotSomething = mode === 'summary'
+            ? parsed.summary.length > 0
+            : (parsed.subject || parsed.type || parsed.deadline);
+        // 하지 않은 교차 검증을 했다고 말하지 않는다.
+        const doneLabel = {
+            'full-verified': `AI 2단계 분석 완료.${parsed.verifiedNumbers.length
                 ? ` 주요 수치 ${parsed.verifiedNumbers.length}건을 교차 검증했습니다.`
-                : ' 수치와 카테고리 교차 검증을 완료했습니다.'} 값을 확인하고 필요하면 직접 고치세요.`;
+                : ' 수치와 카테고리 교차 검증을 완료했습니다.'} 값을 확인하고 필요하면 직접 고치세요.`,
+            full: 'AI 1단계 분석 완료. 2차 검수를 생략했으니 수치를 직접 확인하세요.',
+            summary: '요약·카테고리·리워드만 채웠습니다. 핵심 내용과 유형은 입력하신 값 그대로입니다.'
+        }[mode];
         setStatus(gotSomething
             ? doneLabel
             : 'AI가 값을 추출하지 못했습니다. 직접 입력해주세요.', !gotSomething);
@@ -1231,11 +1288,12 @@ async function generateAIAndSave() {
 
     beginAiProgress('공지 저장 준비를 시작합니다.');
     try {
-        // 3줄 요약은 원문 분석 때 함께 만든다. 분석을 안 눌렀고 원문이 바뀌었으면
-        // 저장 직전에 한 번 분석해서 요약을 채운다(별도 요약 전용 호출은 없다).
-        if (composeAiSummary.length > 0) {
-            updateAiProgress(42, '앞서 만든 Gemini 분석 결과를 확인하고 있습니다.', 'analyze', 58);
-            aiSummary = composeAiSummary;
+        // 요약칸에 이미 내용이 있으면 그게 정답이다. AI가 채웠든 직접 썼든 다시 묻지 않는다.
+        // 비어 있고 원문이 바뀌었을 때만 선택된 모드로 한 번 분석한다.
+        const typedSummary = readSummaryField();
+        if (typedSummary.length > 0) {
+            updateAiProgress(42, '입력된 3줄 요약을 그대로 사용합니다.', 'analyze', 58);
+            aiSummary = typedSummary;
             categoryIds = composeAiCategoryIds;
             surveyReward = composeSurveyReward;
             hasReward = composeHasReward;
@@ -1245,6 +1303,8 @@ async function generateAIAndSave() {
             try {
                 const analysis = await runNoticeAnalysis(content);
                 aiSummary = analysis.summary;
+                // 방금 만든 요약을 칸에도 채워, 저장된 값이 무엇인지 눈으로 확인되게 한다.
+                writeSummaryField(analysis.summary);
                 categoryIds = analysis.categoryIds;
                 surveyReward = analysis.surveyReward;
                 hasReward = analysis.hasReward;
@@ -1418,6 +1478,7 @@ function renderAdminNoticeList() {
                         · 조회 ${Number(notice.views) || 0}
                         ${notice.isHidden ? ' · 숨김' : ''}
                         ${(notice.aiSummary || []).length === 0 ? ' · <strong>AI 요약 없음</strong>' : ''}
+                        ${(notice.categoryIds || []).length === 0 ? ' · <strong>카테고리 없음</strong>' : ''}
                     </span>
                 </div>
                 <div class="admin-notice-row-actions">
@@ -1485,9 +1546,9 @@ async function editAdminNotice(id) {
     }
 
     editingNoticeId = notice.id;
-    // 새 붙여넣기 이미지·분석 요약은 초기화한다. 아무것도 바꾸지 않으면 기존 값이 유지된다.
+    // 새 붙여넣기 이미지는 초기화하고, 저장돼 있던 요약은 칸에 되살려 고칠 수 있게 한다.
     pastedImages = [];
-    composeAiSummary = [];
+    writeSummaryField(notice.aiSummary || []);
     composeAiCategoryIds = [];
     composeSurveyReward = '';
     composeHasReward = false;
