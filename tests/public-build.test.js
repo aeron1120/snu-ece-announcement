@@ -800,6 +800,16 @@ test('the three-line summary is an editable field that drives the save', async (
     assert.match(readNamedFunction(admin, 'editAdminNotice'), /writeSummaryField\(notice\.aiSummary/);
 });
 
+test('the admin list flags notices missing a summary or a category', async () => {
+    const admin = await readFile('js/admin.js', 'utf8');
+    const source = readNamedFunction(admin, 'renderAdminNoticeList');
+
+    // 카테고리가 없으면 공개 화면의 카테고리 탭 어디에도 안 뜬다. 목록에서 보여야 한다.
+    assert.match(source, /AI 요약 없음/);
+    assert.match(source, /카테고리 없음/);
+    assert.match(source, /notice\.categoryIds \|\| \[\]/);
+});
+
 test('admin AI work shows progress while login is isolated in a server-session page', async () => {
     const html = await readFile('admin.html', 'utf8');
     const loginHtml = await readFile('admin-login.html', 'utf8');

@@ -1478,6 +1478,7 @@ function renderAdminNoticeList() {
                         · 조회 ${Number(notice.views) || 0}
                         ${notice.isHidden ? ' · 숨김' : ''}
                         ${(notice.aiSummary || []).length === 0 ? ' · <strong>AI 요약 없음</strong>' : ''}
+                        ${(notice.categoryIds || []).length === 0 ? ' · <strong>카테고리 없음</strong>' : ''}
                     </span>
                 </div>
                 <div class="admin-notice-row-actions">
