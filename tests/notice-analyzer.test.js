@@ -106,3 +106,74 @@ test('analyzer fails after two invalid model responses', async () => {
         NoticeAnalysisError
     );
 });
+
+test('verification retries with a correction before giving up', async () => {
+    // 분석은 스키마를 못 맞추면 교정 프롬프트로 한 번 더 묻는데 2차 검수만
+    // 단발이었다. 모델 출력은 확률적이라 한 번의 흔들림이 곧 분석 실패였다.
+    const good = JSON.stringify({
+        summary: ['핵심'],
+        deadline: null,
+        targets: ['전체'],
+        keywords: ['수강'],
+        existingCategoryIds: [2],
+        confidence: 0.9
+    });
+    const bodies = [];
+    const replies = [good, '{"summary": []}', good];
+    const analyzer = createNoticeAnalyzer({
+        apiKey: 'test-key',
+        fetchImpl: async (url, options) => {
+            bodies.push(JSON.parse(options.body).contents[0].parts[0].text);
+            return {
+                ok: true,
+                json: async () => ({
+                    candidates: [{ content: { parts: [{ text: replies.shift() }] } }]
+                })
+            };
+        },
+        categoryProvider: async () => [{ id: 2, key: 'ACADEMIC', name: '학사' }]
+    });
+
+    const result = await analyzer.analyzeNotice({ title: '제목', content: '본문' });
+
+    assert.deepEqual(result.summary, ['핵심']);
+    // 분석 1회 + 검수 2회.
+    assert.equal(bodies.length, 3);
+    assert.match(bodies[2], /이전 응답이 스키마를 만족하지 못했습니다/);
+});
+
+test('a schema failure names the rule that broke', async () => {
+    // "did not satisfy the required schema"만으로는 어느 항목이 문제인지
+    // 알 수 없어 운영자가 손쓸 수 없다.
+    const analyzer = createNoticeAnalyzer({
+        apiKey: 'test-key',
+        fetchImpl: async () => ({
+            ok: true,
+            json: async () => ({
+                candidates: [{
+                    content: {
+                        parts: [{
+                            text: JSON.stringify({
+                                summary: ['핵심'],
+                                deadline: '다음 주',
+                                targets: ['전체'],
+                                keywords: [],
+                                existingCategoryIds: [],
+                                confidence: 0.5
+                            })
+                        }]
+                    }
+                }]
+            })
+        }),
+        categoryProvider: async () => []
+    });
+
+    await assert.rejects(
+        analyzer.analyzeNotice({ title: '제목', content: '본문' }),
+        error => {
+            assert.match(error.message, /deadline/);
+            return true;
+        }
+    );
+});

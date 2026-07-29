@@ -78,13 +78,16 @@ export function validateNoticeAnalysis(value, activeCategoryIds = new Set()) {
     };
 }
 
-function buildVerificationPrompt({ title, content, categories, draft }) {
+function buildVerificationPrompt({ title, content, categories, draft, correction }) {
     const categoryList = categories.length > 0
         ? categories.map(category =>
             `${category.id}: ${category.name} — ${category.definition || '이름의 의미를 엄격하게 적용'}`
         ).join('\n')
         : '없음';
-    return `당신은 공지 분석 결과를 독립적으로 재검수하는 두 번째 에이전트입니다.
+    const correctionText = correction
+        ? '이전 응답이 스키마를 만족하지 못했습니다. 설명 없이 올바른 JSON만 다시 출력하세요.\n\n'
+        : '';
+    return `${correctionText}당신은 공지 분석 결과를 독립적으로 재검수하는 두 번째 에이전트입니다.
 원문을 처음부터 다시 읽고 1차 결과의 날짜·시각·금액·인원·학점·기간·비율·연락처와 카테고리를 대조하세요.
 1차 결과는 틀릴 수 있으므로 그대로 승인하지 말고, 잘못된 항목을 고친 최종 JSON 하나만 출력하세요.
 
@@ -123,6 +126,13 @@ ${String(content || '').slice(0, 30000)}
 
 1차 분석:
 ${JSON.stringify(draft)}`.trim();
+}
+
+/* 어느 규칙이 깨졌는지까지 남긴다. "스키마를 만족하지 못했다"만으로는
+   운영자가 손쓸 수 없고, 크롤러 로그에도 단서가 남지 않는다. */
+function describeCause(error) {
+    const message = String(error?.message || '').trim();
+    return message || 'reason unknown';
 }
 
 function parseModelJson(text) {
@@ -254,34 +264,42 @@ export function createNoticeAnalyzer({
 
             if (!draft) {
                 throw new NoticeAnalysisError(
-                    'Gemini analysis did not satisfy the required schema',
+                    `Gemini analysis did not satisfy the required schema: ${describeCause(lastError)}`,
                     { cause: lastError }
                 );
             }
 
-            try {
-                const verificationPrompt = buildVerificationPrompt({
-                    title,
-                    content,
-                    categories,
-                    draft
-                });
-                const verified = validateNoticeAnalysis(
-                    parseModelJson(await generate(verificationPrompt)),
-                    activeCategoryIds
-                );
-                return {
-                    ...verified,
-                    category: categories.find(item =>
-                        Number(item.id) === Number(verified.existingCategoryIds[0])
-                    )?.key || null
-                };
-            } catch (error) {
-                throw new NoticeAnalysisError(
-                    'Gemini verification did not satisfy the required schema',
-                    { cause: error }
-                );
+            // 검수도 분석과 같은 횟수만큼 기회를 준다. 모델 출력은 확률적이라
+            // 한 번의 흔들림으로 분석 전체를 버리면 실패율이 그대로 드러난다.
+            let verificationError;
+            for (let attempt = 0; attempt < 2; attempt += 1) {
+                try {
+                    const verificationPrompt = buildVerificationPrompt({
+                        title,
+                        content,
+                        categories,
+                        draft,
+                        correction: attempt > 0
+                    });
+                    const verified = validateNoticeAnalysis(
+                        parseModelJson(await generate(verificationPrompt)),
+                        activeCategoryIds
+                    );
+                    return {
+                        ...verified,
+                        category: categories.find(item =>
+                            Number(item.id) === Number(verified.existingCategoryIds[0])
+                        )?.key || null
+                    };
+                } catch (error) {
+                    verificationError = error;
+                }
             }
+
+            throw new NoticeAnalysisError(
+                `Gemini verification did not satisfy the required schema: ${describeCause(verificationError)}`,
+                { cause: verificationError }
+            );
         }
     };
 }
