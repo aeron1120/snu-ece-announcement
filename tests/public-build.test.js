@@ -755,8 +755,9 @@ test('the compose form leads with content/photo/target, then AI fills date/subje
     assert.doesNotMatch(html, /class="panel-help"/);
 });
 
-test('public category tabs keep the four canonical topic categories in order and add the source-based related tab', async () => {
+test('public category tabs keep the four canonical topic categories, with related notices as a filter switch', async () => {
     const app = await readFile('js/core.js', 'utf8');
+    const html = await readFile('index.html', 'utf8');
     const server = await readFile('server/server.js', 'utf8');
     const categoryConfig = await readFile('server/config/notice-categories.js', 'utf8');
     const orderSource = app.match(/const NOTICE_CATEGORY_ORDER = Object\.freeze\(\[[\s\S]*?\]\);/)?.[0] || '';
@@ -766,12 +767,23 @@ test('public category tabs keep the four canonical topic categories in order and
     assert.match(server, /canonicalSlugs[\s\S]*categories\.filter/);
     assert.match(app, /function orderedNoticeCategories/);
 
-    // '관련'은 주제가 아니라 출처로 묶은 칸이라 데이터베이스 카테고리가 아니다.
-    // 목록을 부를 때 출처 조건만 붙으므로 새로 긁어 온 공지가 저절로 들어온다.
-    assert.match(app, /const RELATED_TAB_SLUG = 'related';/);
-    assert.match(app, /source: relatedTabActive \? 'crawled' : '전체'/);
+    /* '관련' 공지는 주제가 아니라 출처로 가른 것이라 카테고리 탭에 세우지
+       않는다. 축이 어긋나 같은 공지가 두 칸에 나오기 때문이다. 상세 필터의
+       스위치로 두되 평소에는 켜 두어 다 보인다. */
+    assert.doesNotMatch(app, /RELATED_TAB_SLUG/);
+    assert.match(app, /let includeRelatedNotices = true;/);
+    assert.match(app, /source: includeRelatedNotices \? '전체' : 'manual'/);
+    assert.match(html, /id="filter-include-related"[\s\S]{0,80}checked/);
+    assert.match(app, /function setRelatedNoticeFilter/);
+    // 끈 상태도 조건을 건 것으로 세어 칩과 결과 건수에 드러난다.
+    assert.match(readNamedFunction(app, 'hasActiveNoticeQuery'), /!includeRelatedNotices/);
     assert.match(server, /allowedSources = new Set\(\['전체', 'crawled', 'manual'\]\)/);
-    assert.match(server, /filters\.source === 'crawled' && !crawled/);
+    assert.match(server, /filters\.source === 'manual' && crawled/);
+
+    // 카테고리 수가 바뀌어도 모바일 탭 간격이 어긋나지 않아야 한다.
+    const mobile = await readFile('css/mobile.css', 'utf8');
+    assert.match(mobile, /\.category-tabs-inner\s*\{[^}]*grid-auto-flow:\s*column;[^}]*grid-auto-columns:\s*minmax\(0, 1fr\)/s);
+    assert.doesNotMatch(mobile, /grid-template-columns:\s*repeat\(5/);
 });
 
 test('manual Gemini analysis saves canonical category ids with the notice', async () => {
@@ -1210,12 +1222,14 @@ test('right-rail banners start randomly, auto-rotate, overlay manual arrows, and
     assert.match(css, /\.rail-ad-stage\s*\{[^}]*width:\s*100%;[^}]*height:\s*100%;[^}]*flex:\s*1 1 auto[^}]*touch-action:\s*pan-y/s);
     assert.match(css, /\.rail-ad-slide\s*\{[^}]*flex:\s*0 0 100%/s);
     assert.match(css, /\.rail-ad-track\s*\{[^}]*display:\s*flex;[^}]*height:\s*100%;[^}]*transition-property:\s*transform/s);
-    // 배너 원본은 잘리지 않고, 남는 자리는 흐린 배경 층이 메운다.
-    assert.match(css, /\.rail-ad-image\s*\{[^}]*height:\s*100%;[^}]*object-fit:\s*contain[^}]*border:\s*0/s);
-    assert.match(css, /\.rail-ad-backdrop\s*\{[^}]*position:\s*absolute;[^}]*background-size:\s*cover;[^}]*filter:\s*blur/s);
-    // 모바일 배너는 16:9 원본이 딱 맞으므로 흐린 배경이 필요 없다.
+    /* 배너는 자리를 남김없이 채운다. 비율을 지켜 통째로 보이게 하면 남는
+       자리가 생기고 그 경계가 테두리처럼 보였다. 권장 비율이 레일과 같으므로
+       잘라 채워도 잘려 나가는 부분이 거의 없고, 어긋난 그림은 등록할 때 경고한다. */
+    assert.match(css, /\.rail-ad-image\s*\{[^}]*height:\s*100%;[^}]*object-fit:\s*cover[^}]*border:\s*0/s);
+    assert.doesNotMatch(css, /rail-ad-backdrop/);
+    assert.doesNotMatch(app, /rail-ad-backdrop/);
+    assert.doesNotMatch(mobileCss, /rail-ad-backdrop/);
     assert.match(mobileCss, /\.rail-ad-stage\s*\{[^}]*aspect-ratio:\s*16\s*\/\s*9/s);
-    assert.match(mobileCss, /\.rail-ad-backdrop\s*\{\s*display:\s*none/s);
     assert.match(css, /\.rail-ad-dot\.is-active/);
     assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
 
@@ -1770,7 +1784,8 @@ test('column counts live in the per-view layers, not in core', async () => {
     assert.doesNotMatch(desktop, /grid-template-columns:\s*repeat\(3/);
     assert.match(mobile, /html\[data-view="mobile"\] \.grid\s*\{[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/s);
     assert.match(mobile, /html\[data-view="mobile"\] \.category-tabs\s*\{[^}]*overflow:\s*hidden/s);
-    assert.match(mobile, /html\[data-view="mobile"\] \.category-tabs-inner\s*\{[^}]*grid-template-columns:\s*repeat\(5,\s*minmax\(0,\s*1fr\)\)/s);
+    // 칸 수를 못 박지 않는다. 카테고리가 늘거나 줄어도 저절로 고르게 나뉜다.
+    assert.match(mobile, /html\[data-view="mobile"\] \.category-tabs-inner\s*\{[^}]*grid-auto-flow:\s*column;[^}]*grid-auto-columns:\s*minmax\(0, 1fr\)/s);
     assert.match(mobile, /@media \(max-width:\s*420px\)[\s\S]*\.category-tabs-inner\s*\{[^}]*width:\s*100%/s);
     assert.match(desktop, /\.spatial-workspace\.is-split\[data-blocks="1"\] \.notice-base-block > \.grid\s*\{[^}]*repeat\(2,/s);
     assert.doesNotMatch(mobile, /\.notice-base-block \.grid,\s*\nhtml\[data-view="mobile"\] \.compare-space-stage/);

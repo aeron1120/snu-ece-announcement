@@ -812,7 +812,7 @@ ${content}`;
 2. 원문에 없는 수치나 조건이 summary에 추가됐으면 삭제하거나 바로잡습니다.
 3. deadline은 실제 신청/제출 마감일일 때만 YYYY-MM-DD로 적고 불명확하면 빈 문자열입니다.
 4. categorySlugs는 academic/opportunity/survey/community 중 핵심 하나만 고릅니다.
-   기회와 설문는 선발이 있느냐로 가릅니다. 붙고 떨어지는 일이 있으면 기회,
+   기회와 설문은 선발이 있느냐로 가릅니다. 붙고 떨어지는 일이 있으면 기회,
    조건만 맞으면 참여로 끝나면 설문입니다.
 5. 신청·제출·응답은 requiresAction, 상품·지원·할인은 hasReward와 rewardNote로 다시 검증합니다.
 
@@ -2633,7 +2633,7 @@ function previewBannerUpload(input, previewId, format = 'desktop') {
             const tooTall = actual < spec.ratio;
             setBannerFormatNote(previewId, 'warn',
                 `${size} · 권장은 ${spec.label} ${spec.recommend}입니다. `
-                + `이대로 올리면 ${tooTall ? '위아래' : '좌우'}가 잘리거나 여백이 생깁니다.`);
+                + `배너는 자리를 꽉 채워 걸리므로 이대로 올리면 ${tooTall ? '위아래' : '좌우'}가 잘립니다.`);
         };
         probe.onerror = () => setBannerFormatNote(previewId, 'error', '이미지를 읽지 못했습니다.');
         probe.src = reader.result;

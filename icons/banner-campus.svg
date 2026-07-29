@@ -1,8 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 2400" role="img" aria-labelledby="t d">
   <title id="t">SNU ECE 캠퍼스 소식 임시 배너</title>
   <desc id="d">남색 바탕에 캠퍼스 소식 안내가 적힌 세로 3대 10 임시 배너</desc>
-  <rect width="720" height="2400" fill="#f4f7fc"/>
-  <rect x="40" y="40" width="640" height="2320" fill="#1f3f8f"/>
+  <rect width="720" height="2400" fill="#1f3f8f"/>
 
   <rect x="96" y="150" width="150" height="46" fill="#ffffff"/>
   <text x="171" y="182" fill="#1f3f8f" font-family="Arial, sans-serif" font-size="22" font-weight="700" text-anchor="middle">NOTICE</text>
