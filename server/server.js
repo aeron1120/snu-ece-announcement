@@ -716,7 +716,7 @@ function normalizeBannerPayload(body = {}) {
     };
 
     if (!PROMO_TYPES.has(payload.type)) {
-        throw new TypeError('학내 홍보 유형은 동아리, 프로젝트, 학생회, 설문조사, 기타 중 하나여야 합니다.');
+        throw new TypeError('학내 홍보 유형은 동아리, 프로젝트, 학생회, 설문, 기타 중 하나여야 합니다.');
     }
     if (!PROMO_STATUSES.has(payload.status)) {
         throw new TypeError('학내 홍보 상태는 승인 대기, 승인, 반려 중 하나여야 합니다.');
@@ -2530,6 +2530,33 @@ async function writeFeedback(items) {
     await fs.writeFile(feedbackFilePath, JSON.stringify(items, null, 2), 'utf-8');
 }
 
+/* 첨부 사진.
+   글로만 적으면 어느 화면의 무엇이 잘못됐는지 알기 어렵다. 화면을 찍어
+   보내면 고치는 쪽에서 훨씬 빨리 알아본다. 사진은 JSON에 담지 않고 파일로
+   따로 두는데, 문의 목록을 읽을 때마다 사진까지 통째로 읽으면 무거워지기
+   때문이다. 배너 신청 이미지와 같은 자리에 같은 방식으로 쌓는다. */
+const FEEDBACK_MAX_SHOTS = 3;
+const FEEDBACK_SHOT_MAX_BYTES = 1_400_000;
+
+function readFeedbackShots(input) {
+    const list = Array.isArray(input) ? input.slice(0, FEEDBACK_MAX_SHOTS) : [];
+    const buffers = [];
+    for (const dataUrl of list) {
+        const value = String(dataUrl || '');
+        if (!/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(value) || value.length > 1_900_000) {
+            throw new TypeError('첨부한 사진을 다시 선택해주세요.');
+        }
+        const buffer = Buffer.from(value.slice(value.indexOf(',') + 1), 'base64');
+        // JPEG는 늘 FF D8 FF로 시작한다. 확장자만 바꾼 파일을 걸러낸다.
+        if (buffer.length === 0 || buffer.length > FEEDBACK_SHOT_MAX_BYTES
+            || buffer[0] !== 0xff || buffer[1] !== 0xd8 || buffer[2] !== 0xff) {
+            throw new TypeError('첨부한 사진 형식을 확인해주세요.');
+        }
+        buffers.push(buffer);
+    }
+    return buffers;
+}
+
 app.post('/api/feedback', async (req, res) => {
     try {
         const message = String(req.body?.message || '').trim();
@@ -2541,12 +2568,31 @@ app.post('/api/feedback', async (req, res) => {
             return res.status(400).json({ error: '피드백은 2000자 이내로 입력해주세요.' });
         }
 
+        let shots;
+        try {
+            shots = readFeedbackShots(req.body?.screenshots);
+        } catch (error) {
+            return res.status(400).json({ error: error.message });
+        }
+
+        const id = crypto.randomUUID();
+        const screenshotFileNames = [];
+        if (shots.length) {
+            await fs.mkdir(bannerInquiryImageDir, { recursive: true });
+            for (const [index, buffer] of shots.entries()) {
+                const fileName = `${id}-shot${index}.jpg`;
+                await fs.writeFile(path.join(bannerInquiryImageDir, fileName), buffer);
+                screenshotFileNames.push(fileName);
+            }
+        }
+
         const items = await readFeedback();
         // 익명성 유지: 작성자를 특정할 수 있는 정보는 어떤 것도 저장하지 않는다.
         items.unshift({
-            id: crypto.randomUUID(),
+            id,
             category,
             message,
+            screenshotFileNames,
             createdAt: new Date().toISOString()
         });
         await writeFeedback(items.slice(0, 1000));
@@ -2722,7 +2768,8 @@ app.get('/api/admin/feedback', requireAnyAdmin, async (req, res) => {
                     || imageDataUrl
                 ),
                 hasDesktopImage: Boolean(item.desktopImageFileName || item.imageFileName || imageDataUrl),
-                hasMobileImage: Boolean(item.mobileImageFileName)
+                hasMobileImage: Boolean(item.mobileImageFileName),
+                screenshotCount: Array.isArray(item.screenshotFileNames) ? item.screenshotFileNames.length : 0
             }))
         });
     } catch (error) {
@@ -2738,10 +2785,15 @@ app.get('/api/admin/feedback/:id/image', requireAnyAdmin, async (req, res) => {
             const legacyBuffer = Buffer.from(item.imageDataUrl.slice(item.imageDataUrl.indexOf(',') + 1), 'base64');
             return res.type('jpeg').send(legacyBuffer);
         }
+        // 문의에 붙은 첨부 사진은 순번으로 고른다.
+        const shotIndex = Number.parseInt(req.query?.shot, 10);
+        const shots = Array.isArray(item?.screenshotFileNames) ? item.screenshotFileNames : [];
         const variant = req.query?.variant === 'mobile' ? 'mobile' : 'desktop';
-        const imageFileName = variant === 'mobile'
-            ? item?.mobileImageFileName
-            : (item?.desktopImageFileName || item?.imageFileName);
+        const imageFileName = Number.isInteger(shotIndex)
+            ? shots[shotIndex]
+            : (variant === 'mobile'
+                ? item?.mobileImageFileName
+                : (item?.desktopImageFileName || item?.imageFileName));
         if (!imageFileName || path.basename(imageFileName) !== imageFileName) {
             return res.status(404).json({ error: '배너 이미지를 찾을 수 없습니다.' });
         }
@@ -2771,7 +2823,10 @@ app.delete('/api/admin/feedback/:id', requireAnyAdmin, async (req, res) => {
         const removableImages = [
             removed?.imageFileName,
             removed?.desktopImageFileName,
-            removed?.mobileImageFileName
+            removed?.mobileImageFileName,
+            // 문의를 지우면 붙어 있던 화면 사진도 함께 지운다. 남겨 두면
+            // 아무도 볼 수 없는 파일이 저장소에 계속 쌓인다.
+            ...(Array.isArray(removed?.screenshotFileNames) ? removed.screenshotFileNames : [])
         ].filter(fileName => fileName && path.basename(fileName) === fileName);
         await Promise.all(removableImages.map(fileName =>
             fs.rm(path.join(bannerInquiryImageDir, fileName), { force: true }).catch(() => {})

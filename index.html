@@ -512,6 +512,23 @@
                       placeholder="개선 의견이나 오류 제보를 적어주세요. (5자 이상)"
                       style="height: 180px;"></textarea>
         </div>
+
+        <!-- 오류는 글로 설명하기 어려울 때가 많다. 화면을 찍어 붙이면
+             어느 자리의 무엇이 잘못됐는지 바로 알아볼 수 있다. -->
+        <div class="feedback-shots">
+            <div class="feedback-shots-head">
+                <label class="feedback-shot-add" for="feedback-shot-input">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true">
+                        <rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="12" cy="12" r="3.2"/>
+                    </svg>
+                    화면 사진 첨부
+                    <input type="file" id="feedback-shot-input" accept="image/png,image/jpeg,image/webp"
+                           multiple onchange="addFeedbackScreenshots(this)">
+                </label>
+                <span class="feedback-shot-hint">최대 3장 · 이름이나 연락처가 찍히지 않았는지 확인해주세요</span>
+            </div>
+            <div class="feedback-shot-list" id="feedback-shot-list"></div>
+        </div>
         <p id="feedback-status" class="review-status" aria-live="polite"></p>
         <div class="review-actions" style="border-top: none; padding-top: 0;">
             <button class="btn" id="feedback-submit" type="button" onclick="submitFeedback()">익명으로 보내기</button>

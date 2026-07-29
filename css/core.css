@@ -2336,3 +2336,52 @@ body.reordering-compare-block .compare-trash-zone {
 
 /* 제목 옆 학교 상징. 데스크탑에서는 mobile-only 규칙이 지운다. */
 .site-title-emblem { display: none; }
+
+/* 익명 피드백에 붙이는 화면 사진. */
+.feedback-shots { margin-bottom: 14px; }
+.feedback-shots-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.feedback-shot-add {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 8px 13px;
+    border: 1px dashed #b9c2d4;
+    border-radius: 8px;
+    color: var(--primary);
+    font-size: 12.5px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease;
+}
+.feedback-shot-add:hover { background: #f1f5fd; border-color: var(--primary); }
+.feedback-shot-add svg { width: 16px; height: 16px; }
+.feedback-shot-add input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+/* 세 장을 다 채우면 더 고를 수 없다는 것을 눈으로 알려준다. */
+.feedback-shot-add.is-full { opacity: .45; pointer-events: none; }
+.feedback-shot-hint { color: var(--text-sub); font-size: 11.5px; }
+.feedback-shot-list { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.feedback-shot { position: relative; width: 84px; height: 84px; margin: 0; }
+.feedback-shot img {
+    width: 100%; height: 100%;
+    object-fit: cover;
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    background: #f5f7fb;
+}
+.feedback-shot-remove {
+    position: absolute;
+    top: -7px; right: -7px;
+    width: 22px; height: 22px;
+    display: grid;
+    place-items: center;
+    border: 0;
+    border-radius: 50%;
+    background: #1f2a3f;
+    color: #fff;
+    font-size: 14px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+/* 관리자 문의함의 첨부 사진 버튼 줄. */
+.admin-feedback-shots { display: flex; gap: 7px; flex-wrap: wrap; margin: 9px 0 0; }

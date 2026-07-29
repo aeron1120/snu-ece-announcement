@@ -629,12 +629,22 @@ test('the contact modal is an anonymous feedback box, not admin contact info', a
     assert.doesNotMatch(html, /data-feedback-category="banner"/);
     assert.match(html, /onclick="submitFeedback\(\)"/);
     assert.match(app, /function submitFeedback/);
-    assert.match(app, /JSON\.stringify\(\{ message, category: activeFeedbackCategory \}\)/);
+    assert.match(app, /message,\s*category: activeFeedbackCategory,\s*screenshots: feedbackShots/);
+
+    /* 오류 제보에 화면 사진을 붙일 수 있다. 원본을 그대로 보내면 저장소가
+       금세 차므로 긴 변을 줄여 JPEG으로 다시 그려 보낸다. 사진은 JSON이 아니라
+       파일로 따로 쌓고, 문의를 지우면 함께 지운다. */
+    assert.match(app, /FEEDBACK_MAX_SHOTS = 3/);
+    assert.match(app, /canvas\.toDataURL\('image\/jpeg'/);
+    assert.match(html, /id="feedback-shot-input"/);
+    assert.match(server, /const FEEDBACK_SHOT_MAX_BYTES/);
+    assert.match(server, /data:image.{0,4}jpeg;base64/);
+    assert.match(server, /screenshotFileNames\.push\(fileName\)/);
+    assert.match(server, /\.\.\.\(Array\.isArray\(removed\?\.screenshotFileNames\)/);
     assert.match(app, /\/api\/feedback/);
     // 서버는 신원을 저장하지 않고 메시지만 받는다.
     assert.match(server, /app\.post\('\/api\/feedback'/);
     assert.match(server, /app\.get\('\/api\/admin\/feedback'/);
-    assert.match(server, /id:\s*crypto\.randomUUID\(\),\s*category,/s);
     assert.match(adminHtml, /data-feedback-filter="general"/);
     assert.doesNotMatch(adminHtml, /data-feedback-filter="banner"/);
     assert.match(adminHtml, /id="banner-inquiry-admin-list"/);
@@ -643,6 +653,8 @@ test('the contact modal is an anonymous feedback box, not admin contact info', a
     // 익명성: 피드백 저장 객체에 IP·이름 등 식별자가 없어야 한다.
     const feedbackRoute = server.slice(server.indexOf("app.post('/api/feedback'"), server.indexOf("app.get('/api/admin/feedback'"));
     assert.doesNotMatch(feedbackRoute, /req\.ip|x-forwarded-for|headers\['user-agent'\]/i);
+    // 저장하는 항목은 문의 자체에 관한 것뿐이다. 사진을 붙여도 마찬가지다.
+    assert.match(feedbackRoute, /id,\s*category,\s*message,\s*screenshotFileNames,\s*createdAt/s);
 });
 
 test('AI summaries keep reporting support without a permanent mismatch prompt', async () => {

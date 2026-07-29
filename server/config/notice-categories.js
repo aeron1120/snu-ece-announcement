@@ -14,7 +14,7 @@ export const CANONICAL_NOTICE_CATEGORIES = Object.freeze([
     }),
     Object.freeze({
         key: 'SURVEY',
-        name: '설문조사',
+        name: '설문',
         slug: 'survey',
         // 선발이 없다. 조건만 맞으면 참여해 응답하는 것으로 끝난다.
         // 기프티콘 같은 사례비는 딸린 조건일 뿐 분류 기준이 아니다.

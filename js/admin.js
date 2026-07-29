@@ -812,8 +812,8 @@ ${content}`;
 2. 원문에 없는 수치나 조건이 summary에 추가됐으면 삭제하거나 바로잡습니다.
 3. deadline은 실제 신청/제출 마감일일 때만 YYYY-MM-DD로 적고 불명확하면 빈 문자열입니다.
 4. categorySlugs는 academic/opportunity/survey/community 중 핵심 하나만 고릅니다.
-   기회와 설문조사는 선발이 있느냐로 가릅니다. 붙고 떨어지는 일이 있으면 기회,
-   조건만 맞으면 참여로 끝나면 설문조사입니다.
+   기회와 설문는 선발이 있느냐로 가릅니다. 붙고 떨어지는 일이 있으면 기회,
+   조건만 맞으면 참여로 끝나면 설문입니다.
 5. 신청·제출·응답은 requiresAction, 상품·지원·할인은 hasReward와 rewardNote로 다시 검증합니다.
 
 출력 형식:
@@ -1003,6 +1003,14 @@ function renderAdminFeedback() {
                         : '일반 문의'}</span>
                     ${isSummaryMismatch ? `<p class="admin-feedback-notice"><strong>${escapeHtml(item.noticeTitle || '제목 없음')}</strong><br><span>공지 ID ${escapeHtml(item.noticeId || '')}</span></p>` : ''}
                     <p class="admin-feedback-msg">${escapeHtml(item.message)}</p>
+                    ${Number(item.screenshotCount) > 0 ? `
+                        <div class="admin-feedback-shots">
+                            ${Array.from({ length: Number(item.screenshotCount) }, (unused, index) => `
+                                <button class="btn btn-outline btn-small" type="button"
+                                        onclick="openFeedbackScreenshot('${escapeHtml(item.id)}', ${index})">첨부 사진 ${index + 1}</button>
+                            `).join('')}
+                        </div>
+                    ` : ''}
                     ${inquiry ? `
                         <dl class="banner-inquiry-details">
                             <div><dt>신청자</dt><dd>${escapeHtml(inquiry.name)} · ${escapeHtml(inquiry.organization)}</dd></div>
@@ -1249,11 +1257,26 @@ function focusBannerSlide(id) {
     window.setTimeout(() => element.classList.remove('is-highlighted'), 1400);
 }
 
+/* 문의에 붙은 화면 사진 열기. 배너 이미지와 같은 창을 쓰되 주소만 다르다. */
+function openFeedbackScreenshot(id, index) {
+    return openInquiryImageWindow(
+        `/api/admin/feedback/${encodeURIComponent(id)}/image?shot=${encodeURIComponent(index)}`,
+        `첨부 사진 ${Number(index) + 1}`
+    );
+}
+
 async function openBannerInquiryImage(id, variant = 'desktop') {
+    return openInquiryImageWindow(
+        `/api/admin/feedback/${encodeURIComponent(id)}/image?variant=${encodeURIComponent(variant)}`,
+        variant === 'mobile' ? '모바일 배너 이미지' : '데스크탑 배너 이미지'
+    );
+}
+
+async function openInquiryImageWindow(apiPath, title) {
     const previewWindow = window.open('', '_blank');
     if (previewWindow) previewWindow.opener = null;
     try {
-        const response = await fetch(buildApiUrl(`/api/admin/feedback/${encodeURIComponent(id)}/image?variant=${encodeURIComponent(variant)}`), {
+        const response = await fetch(buildApiUrl(apiPath), {
             method: 'GET',
             headers: getNoticeAdminHeaders()
         });
@@ -1263,11 +1286,11 @@ async function openBannerInquiryImage(id, variant = 'desktop') {
         }
         const imageUrl = URL.createObjectURL(await response.blob());
         if (previewWindow) {
-            previewWindow.document.title = variant === 'mobile' ? '모바일 배너 이미지' : '데스크탑 배너 이미지';
+            previewWindow.document.title = title;
             previewWindow.document.body.style.cssText = 'margin:0;display:grid;min-height:100vh;place-items:center;background:#111827';
             const image = previewWindow.document.createElement('img');
             image.src = imageUrl;
-            image.alt = variant === 'mobile' ? '제출된 모바일 배너 이미지' : '제출된 데스크탑 배너 이미지';
+            image.alt = `제출된 ${title}`;
             image.style.cssText = 'display:block;max-width:96vw;max-height:96vh;object-fit:contain';
             previewWindow.addEventListener('beforeunload', () => URL.revokeObjectURL(imageUrl), { once: true });
             previewWindow.document.body.appendChild(image);
@@ -2392,7 +2415,7 @@ function renderBannerSection(placement, title) {
                         <span>홍보 유형</span>
                         <select class="banner-input-type-${safeId}">
                             <option value="club" ${slide.type === 'club' ? 'selected' : ''}>동아리</option>
-                            <option value="survey" ${slide.type === 'survey' ? 'selected' : ''}>설문조사</option>
+                            <option value="survey" ${slide.type === 'survey' ? 'selected' : ''}>설문</option>
                             <option value="etc" ${slide.type === 'etc' ? 'selected' : ''}>기타</option>
                             <option value="project" ${slide.type === 'project' ? 'selected' : ''}>프로젝트</option>
                             <option value="council" ${slide.type === 'council' ? 'selected' : ''}>학생회</option>
@@ -2492,7 +2515,7 @@ function renderBannerSection(placement, title) {
                     <span>홍보 유형</span>
                     <select id="new-right_rail-type" ${isAtLimit ? 'disabled' : ''}>
                         <option value="club">동아리</option>
-                        <option value="survey">설문조사</option>
+                        <option value="survey">설문</option>
                         <option value="etc">기타</option>
                         <option value="project">프로젝트</option>
                         <option value="council">학생회</option>

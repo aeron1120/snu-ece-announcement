@@ -1664,6 +1664,84 @@ function setFeedbackCategory(category) {
 }
 
 // 익명 피드백 전송. 서버는 메시지와 시각만 저장하고 신원은 남기지 않는다.
+/* 첨부할 화면 사진.
+
+   원본을 그대로 보내면 요즘 휴대폰 사진 한 장이 몇 MB라 익명 문의 하나가
+   서버 저장소를 크게 잡아먹는다. 긴 변을 1600px로 줄이고 JPEG으로 다시
+   그려 보낸다. 글씨를 읽을 수 있을 만큼은 남으면서 크기는 크게 준다. */
+const FEEDBACK_MAX_SHOTS = 3;
+const FEEDBACK_SHOT_MAX_EDGE = 1600;
+let feedbackShots = [];
+
+function readImageFile(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+            const image = new Image();
+            image.onload = () => resolve(image);
+            image.onerror = () => reject(new Error('이미지를 읽지 못했습니다.'));
+            image.src = reader.result;
+        };
+        reader.onerror = () => reject(new Error('파일을 읽지 못했습니다.'));
+        reader.readAsDataURL(file);
+    });
+}
+
+async function shrinkToJpeg(file) {
+    const image = await readImageFile(file);
+    const scale = Math.min(1, FEEDBACK_SHOT_MAX_EDGE / Math.max(image.width, image.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(image.width * scale));
+    canvas.height = Math.max(1, Math.round(image.height * scale));
+    const context = canvas.getContext('2d');
+    // 투명한 부분이 검게 나오지 않도록 흰 바탕을 먼저 깐다.
+    context.fillStyle = '#ffffff';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL('image/jpeg', 0.82);
+}
+
+async function addFeedbackScreenshots(input) {
+    const files = Array.from(input?.files || []);
+    input.value = '';
+    if (!files.length) return;
+
+    const status = document.getElementById('feedback-status');
+    const room = FEEDBACK_MAX_SHOTS - feedbackShots.length;
+    if (room <= 0) {
+        if (status) status.textContent = `사진은 ${FEEDBACK_MAX_SHOTS}장까지 붙일 수 있습니다.`;
+        return;
+    }
+    for (const file of files.slice(0, room)) {
+        if (!/^image\//.test(file.type)) continue;
+        try {
+            feedbackShots.push(await shrinkToJpeg(file));
+        } catch {
+            if (status) status.textContent = '읽지 못한 사진이 있어 건너뛰었습니다.';
+        }
+    }
+    renderFeedbackShots();
+}
+
+function removeFeedbackScreenshot(index) {
+    feedbackShots.splice(index, 1);
+    renderFeedbackShots();
+}
+
+function renderFeedbackShots() {
+    const list = document.getElementById('feedback-shot-list');
+    if (!list) return;
+    list.innerHTML = feedbackShots.map((dataUrl, index) => `
+        <figure class="feedback-shot">
+            <img src="${escapeHtml(dataUrl)}" alt="첨부한 화면 사진 ${index + 1}">
+            <button type="button" class="feedback-shot-remove" aria-label="${index + 1}번째 사진 빼기"
+                    onclick="removeFeedbackScreenshot(${index})">×</button>
+        </figure>
+    `).join('');
+    const add = document.getElementById('feedback-shot-input')?.closest('.feedback-shot-add');
+    if (add) add.classList.toggle('is-full', feedbackShots.length >= FEEDBACK_MAX_SHOTS);
+}
+
 async function submitFeedback() {
     const input = document.getElementById('feedback-message');
     const status = document.getElementById('feedback-status');
@@ -1687,9 +1765,15 @@ async function submitFeedback() {
     try {
         await apiRequest('/api/feedback', {
             method: 'POST',
-            body: JSON.stringify({ message, category: activeFeedbackCategory })
+            body: JSON.stringify({
+                message,
+                category: activeFeedbackCategory,
+                screenshots: feedbackShots
+            })
         });
         input.value = '';
+        feedbackShots = [];
+        renderFeedbackShots();
         setStatus('보내주셔서 감사합니다. 익명으로 전달되었습니다.');
     } catch (error) {
         setStatus(error.message || '전송에 실패했습니다. 잠시 후 다시 시도해주세요.', true);
@@ -1909,7 +1993,7 @@ const LEGACY_CATEGORY_REDIRECTS = Object.freeze({
     'benefits-partnerships': 'community',
     campus: 'community',
     governance: 'community',
-    // 옛 '혜택' 칸은 없앴다. 그 자리에 설문조사가 들어왔고, 제휴·할인은 행사로 갔다.
+    // 옛 '혜택' 칸은 없앴다. 그 자리에 설문가 들어왔고, 제휴·할인은 행사로 갔다.
     benefit: 'community',
     expired: 'all'
 });
@@ -1958,7 +2042,7 @@ function selectCategoryTab(value) {
 }
 
 /* 기본 정렬.
-   마감이 있어야 뜻이 있는 칸만 마감임박순으로 연다. 기회와 설문조사가
+   마감이 있어야 뜻이 있는 칸만 마감임박순으로 연다. 기회와 설문가
    그렇다. 학사·행사는 언제 올라왔는지가 중요하고, '관련'은 학부 홈페이지에
    실린 차례 그대로 보는 편이 자연스러워 최신순으로 둔다. */
 function getDefaultSortForCategory(value = 'all') {
