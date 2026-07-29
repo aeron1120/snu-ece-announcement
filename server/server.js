@@ -918,6 +918,69 @@ function toClientSettings(settings) {
     };
 }
 
+/* Supabase 행과 설정 객체를 옮기는 자리. 역할별 해시를 한 곳에서 다뤄야
+   저장할 때와 읽을 때가 어긋나지 않는다. 예전 행에는 해시 열이 없고 배너
+   비밀번호가 평문으로만 있으므로, 파일 저장소와 똑같이 그 값을 해시로 옮겨
+   읽어 기존 비밀번호가 계속 통하게 한다. */
+function securitySettingsFromRow(data = {}) {
+    const bannerPassword = String(data.banner_password || defaultSecuritySettings.bannerPassword);
+    return {
+        adminInfo: {
+            name: String(data.admin_name || defaultAdminInfo.name),
+            phone: String(data.admin_phone || defaultAdminInfo.phone),
+            kakao: String(data.admin_kakao || defaultAdminInfo.kakao)
+        },
+        bannerInfo: {
+            name: String(data.banner_admin_name || defaultBannerInfo.name),
+            phone: String(data.banner_admin_phone || defaultBannerInfo.phone),
+            kakao: String(data.banner_admin_kakao || defaultBannerInfo.kakao)
+        },
+        bannerPassword,
+        adminTokenHash: String(data.admin_token_hash || defaultSecuritySettings.adminTokenHash),
+        bannerTokenHash: String(
+            data.banner_token_hash
+            || (data.banner_password ? hashToken(data.banner_password) : '')
+            || defaultSecuritySettings.bannerTokenHash
+        ),
+        masterTokenHash: String(data.master_token_hash || defaultSecuritySettings.masterTokenHash)
+    };
+}
+
+/* 스키마 적용과 배포의 순서는 보장되지 않는다. 새 열이 아직 없는 DB에
+   그대로 쓰면 upsert가 통째로 실패해, 비밀번호를 되돌릴 설정 화면까지 막힌다.
+   그래서 있는 열만으로 한 번 더 시도한다. */
+const SECURITY_SETTINGS_ADDED_COLUMNS = Object.freeze(['banner_token_hash', 'master_token_hash']);
+
+function legacySecuritySettingsRow(row) {
+    const legacy = { ...row };
+    for (const column of SECURITY_SETTINGS_ADDED_COLUMNS) delete legacy[column];
+    return legacy;
+}
+
+function isMissingColumnError(error) {
+    if (!error) return false;
+    if (error.code === 'PGRST204') return true;
+    const message = String(error.message || '');
+    return SECURITY_SETTINGS_ADDED_COLUMNS.some(column => message.includes(column));
+}
+
+function securitySettingsToRow(normalized) {
+    return {
+        id: 1,
+        admin_name: normalized.adminInfo.name,
+        admin_phone: normalized.adminInfo.phone,
+        admin_kakao: normalized.adminInfo.kakao,
+        banner_admin_name: normalized.bannerInfo.name,
+        banner_admin_phone: normalized.bannerInfo.phone,
+        banner_admin_kakao: normalized.bannerInfo.kakao,
+        banner_password: normalized.bannerPassword,
+        admin_token_hash: normalized.adminTokenHash,
+        banner_token_hash: normalized.bannerTokenHash,
+        master_token_hash: normalized.masterTokenHash,
+        updated_at: new Date().toISOString()
+    };
+}
+
 async function getSecuritySettings() {
     if (!useSupabase) {
         return readSettingsFile();
@@ -935,7 +998,9 @@ async function getSecuritySettings() {
                 adminInfo: { ...defaultAdminInfo },
                 bannerInfo: { ...defaultBannerInfo },
                 bannerPassword: defaultSecuritySettings.bannerPassword,
-                adminTokenHash: defaultSecuritySettings.adminTokenHash
+                adminTokenHash: defaultSecuritySettings.adminTokenHash,
+                bannerTokenHash: defaultSecuritySettings.bannerTokenHash,
+                masterTokenHash: defaultSecuritySettings.masterTokenHash
             };
             await saveSecuritySettings(seeded);
             return seeded;
@@ -943,20 +1008,7 @@ async function getSecuritySettings() {
         throw error;
     }
 
-    return {
-        adminInfo: {
-            name: String(data.admin_name || defaultAdminInfo.name),
-            phone: String(data.admin_phone || defaultAdminInfo.phone),
-            kakao: String(data.admin_kakao || defaultAdminInfo.kakao)
-        },
-        bannerInfo: {
-            name: String(data.banner_admin_name || defaultBannerInfo.name),
-            phone: String(data.banner_admin_phone || defaultBannerInfo.phone),
-            kakao: String(data.banner_admin_kakao || defaultBannerInfo.kakao)
-        },
-        bannerPassword: String(data.banner_password || defaultSecuritySettings.bannerPassword),
-        adminTokenHash: String(data.admin_token_hash || defaultSecuritySettings.adminTokenHash)
-    };
+    return securitySettingsFromRow(data);
 }
 
 async function saveSecuritySettings(settings) {
@@ -974,18 +1026,15 @@ async function saveSecuritySettings(settings) {
         return normalized;
     }
 
-    const { error } = await supabase.from(SUPABASE_SETTINGS_TABLE).upsert({
-        id: 1,
-        admin_name: normalized.adminInfo.name,
-        admin_phone: normalized.adminInfo.phone,
-        admin_kakao: normalized.adminInfo.kakao,
-        banner_admin_name: normalized.bannerInfo.name,
-        banner_admin_phone: normalized.bannerInfo.phone,
-        banner_admin_kakao: normalized.bannerInfo.kakao,
-        banner_password: normalized.bannerPassword,
-        admin_token_hash: normalized.adminTokenHash,
-        updated_at: new Date().toISOString()
-    });
+    const row = securitySettingsToRow(normalized);
+    let { error } = await supabase.from(SUPABASE_SETTINGS_TABLE).upsert(row);
+
+    if (isMissingColumnError(error)) {
+        console.warn('app_settings에 역할별 해시 열이 없습니다. server/sql/supabase-schema.sql을 적용하세요.');
+        ({ error } = await supabase
+            .from(SUPABASE_SETTINGS_TABLE)
+            .upsert(legacySecuritySettingsRow(row)));
+    }
 
     if (error) {
         throw error;
@@ -3225,6 +3274,9 @@ export {
     isBannerExpiryActive,
     listBannerSlides,
     listImminentDeadlineNotices,
+    legacySecuritySettingsRow,
+    securitySettingsFromRow,
+    securitySettingsToRow,
     normalizeNoticeListFilters,
     normalizeBannerPayload,
     toNoticeSummary,
