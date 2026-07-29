@@ -79,9 +79,19 @@ key from the stored URL instead.
 
 ## Deletion
 
-`DELETE /api/notices/:id` reads the notice's `images` before removing the row
-and deletes any entry that points into the bucket. Entries that are data URLs or
+`DELETE /api/notices/:id` is a soft delete: `softDeleteNotice` sets `is_deleted`
+and leaves the row in place. The route reads the notice's `images` first and
+deletes any entry that points into the bucket. Entries that are data URLs or
 belong to another host are ignored.
+
+Removing the files makes that soft delete irreversible for photographs, where
+today a row could in principle be revived with SQL. That is an accepted trade:
+there is no restore anywhere in the product — the administrator console never
+reads `is_deleted` and offers no way back — so a deleted notice is already gone
+as far as anyone using the site is concerned. Keeping the files instead would
+leave objects nobody can reach through the UI and nobody will ever clean up,
+still served to anyone holding the URL, which is precisely the exposure a public
+bucket obliges us to close.
 
 A failed file deletion is logged and does not abort the request. An orphaned
 object wastes storage; a notice that refuses to delete blocks the
@@ -122,8 +132,8 @@ and notices keep their Base64 images. Nothing else branches.
 - A data URL becomes a Storage URL in the saved payload.
 - An existing Storage URL passes through without a second upload.
 - Every entry passes through unchanged when Supabase is not configured.
-- Deleting a notice removes its bucket objects and ignores data URLs.
-- A failed object deletion still deletes the notice.
+- Soft-deleting a notice removes its bucket objects and ignores data URLs.
+- A failed object deletion still soft-deletes the notice.
 - The thumbnail service accepts both a data URL and a Supabase URL.
 - The thumbnail service refuses a URL on any other host.
 - The existing suite continues to pass.
