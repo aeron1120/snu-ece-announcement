@@ -8,10 +8,11 @@ photos by hand, but the save path still asks Gemini to re-derive the subject,
 notice type, and deadline, then overwrites the manually entered fields with its
 own answers.
 
-Of everything the analysis produces, only the three-line summary and the topic
-category have no manual input at all. The summary is also the field the
-administrator values most. Everything else is either already typed in or
-unwanted.
+The analysis output splits cleanly in two. The three-line summary, the topic
+category, the reward badge, and the action flag have no input anywhere in the
+compose form, so only the model can supply them. The subject, notice type, and
+deadline all have fields the administrator already filled in. The summary is
+also the output the administrator values most.
 
 The existing quota control is a single "skip the second pass" checkbox. It halves
 the call count but cannot narrow what the model is asked to produce, so a tight
@@ -20,7 +21,8 @@ quota still buys a full analysis the administrator will partly discard.
 ## Goals
 
 - Let the administrator choose how much work Gemini does, in one visible control.
-- Add a mode that asks only for the three-line summary and the topic category.
+- Add a mode that asks only for the fields the compose form cannot collect: the
+  summary, the category, the reward, and the action flag.
 - Leave the manually entered subject, notice type, and deadline untouched in that
   mode.
 - Show the three-line summary in the compose form and allow direct editing.
@@ -41,11 +43,15 @@ quota still buys a full analysis the administrator will partly discard.
 The `2차 검수 생략` checkbox in `.analyze-bar` is replaced by a single select,
 `#ai-mode`, with three values:
 
-| Value | Label | Gemini calls |
-| --- | --- | --- |
-| `full-verified` | 전체 분석 + 2차 검수 | 2 |
-| `full` | 전체 분석 | 1 |
-| `summary` | 3줄 요약 + 카테고리만 | 1 |
+| Value | Label | Gemini calls | Overwrites typed fields |
+| --- | --- | --- | --- |
+| `full-verified` | 전체 분석 + 2차 검수 | 2 | yes |
+| `full` | 전체 분석 | 1 | yes |
+| `summary` | 요약·카테고리·리워드만 | 1 | no |
+
+`summary` and `full` cost the same single call. They differ only in whether the
+model is allowed to replace the subject, type, and deadline the administrator
+entered.
 
 `full-verified` is the default for a browser that has never chosen a mode.
 
@@ -56,15 +62,17 @@ migration does not run again.
 
 ## Summary-Only Prompt
 
-`summary` mode sends a shorter prompt that requests exactly two fields:
+`summary` mode sends a shorter prompt that requests exactly the fields the
+compose form cannot collect:
 
 ```json
-{"summary":["요약1","요약2","요약3"],"categorySlugs":["academic|opportunity|benefit|community 중 핵심 하나"]}
+{"summary":["요약1","요약2","요약3"],"categorySlugs":["academic|opportunity|benefit|community 중 핵심 하나"],"hasReward":false,"rewardNote":null,"requiresAction":false}
 ```
 
-The summary style rules and the four category definitions are reused verbatim
-from the existing prompt, so summaries read the same in every mode. The prompt
-omits the subject, type, deadline, and reward instructions entirely.
+The summary style rules, the four category definitions, and the reward and
+action rules are reused verbatim from the existing prompt, so every mode judges
+them the same way. The prompt omits only the subject, type, and deadline
+instructions — the three fields the administrator types by hand.
 
 `normalizeNoticeAnalysisResult` already coerces absent fields to `''` or `[]`, so
 the shorter response passes through it unchanged. No normalizer change is
@@ -75,11 +83,12 @@ In `summary` mode the analysis result must not be written into
 field and the category ids are populated. This is the point of the mode: the
 model must not overwrite what the administrator typed.
 
-Because the prompt omits the reward instructions, `summary` mode leaves
-`hasReward` false and `surveyReward` and `requiresAction` empty. A notice that
-needs a reward badge must be uploaded in one of the two full modes, or have the
-badge corrected later from the review inbox. This is an accepted trade of the
-cheaper call, not an oversight.
+The reward fields stay in the prompt. `hasReward`, `rewardNote`, and
+`requiresAction` cost no extra request — they are three more keys in the same
+single response, and the limit being avoided is requests per minute, not tokens.
+Dropping them would also be unrecoverable: the compose form has no reward input,
+and a manually composed notice never enters the review inbox, so a badge omitted
+here could never be added later.
 
 ## Summary Field
 
@@ -138,6 +147,8 @@ being discovered on the public site.
 - A stored `eceAiSkipVerification` of `'1'` migrates to `full`.
 - `summary` mode issues one request and never a verification request.
 - `summary` mode does not write the subject, type, or deadline into the form.
+- `summary` mode still returns the reward and action fields into the save
+  payload.
 - The summary textarea round-trips to the `string[]` the save payload expects.
 - A non-empty summary field suppresses the Gemini call on upload.
 - Editing a notice loads its stored summary into the field.
@@ -145,8 +156,9 @@ being discovered on the public site.
 
 ## Success Criteria
 
-- Choosing 3줄 요약 + 카테고리만 uploads a notice with one Gemini call.
+- Choosing 요약·카테고리·리워드만 uploads a notice with one Gemini call.
 - The manually entered subject, type, and deadline survive that upload unchanged.
+- A notice with a reward still gets its badge in that mode.
 - The three-line summary is visible and editable before upload.
 - A hand-written summary uploads with no Gemini call.
 - A notice with no category is visibly marked in the administrator list.
