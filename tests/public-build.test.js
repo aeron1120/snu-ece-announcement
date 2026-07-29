@@ -1015,7 +1015,12 @@ test('right-rail banners start randomly, auto-rotate, overlay manual arrows, and
     assert.match(renderSource, /usable\[usable\.length - 1\][\s\S]*usable\[0\]/);
     // 손가락을 1:1로 따라가고, 놓으면 가까운 칸으로 붙는다.
     assert.match(readNamedFunction(app, 'moveBannerSwipe'), /dragOffset: deltaX/);
-    assert.match(readNamedFunction(app, 'finishBannerSwipe'), /width \* 0\.18/);
+    // 폰에서 한 번에 넘기기 쉽도록 문턱을 낮추고, 짧게 튕기는 손짓도 인정한다.
+    const finishSource = readNamedFunction(app, 'finishBannerSwipe');
+    assert.match(finishSource, /width \* 0\.12/);
+    assert.match(finishSource, /passedThreshold \|\| flicked/);
+    // 세로가 확실히 클 때만 가로 끌기를 놓아준다. 조금 흔들렸다고 포기하지 않는다.
+    assert.match(readNamedFunction(app, 'moveBannerSwipe'), /Math\.abs\(deltaX\) \* 1\.5/);
     // 복제 칸에 닿으면 전환이 끝난 뒤 진짜 칸으로 소리 없이 되돌린다.
     assert.match(readNamedFunction(app, 'stepRightRailBanner'), /landedOnClone[\s\S]*animate: false/);
 
@@ -1480,7 +1485,8 @@ test('image notices lazy-load a poster; imageless notices show a big title poste
     // 사진 없는 카드: 포스터 자리에 제목을 크게.
     assert.match(filterCardsSource, /card-poster is-text/);
     // 포스터 제목은 renderPosterTitle이 통째로 만든다(길이에 맞춘 크기 포함).
-    assert.match(filterCardsSource, /card-poster is-text">\$\{renderPosterTitle\(rawTitle\)\}/);
+    // 학생회 홍보물 결: 가로줄 - 제목 - 등록일 순으로 쌓는다.
+    assert.match(filterCardsSource, /card-poster is-text[\s\S]*?card-poster-rule[\s\S]*?renderPosterTitle\(rawTitle\)[\s\S]*?card-poster-date/);
     assert.match(readNamedFunction(app, 'renderPosterTitle'), /--poster-title-size:\$\{fit\.size\}px/);
     assert.match(filterCardsSource, /renderPosterTitle\(rawTitle\)/);
     // 줄 나누기는 글자 폭 계산에 기대므로 함께 넣어 준다.
@@ -2014,9 +2020,10 @@ test('no notice title can overflow the text poster box', async () => {
         `${readNamedFunction(app, 'posterTextWidth')}; ${readNamedFunction(app, 'posterTitleLines')}; return posterTitleLines;`
     )();
 
-    // 포스터 안쪽은 좁게 잡아 200px, 높이는 약 172px이다.
+    // 포스터 안쪽은 좁게 잡아 200px. 높이는 가로줄과 등록일이 자리를 쓰고
+    // 남는 약 143px이다.
     const INNER_WIDTH = 200;
-    const INNER_HEIGHT = 172;
+    const INNER_HEIGHT = 143;
     const renderedHeight = title => {
         const normalized = String(title || '제목 없음').replace(/\s+/g, ' ').trim();
         const chosen = fit(normalized.length);
@@ -2052,8 +2059,12 @@ test('no notice title can overflow the text poster box', async () => {
             `"${String(title).slice(0, 20)}…"가 포스터를 넘칩니다 (${Math.round(renderedHeight(title))}px)`);
     }
 
-    // 다 담지 못하면 잘렸다는 걸 말줄임으로 알린다.
-    assert.match(split('가'.repeat(300), 7, 12).at(-1), /…$/);
+    // 다 담지 못하면 잘렸다는 걸 말줄임으로 알린다. 말줄임표를 붙이고도
+    // 한 줄 한도를 넘지 않아야 그 줄이 다시 접히지 않는다.
+    const truncated = split('가'.repeat(300), 6, 12);
+    assert.match(truncated.at(-1), /…$/);
+    assert.ok(width(truncated.at(-1)) <= 12,
+        `말줄임표를 붙인 줄이 한 줄 한도를 넘습니다 (${width(truncated.at(-1))})`);
 });
 
 test('drop targets light up when the dragged card overlaps them, not only the cursor', async () => {
@@ -2120,4 +2131,55 @@ test('a sticky search row takes over once the real search box scrolls away', asy
     assert.match(mobileCss, /\.mobile-sticky-search\s*\{[^}]*position:\s*fixed;[^}]*top:\s*0/s);
     // 왼쪽 위 메뉴 버튼과 겹치지 않게 자리를 비운다.
     assert.match(mobileCss, /\.mobile-sticky-search\s*\{[^}]*padding:[^;]*58px/s);
+});
+
+test('first-time users get a guide, and slow notice loads show progress', async () => {
+    const html = await readFile('index.html', 'utf8');
+    const app = await readFile('js/core.js', 'utf8');
+    const css = await readFile('css/core.css', 'utf8');
+    const headers = await readFile('_headers', 'utf8');
+
+    // 돋보기는 검색 확인이 아니라 사용 설명서로 간다. 검색은 치는 대로 걸린다.
+    assert.match(html, /id="search-guide-btn"[\s\S]*?onclick="openUserGuide\(event\)"/);
+    assert.doesNotMatch(html, /class="search-submit"[^>]*onclick="filterCards\(\)"/);
+    assert.match(readNamedFunction(app, 'openUserGuide'), /guide\.html/);
+
+    // 처음 온 사람에게 한 번만 알리고, 본 뒤에는 기기에 기록이 남는다.
+    assert.match(html, /id="guide-hint"/);
+    assert.match(html, /SNU ECE 공지방이 처음이신가요\?/);
+    assert.match(readNamedFunction(app, 'dismissGuideHint'), /localStorage\.setItem\(GUIDE_HINT_KEY/);
+    assert.match(readNamedFunction(app, 'initializeGuideHint'), /localStorage\.getItem\(GUIDE_HINT_KEY\)/);
+
+    // 느린 회선에서 공지를 여는 동안 표시가 뜬다. 빠를 때 깜빡이지 않게 잠깐 미룬다.
+    assert.match(html, /id="notice-loading"/);
+    assert.match(readNamedFunction(app, 'showNoticeLoading'), /setTimeout/);
+    assert.match(readNamedFunction(app, 'openDetail'), /showNoticeLoading\(\)/);
+    assert.match(readNamedFunction(app, 'openDetail'), /finally\s*\{[\s\S]*?hideNoticeLoading\(\)/);
+    assert.match(css, /\.notice-loading\s*\{[^}]*position:\s*fixed/s);
+
+    // 폰 미리보기는 같은 사이트를 iframe으로 띄운다. DENY면 그 창이 통째로 막힌다.
+    assert.match(headers, /X-Frame-Options: SAMEORIGIN/);
+    assert.match(headers, /frame-ancestors 'self'/);
+    assert.doesNotMatch(headers, /frame-ancestors 'none'/);
+});
+
+test('mobile stacks notices, then the banner, then the footer', async () => {
+    const html = await readFile('index.html', 'utf8');
+    const mobileCss = await readFile('css/mobile.css', 'utf8');
+
+    // 모바일에서 오른쪽 레일은 흐름 안에 놓이므로 DOM 순서가 곧 보이는 순서다.
+    const board = html.indexOf('id="board-view"');
+    const banner = html.indexOf('id="right-ad-rail"');
+    const footer = html.indexOf('class="site-footer"');
+    assert.ok(board < banner, '배너가 공지보다 앞에 있습니다');
+    assert.ok(banner < footer, '배너가 푸터보다 뒤에 있습니다');
+
+    // 가로로 끄는 동안 페이지가 대신 스크롤되지 않게 한다.
+    assert.match(mobileCss, /\.rail-ad-stage\s*\{[^}]*touch-action:\s*pan-y/s);
+    // 손가락으로 누를 수 있는 크기의 화살표.
+    assert.match(mobileCss, /@media \(hover: none\)[\s\S]*?\.rail-ad-arrow\s*\{\s*width:\s*44px/);
+
+    // 푸터에 자주 묻는 질문과 사용 설명서가 있다.
+    assert.match(html, /href="\.\/faq\.html">자주 묻는 질문</);
+    assert.match(html, /href="\.\/guide\.html">사용 설명서</);
 });

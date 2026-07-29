@@ -134,6 +134,17 @@ html[data-view="mobile"] .rail-ad-stage {
     height: auto;
     aspect-ratio: 16 / 9;
     flex: 0 0 auto;
+    /* 가로로 끄는 동안 브라우저가 페이지를 대신 스크롤해 버리지 않게 한다.
+       세로 스크롤은 pan-y로 그대로 열어 둔다. */
+    touch-action: pan-y;
+}
+/* 화살표는 손가락으로 누르기에 너무 작다. 터치 기기에서만 키운다. */
+@media (hover: none) {
+    html[data-view="mobile"] .rail-ad-arrow { width: 44px; height: 44px; }
+    html[data-view="mobile"] .rail-ad-arrow svg { width: 20px; height: 20px; }
+    html[data-view="mobile"] .rail-ad-dot { width: 9px; height: 9px; }
+    html[data-view="mobile"] .rail-ad-dot.is-active { width: 22px; }
+    html[data-view="mobile"] .rail-ad-dots { padding: 7px 11px; gap: 7px; }
 }
 html[data-view="mobile"] .rail-ad-image { object-fit: cover; }
 /* 비율이 정확히 맞아 여백이 없으므로 흐린 배경 층은 필요 없다. */
@@ -317,7 +328,10 @@ html[data-view="mobile"] .card-poster {
     padding: 0;
     border-radius: 0;
 }
-html[data-view="mobile"] .card-poster.is-text { padding: 10px; }
+html[data-view="mobile"] .card-poster.is-text { padding: 9px 10px; gap: 6px; }
+/* 좁은 포스터라 등록일까지 넣으면 제목 자리가 남지 않는다.
+   날짜는 카드 본문에도 있으므로 여기서는 뺀다. */
+html[data-view="mobile"] .card-poster-date { display: none; }
 html[data-view="mobile"] .card-img-preview {
     object-fit: cover;
     object-position: top center;
@@ -325,7 +339,7 @@ html[data-view="mobile"] .card-img-preview {
 }
 /* 모바일 포스터는 데스크톱의 절반 남짓이라 같은 비율로 줄인다.
    크기 자체는 제목 길이에 맞춰 정해진 값을 그대로 물려받는다. */
-html[data-view="mobile"] .card-poster-title { --poster-title-scale: 0.62; line-height: 1.3; }
+html[data-view="mobile"] .card-poster-title { --poster-title-scale: 0.5; line-height: 1.3; }
 html[data-view="mobile"] .card-body { gap: 5px; padding: 8px; }
 html[data-view="mobile"] .card .tags {
     max-height: 36px;
@@ -672,3 +686,14 @@ html[data-view="mobile"] .mobile-sticky-search svg {
 @media (prefers-reduced-motion: reduce) {
     html[data-view="mobile"] .mobile-sticky-search { transition: none; }
 }
+
+/* 안내 줄은 좁은 화면에서 위아래로 편다. */
+html[data-view="mobile"] .guide-hint {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    margin-bottom: 10px;
+    padding: 12px;
+}
+html[data-view="mobile"] .guide-hint-actions { justify-content: space-between; }
+html[data-view="mobile"] .guide-hint-actions .btn { flex: 1; min-height: 40px; }

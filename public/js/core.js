@@ -38,6 +38,8 @@ let bannerSwipePointerId = null;
 let bannerSwipeStartX = 0;
 let bannerSwipeStartY = 0;
 let bannerSwipeDeltaX = 0;
+// 튕기듯 짧게 넘기는 손짓을 알아보려고 시작 시각을 재 둔다.
+let bannerSwipeStartedAt = 0;
 let suppressBannerLinkUntil = 0;
 /* 트랙 캐러셀 상태.
    trackPosition은 앞뒤 복제 슬라이드를 포함한 트랙 위의 칸 번호다.
@@ -747,6 +749,7 @@ function startBannerSwipe(event) {
     bannerSwipeStartX = event.clientX;
     bannerSwipeStartY = event.clientY;
     bannerSwipeDeltaX = 0;
+    bannerSwipeStartedAt = Date.now();
     // 복제 칸으로 되돌리는 예약이 남아 있으면 먼저 확정해 놓고 잡는다.
     if (bannerSettleTimer) {
         window.clearTimeout(bannerSettleTimer);
@@ -767,7 +770,9 @@ function moveBannerSwipe(event) {
     const deltaX = event.clientX - bannerSwipeStartX;
     const deltaY = event.clientY - bannerSwipeStartY;
     // 세로로 먼저 움직였으면 페이지 스크롤이므로 가로 끌기를 포기한다.
-    if (!bannerSwipeDeltaX && Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 10) {
+    // 손가락은 마우스보다 비스듬히 움직이므로 세로가 가로보다 확실히 클 때만
+    // 놓아준다. 조금만 흔들려도 포기하면 잘 안 넘어간다는 느낌을 준다.
+    if (!bannerSwipeDeltaX && Math.abs(deltaY) > Math.abs(deltaX) * 1.5 && Math.abs(deltaY) > 14) {
         bannerSwipePointerId = null;
         setBannerTrackPosition(bannerTrackPosition);
         event.currentTarget.classList.remove('is-swiping');
@@ -788,11 +793,16 @@ function finishBannerSwipe(event, cancelled = false) {
     const stage = event.currentTarget;
     const width = stage.getBoundingClientRect().width || 1;
     const deltaY = event.clientY - bannerSwipeStartY;
-    // 화면 폭의 18%를 넘겼거나 44px 이상 끌었으면 다음 장으로 넘어간 것으로 본다.
-    const passedThreshold = Math.abs(bannerSwipeDeltaX) >= Math.min(44, width * 0.18);
+    // 폭의 12%나 32px만 끌어도 넘어간다. 예전 값(18%·44px)은 폰에서 한 번에
+    // 넘기기 어려웠다.
+    const distance = Math.abs(bannerSwipeDeltaX);
+    const passedThreshold = distance >= Math.min(32, width * 0.12);
+    // 짧게 튕겨도 넘어가야 한다. 빠른 손짓은 거리가 짧아도 넘길 뜻이 분명하다.
+    const elapsed = Math.max(1, Date.now() - bannerSwipeStartedAt);
+    const flicked = distance >= 12 && distance / elapsed > 0.45;
     const shouldMove = !cancelled
-        && passedThreshold
-        && Math.abs(bannerSwipeDeltaX) > Math.abs(deltaY);
+        && (passedThreshold || flicked)
+        && distance > Math.abs(deltaY);
     try {
         if (stage.hasPointerCapture?.(event.pointerId)) {
             stage.releasePointerCapture(event.pointerId);
@@ -1162,12 +1172,14 @@ function escapeHtml(value) {
    넘지 않도록 잡은 것이다. */
 /* perLine은 한 줄에 들어가는 한글 글자 수다. 포스터 안쪽 폭을 좁게 잡아
    200px으로 보고 floor(200 / 글자크기)로 정했다. 이 값이 한 칸이라도
-   크면 줄이 브라우저에서 한 번 더 접혀 높이가 두 배가 된다. */
+   크면 줄이 브라우저에서 한 번 더 접혀 높이가 두 배가 된다.
+   maxLines는 가로줄과 등록일이 자리를 차지한 뒤 남는 높이(약 143px)에서
+   maxLines x 글자크기 x 1.34가 넘지 않도록 잡았다. */
 function posterTitleFit(length) {
     if (length <= 22) return { size: 25, maxLines: 4, perLine: 8 };
     if (length <= 36) return { size: 21, maxLines: 5, perLine: 9 };
-    if (length <= 52) return { size: 18, maxLines: 6, perLine: 11 };
-    return { size: 16, maxLines: 7, perLine: 12 };
+    if (length <= 52) return { size: 18, maxLines: 5, perLine: 11 };
+    return { size: 16, maxLines: 6, perLine: 12 };
 }
 
 /* 한 줄에 몇 글자가 들어가는지는 글자 폭에 달렸다. 한글·한자는 글자 크기와
@@ -1249,9 +1261,14 @@ function posterTitleLines(value, maxLines = 4, perLine = 0) {
     if (endingLine) lines.push(endingLine);
 
     if (lines.length <= maxLines) return lines;
-    // 다 담지 못했으면 잘렸다는 걸 말줄임으로 알린다.
+    // 다 담지 못했으면 잘렸다는 걸 말줄임으로 알린다. 이때 말줄임표도 폭을
+    // 차지하므로, 붙이고 나서 한 줄 한도를 넘지 않도록 뒤를 먼저 덜어낸다.
+    // 그냥 붙이면 그 줄이 한 번 더 접혀 포스터를 넘친다.
     const kept = lines.slice(0, maxLines);
-    kept[kept.length - 1] = `${kept.at(-1)}…`;
+    const budget = (perLine || 18) - posterTextWidth('…');
+    let last = kept.at(-1);
+    while (last.length > 1 && posterTextWidth(last) > budget) last = last.slice(0, -1);
+    kept[kept.length - 1] = `${last.trimEnd()}…`;
     return kept;
 }
 
@@ -1320,6 +1337,40 @@ function syncMobileStickySearch() {
             }, 180);
         }
     });
+}
+
+/* 사용 설명서.
+   돋보기는 검색을 확인하는 버튼이 아니다. 검색은 입력하는 대로 이미 걸리므로
+   그 자리를 설명서 입구로 쓴다. 처음 온 사람에게는 그 사실을 한 번만 알린다. */
+const GUIDE_HINT_KEY = 'eceGuideHintSeen';
+
+function openUserGuide(event) {
+    event?.preventDefault();
+    dismissGuideHint();
+    location.href = './guide.html';
+}
+
+function dismissGuideHint() {
+    const hint = document.getElementById('guide-hint');
+    if (hint) hint.hidden = true;
+    try {
+        localStorage.setItem(GUIDE_HINT_KEY, '1');
+    } catch {
+        // 저장이 막힌 브라우저에서는 다음에 다시 뜨더라도 동작에는 지장이 없다.
+    }
+}
+
+function initializeGuideHint() {
+    const hint = document.getElementById('guide-hint');
+    if (!hint) return;
+    let seen = false;
+    try {
+        seen = localStorage.getItem(GUIDE_HINT_KEY) === '1';
+    } catch {
+        // 저장소를 못 읽으면 안내를 띄우지 않는다. 반복해서 뜨는 것보다 낫다.
+        seen = true;
+    }
+    hint.hidden = seen;
 }
 
 function jumpToNoticeSearch() {
@@ -2138,7 +2189,11 @@ function renderNoticeCards(animate = false) {
             ? `<div class="card-poster">
                    <img class="card-img-preview" alt="" data-thumbnail-src="${escapeHtml(notice.thumbnailUrl || '/icons/default-notice-thumbnail.png')}">
                </div>`
-            : `<div class="card-poster is-text">${renderPosterTitle(rawTitle)}</div>`;
+            : `<div class="card-poster is-text">
+                   <span class="card-poster-rule" aria-hidden="true"></span>
+                   ${renderPosterTitle(rawTitle)}
+                   <span class="card-poster-date">${escapeHtml(datePresentation.dateLabel)}</span>
+               </div>`;
 
         const cardClass = [
             'card',
@@ -2468,16 +2523,47 @@ async function copyCurrentViewerImage(event) {
     }
 }
 
+/* 공지를 여는 동안 띄우는 표시. 곧바로 띄우면 빠른 회선에서 깜빡이기만
+   하므로, 조금 걸릴 때에만 나타나게 잠깐 미룬다. */
+let noticeLoadingTimer = null;
+
+function showNoticeLoading() {
+    const overlay = document.getElementById('notice-loading');
+    if (!overlay) return;
+    window.clearTimeout(noticeLoadingTimer);
+    noticeLoadingTimer = window.setTimeout(() => {
+        overlay.hidden = false;
+        requestAnimationFrame(() => overlay.classList.add('visible'));
+    }, 220);
+}
+
+function hideNoticeLoading() {
+    const overlay = document.getElementById('notice-loading');
+    window.clearTimeout(noticeLoadingTimer);
+    noticeLoadingTimer = null;
+    if (!overlay) return;
+    overlay.classList.remove('visible');
+    window.setTimeout(() => {
+        if (!overlay.classList.contains('visible')) overlay.hidden = true;
+    }, 160);
+}
+
 async function openDetail(idStr) {
     cancelNoticeHoverPreview();
     currentViewId = String(idStr);
     let notice;
+    // 느린 회선에서는 상세가 오기까지 몇 초씩 걸린다. 그동안 아무 반응이
+    // 없으면 눌리지 않은 줄 알고 다시 누르게 되므로 불러오는 중임을 알린다.
+    showNoticeLoading();
     try {
         notice = await getNoticeDetail(currentViewId);
     } catch (error) {
         console.error('공지 상세 불러오기 실패:', error);
+        hideNoticeLoading();
         alert('공지 상세를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.');
         return;
+    } finally {
+        hideNoticeLoading();
     }
 
     notice.views = (notice.views || 0) + 1;
@@ -3579,6 +3665,7 @@ document.addEventListener('DOMContentLoaded', async function () {
     watchNoticeSortThumb();
     watchNoticeHoverPreviewScroll();
     watchMobileStickySearch();
+    initializeGuideHint();
 
     await Promise.all([loadData(), loadCategories()]);
     const initialNoticePage = restoreNoticeListStateFromUrl();
