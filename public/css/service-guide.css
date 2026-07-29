@@ -89,6 +89,68 @@ section p {
     line-height: 1.9;
 }
 
+/* 이름·역할·메일을 한 덩어리로 묶어, 문단으로 읽지 않고 훑을 수 있게 한다. */
+.guide-people {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    gap: 12px;
+    margin: 20px 0 0;
+    padding: 0;
+    list-style: none;
+}
+
+.guide-person {
+    padding: 16px 18px;
+    background: #f7f9fc;
+    border: 1px solid #e3e7ef;
+    border-radius: 12px;
+}
+
+.person-name {
+    margin: 0;
+    color: #172c57;
+    font-size: 17px;
+    font-weight: 700;
+}
+
+.person-role {
+    margin: 3px 0 10px;
+    color: #6b7690;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+/* 긴 주소가 카드를 밀어내지 않게 끊어 준다. */
+.person-mail {
+    color: #163f91;
+    font-size: 14px;
+    word-break: break-all;
+}
+
+/* 항목 이름과 설명이 눈으로 갈라지도록 설명 쪽에 세로선을 세운다. */
+.guide-defs { margin: 20px 0 0; }
+
+.guide-defs dt {
+    margin-top: 18px;
+    color: #172c57;
+    font-size: 15px;
+    font-weight: 700;
+}
+
+.guide-defs dt:first-of-type { margin-top: 0; }
+
+.guide-defs dd {
+    margin: 6px 0 0;
+    padding-left: 14px;
+    border-left: 2px solid #dfe5f0;
+    color: #303744;
+    font-size: 15px;
+    line-height: 1.85;
+}
+
+/* section p의 margin이 0이라 목록 뒤에 붙는 문단은 직접 띄운다. */
+.guide-note { margin-top: 20px; }
+
 @media (max-width: 560px) {
     body { padding: 0; background: white; }
     .guide-shell { padding: 28px 22px 48px; box-shadow: none; }
