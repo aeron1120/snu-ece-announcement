@@ -16,8 +16,6 @@ let pendingEditNoticeId = null;
 // 클립보드에서 붙여넣은 이미지들(base64 data URL). 파일 첨부와 함께 저장된다.
 let pastedImages = [];
 const MAX_NOTICE_IMAGES = 20;
-// AI 분석이 만든 3줄 요약. 저장 때 재분석 없이 그대로 쓴다.
-let composeAiSummary = [];
 let composeAiCategoryIds = [];
 let composeSurveyReward = '';
 let composeHasReward = false;
@@ -482,7 +480,7 @@ function applyTitleToBuilder(rawTitle) {
 function resetComposeForm() {
     editingNoticeId = null;
     pastedImages = [];
-    composeAiSummary = [];
+    writeSummaryField([]);
     composeAiCategoryIds = [];
     composeSurveyReward = '';
     composeHasReward = false;
@@ -650,6 +648,20 @@ function normalizeNoticeAnalysisResult(parsed = {}) {
     };
 }
 
+// 3줄 요약은 이 입력칸이 유일한 진실 공급원이다. 한 줄이 요약 한 줄.
+function readSummaryField() {
+    return String(document.getElementById('post-ai-summary')?.value || '')
+        .split('\n')
+        .map(line => line.trim())
+        .filter(Boolean)
+        .slice(0, 3);
+}
+
+function writeSummaryField(lines) {
+    const box = document.getElementById('post-ai-summary');
+    if (box) box.value = (Array.isArray(lines) ? lines : []).join('\n');
+}
+
 // 분석 결과의 categorySlugs를 실제 카테고리 id로 옮긴다. 1차·2차 어느 결과에도 쓴다.
 function withResolvedCategoryIds(analysis) {
     return {
@@ -811,7 +823,7 @@ async function analyzeNotice() {
             aiDeadlineCandidate = parsed.deadline || '';
             renderAiDeadlineCandidate();
         }
-        composeAiSummary = parsed.summary;
+        writeSummaryField(parsed.summary);
         composeAiCategoryIds = parsed.categoryIds;
         composeSurveyReward = parsed.surveyReward;
         composeHasReward = parsed.hasReward;
@@ -1276,11 +1288,12 @@ async function generateAIAndSave() {
 
     beginAiProgress('공지 저장 준비를 시작합니다.');
     try {
-        // 3줄 요약은 원문 분석 때 함께 만든다. 분석을 안 눌렀고 원문이 바뀌었으면
-        // 저장 직전에 한 번 분석해서 요약을 채운다(별도 요약 전용 호출은 없다).
-        if (composeAiSummary.length > 0) {
-            updateAiProgress(42, '앞서 만든 Gemini 분석 결과를 확인하고 있습니다.', 'analyze', 58);
-            aiSummary = composeAiSummary;
+        // 요약칸에 이미 내용이 있으면 그게 정답이다. AI가 채웠든 직접 썼든 다시 묻지 않는다.
+        // 비어 있고 원문이 바뀌었을 때만 선택된 모드로 한 번 분석한다.
+        const typedSummary = readSummaryField();
+        if (typedSummary.length > 0) {
+            updateAiProgress(42, '입력된 3줄 요약을 그대로 사용합니다.', 'analyze', 58);
+            aiSummary = typedSummary;
             categoryIds = composeAiCategoryIds;
             surveyReward = composeSurveyReward;
             hasReward = composeHasReward;
@@ -1290,6 +1303,8 @@ async function generateAIAndSave() {
             try {
                 const analysis = await runNoticeAnalysis(content);
                 aiSummary = analysis.summary;
+                // 방금 만든 요약을 칸에도 채워, 저장된 값이 무엇인지 눈으로 확인되게 한다.
+                writeSummaryField(analysis.summary);
                 categoryIds = analysis.categoryIds;
                 surveyReward = analysis.surveyReward;
                 hasReward = analysis.hasReward;
@@ -1530,9 +1545,9 @@ async function editAdminNotice(id) {
     }
 
     editingNoticeId = notice.id;
-    // 새 붙여넣기 이미지·분석 요약은 초기화한다. 아무것도 바꾸지 않으면 기존 값이 유지된다.
+    // 새 붙여넣기 이미지는 초기화하고, 저장돼 있던 요약은 칸에 되살려 고칠 수 있게 한다.
     pastedImages = [];
-    composeAiSummary = [];
+    writeSummaryField(notice.aiSummary || []);
     composeAiCategoryIds = [];
     composeSurveyReward = '';
     composeHasReward = false;

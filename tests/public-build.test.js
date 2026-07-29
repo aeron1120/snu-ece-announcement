@@ -778,6 +778,28 @@ test('summary mode leaves the typed subject, type, and deadline alone', async ()
     assert.match(source, /composeAiCategoryIds = parsed\.categoryIds/);
 });
 
+test('the three-line summary is an editable field that drives the save', async () => {
+    const html = await readFile('admin.html', 'utf8');
+    const admin = await readFile('js/admin.js', 'utf8');
+
+    assert.match(html, /id="post-ai-summary"/);
+    // 변수가 아니라 입력칸이 유일한 진실 공급원이다.
+    assert.doesNotMatch(admin, /composeAiSummary/);
+
+    const read = readNamedFunction(admin, 'readSummaryField');
+    assert.match(read, /split\('\\n'\)/);
+    assert.match(read, /slice\(0, 3\)/);
+
+    const write = readNamedFunction(admin, 'writeSummaryField');
+    assert.match(write, /join\('\\n'\)/);
+
+    // 요약이 이미 있으면 저장할 때 Gemini를 부르지 않는다.
+    const save = readNamedFunction(admin, 'generateAIAndSave');
+    assert.match(save, /readSummaryField\(\)/);
+    // 수정 화면은 저장된 요약을 칸에 되살린다.
+    assert.match(readNamedFunction(admin, 'editAdminNotice'), /writeSummaryField\(notice\.aiSummary/);
+});
+
 test('admin AI work shows progress while login is isolated in a server-session page', async () => {
     const html = await readFile('admin.html', 'utf8');
     const loginHtml = await readFile('admin-login.html', 'utf8');
