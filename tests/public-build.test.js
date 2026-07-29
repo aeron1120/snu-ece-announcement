@@ -554,16 +554,37 @@ test('sort chips are exposed beside result count and category tabs restore their
     assert.match(app, /function selectCategoryTab[\s\S]*getDefaultSortForCategory\(category\?\.slug \|\| 'all'\)[\s\S]*syncNoticeSortChips/);
 });
 
-test('notice dates use one deadline, always-open, or registration presentation', async () => {
+test('notice dates show a deadline or nothing, never a registration date', async () => {
     const app = await readFile('js/core.js', 'utf8');
-    const presentation = readNamedFunction(app, 'getNoticeDatePresentation');
+    const source = readNamedFunction(app, 'getNoticeDatePresentation');
     const cards = readNamedFunction(app, 'renderNoticeCards');
-    assert.match(presentation, /notice\.isAlwaysOpen[\s\S]*badgeText: '상시'/);
-    assert.match(presentation, /dateLabel: `마감/);
-    assert.match(presentation, /dateLabel: createdLabel/);
+    assert.match(source, /notice\.isAlwaysOpen[\s\S]*badgeText: '상시'/);
+    assert.match(source, /dateLabel: `마감/);
     assert.match(cards, /getNoticeDatePresentation\(notice\)/);
     assert.match(app, /diffDays === 0[\s\S]*오늘 마감/);
     assert.match(app, /return `\$\{y\}\.\$\{m\}\.\$\{d\}\(\$\{WEEKDAY_KO/);
+
+    // 등록일은 학생에게 의미가 없어 공개 화면에서 내보내지 않는다.
+    assert.doesNotMatch(source, /등록/);
+    const present = new Function(`
+        const WEEKDAY_KO = ['일','월','화','수','목','금','토'];
+        ${readNamedFunction(app, 'formatDateWithWeekday')}
+        ${readNamedFunction(app, 'getCalendarDayDifference')}
+        ${readNamedFunction(app, 'calcDDay')}
+        function getCurrentDate() { return new Date('2026-07-29T00:00:00'); }
+        ${source}
+        return getNoticeDatePresentation;
+    `)();
+
+    // 마감일이 있으면 그대로 보여준다.
+    assert.equal(present({ deadline: '2026-07-31', createdAt: '2026-07-29T04:31:00Z' }).dateLabel,
+        '마감 2026.07.31(금)');
+    // 상시 공지는 뱃지만 남고 날짜줄은 비운다.
+    const always = present({ isAlwaysOpen: true, createdAt: '2026-07-29T04:31:00Z' });
+    assert.equal(always.badgeText, '상시');
+    assert.equal(always.dateLabel, '');
+    // 마감일이 없으면 아무것도 표시하지 않는다.
+    assert.equal(present({ createdAt: '2026-07-29T04:31:00Z' }).dateLabel, '');
 });
 
 test('the contact modal is an anonymous feedback box, not admin contact info', async () => {
@@ -727,6 +748,119 @@ test('manual Gemini analysis saves canonical category ids with the notice', asyn
     assert.match(admin, /const newNoticeData = \{[\s\S]*categoryIds,/);
     assert.match(server, /const categoryIds = Array\.from\(new Set/);
     assert.match(schema, /notice_payload \? 'categoryIds'[\s\S]*insert into public\.notice_categories/);
+});
+
+test('the compose form picks an analysis mode instead of a verification checkbox', async () => {
+    const html = await readFile('admin.html', 'utf8');
+    const admin = await readFile('js/admin.js', 'utf8');
+
+    // 체크박스는 사라지고 3지선다 선택기가 그 자리를 대신한다.
+    assert.doesNotMatch(html, /id="ai-skip-verification"/);
+    assert.match(html, /id="ai-mode"/);
+    for (const mode of ['full-verified', 'full', 'summary']) {
+        assert.match(html, new RegExp(`value="${mode}"`));
+    }
+
+    // 선택기가 없으면 가장 안전한 모드로 떨어져야 한다.
+    const accessor = readNamedFunction(admin, 'currentAiMode');
+    assert.match(accessor, /getElementById\('ai-mode'\)/);
+    assert.match(accessor, /'full-verified'/);
+
+    // 기존에 체크박스를 켜두었던 브라우저는 전체 분석 1회로 이관한다.
+    const migrate = readNamedFunction(admin, 'restoreAiModeChoice');
+    assert.match(migrate, /eceAiSkipVerification/);
+    assert.match(migrate, /eceAiMode/);
+    assert.match(migrate, /removeItem/);
+});
+
+test('summary mode asks only for the fields the compose form cannot collect', async () => {
+    const admin = await readFile('js/admin.js', 'utf8');
+    const source = readNamedFunction(admin, 'runNoticeAnalysis');
+
+    // 요약 전용 프롬프트는 요약·카테고리·리워드만 요구한다.
+    assert.match(admin, /function buildSummaryOnlyPrompt/);
+    const prompt = readNamedFunction(admin, 'buildSummaryOnlyPrompt');
+    assert.match(prompt, /"summary"/);
+    assert.match(prompt, /"categorySlugs"/);
+    assert.match(prompt, /"hasReward"/);
+    assert.match(prompt, /"requiresAction"/);
+    // 내가 직접 입력하는 항목은 요구하지 않는다.
+    assert.doesNotMatch(prompt, /"subject"/);
+    assert.doesNotMatch(prompt, /"type"/);
+    assert.doesNotMatch(prompt, /"deadline"/);
+
+    // summary 모드는 1차에서 끝나고 2차 검수를 부르지 않는다.
+    assert.match(source, /mode === 'summary'/);
+    assert.match(source, /mode !== 'full-verified'/);
+});
+
+test('summary mode leaves the typed subject, type, and deadline alone', async () => {
+    const admin = await readFile('js/admin.js', 'utf8');
+    const source = readNamedFunction(admin, 'analyzeNotice');
+
+    // 폼에 값을 쓰기 전에 모드를 확인해야 한다.
+    assert.match(source, /const mode = currentAiMode\(\)/);
+    assert.match(source, /if \(mode !== 'summary'\)/);
+    // 요약과 카테고리는 어느 모드에서나 채운다.
+    assert.match(source, /composeAiCategoryIds = parsed\.categoryIds/);
+});
+
+test('the three-line summary is an editable field that drives the save', async () => {
+    const html = await readFile('admin.html', 'utf8');
+    const admin = await readFile('js/admin.js', 'utf8');
+
+    assert.match(html, /id="post-ai-summary"/);
+    // 변수가 아니라 입력칸이 유일한 진실 공급원이다.
+    assert.doesNotMatch(admin, /composeAiSummary/);
+
+    const read = readNamedFunction(admin, 'readSummaryField');
+    assert.match(read, /split\('\\n'\)/);
+    assert.match(read, /slice\(0, 3\)/);
+
+    const write = readNamedFunction(admin, 'writeSummaryField');
+    assert.match(write, /join\('\\n'\)/);
+
+    // 요약이 이미 있으면 저장할 때 Gemini를 부르지 않는다.
+    const save = readNamedFunction(admin, 'generateAIAndSave');
+    assert.match(save, /readSummaryField\(\)/);
+    // 수정 화면은 저장된 요약을 칸에 되살린다.
+    assert.match(readNamedFunction(admin, 'editAdminNotice'), /writeSummaryField\(notice\.aiSummary/);
+});
+
+test('notice images are downscaled and re-encoded before they reach the database', async () => {
+    const admin = await readFile('js/admin.js', 'utf8');
+
+    // 공지 이미지가 들어오는 두 경로 모두 압축을 거쳐야 한다.
+    assert.doesNotMatch(admin, /pastedImages\.push\(await getBase64\(/);
+    assert.doesNotMatch(admin, /finalImages\.push\(await getBase64\(/);
+    assert.match(admin, /pastedImages\.push\(await compressNoticeImage\(/);
+    assert.match(admin, /finalImages\.push\(await compressNoticeImage\(/);
+
+    // 배너·OCR이 쓰는 공용 getBase64는 그대로 둔다.
+    assert.match(admin, /const images = await Promise\.all\(files\.map\(getBase64\)\)/);
+
+    // 긴 변을 기준으로 줄이고, 상한보다 작은 그림은 확대하지 않는다.
+    const sizing = readNamedFunction(admin, 'noticeImageTargetSize');
+    const targetSize = new Function(`${sizing} return noticeImageTargetSize;`)();
+    assert.deepEqual(targetSize(3024, 4032, 2000), { width: 1500, height: 2000 });
+    assert.deepEqual(targetSize(4032, 3024, 2000), { width: 2000, height: 1500 });
+    assert.deepEqual(targetSize(800, 600, 2000), { width: 800, height: 600 });
+
+    // 캔버스로 다시 그리면 애니메이션이 죽으므로 GIF는 원본을 유지한다.
+    const compress = readNamedFunction(admin, 'compressNoticeImage');
+    assert.match(compress, /image\/gif/);
+    // 압축이 실패하거나 되레 커지면 원본으로 되돌아간다.
+    assert.match(compress, /getBase64\(file\)/);
+});
+
+test('the admin list flags notices missing a summary or a category', async () => {
+    const admin = await readFile('js/admin.js', 'utf8');
+    const source = readNamedFunction(admin, 'renderAdminNoticeList');
+
+    // 카테고리가 없으면 공개 화면의 카테고리 탭 어디에도 안 뜬다. 목록에서 보여야 한다.
+    assert.match(source, /AI 요약 없음/);
+    assert.match(source, /카테고리 없음/);
+    assert.match(source, /notice\.categoryIds \|\| \[\]/);
 });
 
 test('admin AI work shows progress while login is isolated in a server-session page', async () => {

@@ -169,10 +169,12 @@
             <!-- 2단계: AI가 마감일·핵심내용·유형을 정해진 보기 안에서 골라 채운다 -->
             <div class="analyze-bar">
                 <button class="btn" type="button" id="ai-analyze-btn" onclick="analyzeNotice()">AI 자동 편집</button>
-                <label class="title-manual-row" title="Gemini 호출이 2회에서 1회로 줄어듭니다. 할당량이 빠듯할 때 켜세요.">
-                    <input type="checkbox" id="ai-skip-verification" onchange="onSkipVerificationToggle()">
-                    2차 검수 생략 (호출 절반)
-                </label>
+                <label class="ai-mode-field" for="ai-mode">AI 범위</label>
+                <select id="ai-mode" onchange="onAiModeChange()">
+                    <option value="full-verified">전체 분석 + 2차 검수 (호출 2회)</option>
+                    <option value="full">전체 분석 (호출 1회)</option>
+                    <option value="summary">요약·카테고리·리워드만 (호출 1회)</option>
+                </select>
                 <span id="analyze-status" class="review-status" style="margin:0;"></span>
             </div>
 
@@ -229,6 +231,11 @@
                             상단 고정
                         </label>
                     </div>
+                </div>
+
+                <div class="title-builder-field summary-field">
+                    <label for="post-ai-summary">AI 3줄 요약 <span style="font-weight:400;color:var(--text-sub);">(한 줄에 하나씩, 최대 3줄. 비우면 요약 없이 올라갑니다)</span></label>
+                    <textarea id="post-ai-summary" rows="3" placeholder="AI 분석 후 자동 입력. 직접 써넣어도 됩니다."></textarea>
                 </div>
 
                 <!-- 만들어진 제목이 보이는 상자가 곧 고치는 상자다.

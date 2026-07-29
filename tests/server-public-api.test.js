@@ -381,6 +381,35 @@ test('credentials stay off while any origin is allowed', async t => {
     assert.equal(response.headers.get('access-control-allow-credentials'), null);
 });
 
+test('the preflight allows every method the API actually serves', async t => {
+    // 프리플라이트가 메서드를 빼먹으면 브라우저가 본 요청을 보내지도 않고 막는다.
+    // 서버 로그에는 아무것도 남지 않고 화면에는 'Failed to fetch'만 뜬다.
+    const server = await new Promise(resolve => {
+        const listening = app.listen(0, () => resolve(listening));
+    });
+    t.after(() => server.close());
+
+    const response = await fetch(
+        `http://127.0.0.1:${server.address().port}/api/notices/1/visibility`,
+        {
+            method: 'OPTIONS',
+            headers: {
+                Origin: 'https://snu-ece-announcement.pages.dev',
+                'Access-Control-Request-Method': 'PATCH'
+            }
+        }
+    );
+
+    assert.equal(response.status, 204);
+    const allowed = String(response.headers.get('access-control-allow-methods') || '')
+        .split(',')
+        .map(method => method.trim());
+    // 공지 숨김은 PATCH다. 이게 빠지면 숨김 버튼이 통째로 죽는다.
+    for (const method of ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']) {
+        assert.ok(allowed.includes(method), `${method}가 허용 목록에 있어야 한다`);
+    }
+});
+
 test('five wrong passwords lock admin login for ten minutes', async t => {
     const settingsPath = path.join(process.cwd(), 'server', 'data', 'settings.json');
     const originalSettings = await readFile(settingsPath, 'utf8');

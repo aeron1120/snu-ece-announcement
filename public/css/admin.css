@@ -210,9 +210,11 @@
     background: var(--primary-light); border: 1px solid #d2ddef; border-left: 3px solid var(--primary);
 }
 .analyze-bar .btn { white-space: nowrap; }
-/* 이 줄은 가운데 정렬이라 .title-manual-row의 위 여백을 그대로 두면 체크박스만 내려앉는다. */
-.analyze-bar .title-manual-row { margin-top: 0; white-space: nowrap; }
+/* 선택기 글자 크기를 버튼 라벨과 맞춰서 같은 줄에서 높이가 튀지 않게 한다. */
+.analyze-bar .ai-mode-field { font-size: 13.5px; font-weight: 650; white-space: nowrap; }
+.analyze-bar select { padding: 7px 10px; border: 1px solid var(--border); background: #fff; font-size: 13.5px; }
 .analysis-fields { padding: 16px; border: 1px solid var(--border); background: #fafbfc; margin-bottom: 22px; }
+.summary-field textarea { width: 100%; padding: 9px 11px; border: 1px solid var(--border); font: inherit; line-height: 1.6; resize: vertical; }
 .analysis-fields .title-builder-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .ai-progress-overlay {
     padding: 30px;
