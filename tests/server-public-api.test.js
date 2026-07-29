@@ -472,3 +472,20 @@ test('saving a notice never stores a raw data URL when the bucket is available',
     );
     assert.match(updateRoute, /persistImages/);
 });
+
+test('deleting a notice clears its bucket objects before the row is flagged', async () => {
+    const server = await readFile(path.join(process.cwd(), 'server', 'server.js'), 'utf8');
+    const deleteRoute = server.slice(
+        server.indexOf("app.delete('/api/notices/:id'"),
+        server.indexOf("app.post('/api/notices/:id/view'")
+    );
+
+    // 소프트 삭제라 행은 남는다. 그래도 파일은 지운다.
+    assert.match(deleteRoute, /removeImages/);
+    // 지우기 전에 주소를 읽어와야 한다.
+    assert.ok(
+        deleteRoute.indexOf('getPublishedNoticeById') < deleteRoute.indexOf('removeImages')
+            || deleteRoute.indexOf('existing') < deleteRoute.indexOf('removeImages'),
+        '이미지 목록을 먼저 읽어야 지울 수 있다'
+    );
+});

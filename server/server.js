@@ -3088,10 +3088,16 @@ app.delete('/api/notices/:id', requireNoticeAdmin, async (req, res) => {
             return res.status(400).json({ error: '유효하지 않은 id입니다.' });
         }
 
+        // 소프트 삭제라 행은 남지만 되살리는 경로가 없다. 공개 버킷에 파일만
+        // 남으면 주소를 아는 사람은 계속 볼 수 있으므로 지운다.
+        const existing = await getPublishedNoticeById(id);
+
         const deleted = await softDeleteNotice(id);
         if (!deleted) {
             return res.status(404).json({ error: '공지 없음' });
         }
+
+        await noticeImageStore.removeImages(existing?.images || []);
 
         res.status(204).send();
     } catch (error) {
