@@ -85,18 +85,28 @@ html[data-view="mobile"] .drawer-scrim.drawer-open { display: block; }
     background: rgba(72, 82, 100, 0.62);
     border-color: rgba(255, 255, 255, 0.42);
 }
+/* 헤더 줄 맨 왼쪽에 그대로 선다. 데스크탑과 같은 차례(손잡이 - 제목 - 동작)다.
+   바탕과 테두리를 지워 배경에 묻히고 아이콘만 남는다. */
 html[data-view="mobile"] .mobile-menu-btn {
     display: grid;
-    position: fixed;
-    top: 10px;
-    left: 10px;
-    z-index: 1050;
+    position: static;
+    width: 34px;
+    height: 34px;
+    margin-left: -4px;
+    color: #9aa2b1;
+    background: transparent;
+    border-color: transparent;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+}
+html[data-view="mobile"] .mobile-menu-btn:hover,
+html[data-view="mobile"] .mobile-menu-btn:focus-visible {
+    color: var(--primary);
+    background: transparent;
+    border-color: transparent;
 }
 /* 서랍이 열려 있는 동안에는 서랍 뒤에 가려 두고 손도 닿지 않게 한다. */
-html[data-view="mobile"] .rail-left.drawer-open ~ .page-main .mobile-menu-btn {
-    opacity: 0;
-    pointer-events: none;
-}
+
 
 .drawer-close-btn {
     display: inline-flex;
@@ -122,7 +132,10 @@ html[data-view="mobile"] .rail-right {
     display: flex;
     position: static;
     width: 100%;
-    padding: 24px 0 32px;
+    padding: 20px 0 24px;
+    /* 레일 남색이 배너 위아래로 비쳐 띠처럼 보였다. 모바일에서는 배너가
+       제 배경을 들고 있으므로 레일 바탕을 지운다. */
+    background: transparent;
 }
 html[data-view="mobile"] #right-rail-ad-content { height: auto; min-height: 0; }
 html[data-view="mobile"] .rail-ad-viewport {
@@ -153,16 +166,18 @@ html[data-view="mobile"] .rail-ad-image { object-fit: cover; }
 html[data-view="mobile"] .rail-ad-backdrop { display: none; }
 
 /* ---------- 헤더 ---------- */
+/* 데스크탑처럼 배경 위에 그대로 얹는다. 흰 바탕에 흰 카드를 올리면 그림자만
+   남아 지저분하므로 카드와 그림자를 걷어냈다. */
 html[data-view="mobile"] .header {
     row-gap: 10px;
     align-items: center;
+    gap: 8px;
     margin-bottom: 12px;
-    /* 왼쪽 위에 뜬 메뉴 버튼이 로고를 덮지 않도록 그만큼 비워 둔다. */
-    padding: 12px 12px 12px 54px;
-    background: #fff;
+    padding: 6px 0 10px;
+    background: transparent;
     border: 0;
-    border-radius: 20px;
-    box-shadow: 0 5px 18px rgba(27, 52, 104, 0.07);
+    border-radius: 0;
+    box-shadow: none;
 }
 html[data-view="mobile"] .header-title-area { width: auto; flex: 1; }
 html[data-view="mobile"] .header h1,
@@ -645,7 +660,7 @@ html[data-view="mobile"] .mobile-sticky-search {
     left: 0;
     z-index: 1040;
     width: 100%;
-    padding: 8px 12px 10px 58px;
+    padding: 8px 12px 10px;
     background: rgba(255, 255, 255, 0.94);
     border: 0;
     border-bottom: 1px solid rgba(31, 63, 143, 0.1);

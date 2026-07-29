@@ -2134,8 +2134,8 @@ test('a sticky search row takes over once the real search box scrolls away', asy
 
     // 화면에 붙어 있어야 스크롤해도 사라지지 않는다.
     assert.match(mobileCss, /\.mobile-sticky-search\s*\{[^}]*position:\s*fixed;[^}]*top:\s*0/s);
-    // 왼쪽 위 메뉴 버튼과 겹치지 않게 자리를 비운다.
-    assert.match(mobileCss, /\.mobile-sticky-search\s*\{[^}]*padding:[^;]*58px/s);
+    // 메뉴 버튼이 헤더 줄로 돌아가 더 이상 겹치지 않으므로 여백을 비우지 않는다.
+    assert.match(mobileCss, /\.mobile-sticky-search\s*\{[^}]*padding:\s*8px 12px 10px;/s);
 });
 
 test('first-time users get a guide, and slow notice loads show progress', async () => {
@@ -2202,8 +2202,15 @@ test('closing a filter chip does not collapse the detail panel', async () => {
     assert.match(css, /\.filter-chip button\s*\{[^}]*width:\s*20px;[^}]*height:\s*20px/s);
     assert.match(mobileCss, /\.filter-chip button\s*\{[^}]*width:\s*28px;[^}]*height:\s*28px/s);
 
-    // 서랍 손잡이는 흰 줄에 회색 반투명 바탕이라 흰 배경 위에서도 보인다.
-    assert.match(mobileCss, /\.mobile-menu-btn\s*\{[^}]*color:\s*#fff;[^}]*background:\s*rgba\(96, 106, 124/s);
+    // 서랍 손잡이는 헤더 줄 안에서 배경에 묻히고 아이콘만 남는다.
+    const menuBlock = mobileCss.slice(mobileCss.indexOf('html[data-view="mobile"] .mobile-menu-btn {'));
+    const menuRule = menuBlock.slice(0, menuBlock.indexOf('}'));
+    assert.match(menuRule, /position:\s*static/);
+    assert.match(menuRule, /background:\s*transparent/);
+    // 헤더도 흰 카드가 아니라 배경 위에 그대로 얹힌다.
+    assert.match(mobileCss, /\.header\s*\{[^}]*background:\s*transparent;[^}]*box-shadow:\s*none/s);
+    // 모바일 배너 위아래로 레일 남색이 비치지 않는다.
+    assert.match(mobileCss, /\.rail-right\s*\{[^}]*background:\s*transparent/s);
 
     // 안내를 닫은 뒤에도 서비스 안내에서 설명서로 돌아올 수 있다.
     const serviceGuide = await readFile('service-guide.html', 'utf8');

@@ -88,13 +88,6 @@
 
     <main class="page-main" id="page-main">
 <div class="board-view" id="board-view">
-<!-- 메뉴 버튼은 제목 줄에 끼지 않고 화면 왼쪽 위 구석에 따로 떠 있는다. -->
-<button type="button" class="mobile-menu-btn" aria-label="메뉴 열기" onclick="openMobileDrawer()">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-        <path stroke-linecap="round" d="M4 7h16M4 12h16M4 17h16"/>
-    </svg>
-</button>
-
 <!-- 검색창이 화면 밖으로 밀려나면 이 줄이 대신 위에 붙는다. 목록을 한참
      내려간 뒤에도 검색으로 돌아올 길을 남겨 두려는 것이다. 모바일 전용. -->
 <button type="button" class="mobile-sticky-search mobile-only" id="mobile-sticky-search"
@@ -109,6 +102,12 @@
 </button>
 
 <div class="header">
+    <!-- 손잡이 - 제목 - 동작 차례는 데스크탑과 같다. -->
+    <button type="button" class="mobile-menu-btn" aria-label="메뉴 열기" onclick="openMobileDrawer()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path stroke-linecap="round" d="M4 7h16M4 12h16M4 17h16"/>
+        </svg>
+    </button>
     <div class="header-title-area">
         <!-- 제목 자리에 워드마크를 넣는다. 이미지가 없으면 글자 제목으로 떨어진다. -->
         <h1 class="site-title" id="site-title">
