@@ -2280,3 +2280,19 @@ test('the operator page names who runs the site and the footer points at it', as
     // 복사 목록에서 빠지면 서버가 404를 준다.
     assert.match(prepare, /operator\.html/);
 });
+
+test('the legal pages name the same operators as the operator page', async () => {
+    const privacy = await readFile('privacy.html', 'utf8');
+    const terms = await readFile('terms.html', 'utf8');
+
+    // 개인정보 처리 책임자와 약관상 '운영자'가 누구인지 실명으로 밝혀야 한다.
+    for (const [name, page] of [['privacy.html', privacy], ['terms.html', terms]]) {
+        assert.match(page, /김태현/, `${name}에 운영자 이름이 없다`);
+        assert.match(page, /최재원/, `${name}에 운영자 이름이 없다`);
+        // 세 페이지가 따로 놀지 않도록 한 곳을 가리킨다.
+        assert.match(page, /href="\.\/operator\.html"/, `${name}이 운영 주체 안내로 링크하지 않는다`);
+    }
+
+    // 약관은 곳곳에서 '운영자'를 주어로 쓰므로 처음에 정의해야 한다.
+    assert.match(terms, /이하 &ldquo;운영자&rdquo;/);
+});
