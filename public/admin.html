@@ -222,6 +222,10 @@
                         </select>
                     </div>
                     <div class="title-builder-field">
+                        <!-- 시작일은 마감일과 짝을 이뤄 공지 카드에 기간으로 나온다.
+                             비워 두면 공지가 등록된 날이 그 자리를 대신한다. -->
+                        <label for="post-start-date">시작일 <span style="font-weight:400;color:var(--text-sub);">(행사일·접수 시작일, 비우면 등록일)</span></label>
+                        <input type="date" id="post-start-date">
                         <label for="post-deadline">마감일 <span style="font-weight:400;color:var(--text-sub);">(관리자 확인 필수)</span></label>
                         <input type="date" id="post-deadline">
                         <button class="btn btn-outline btn-small" id="ai-deadline-candidate" type="button"

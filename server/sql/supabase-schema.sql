@@ -6,11 +6,13 @@ create table if not exists public.notices (
   host text not null default '기타',
   deadline date,
   deadline_at timestamptz,
+  -- 행사가 열리는 날 또는 신청을 받기 시작하는 날. 마감일과 짝지어 기간으로 보여준다.
+  start_date date,
   expires_at timestamptz,
   is_always_open boolean not null default false,
   is_pinned boolean not null default false,
   is_hidden boolean not null default false,
-  category text check (category is null or category in ('ACADEMIC', 'OPPORTUNITY', 'BENEFIT', 'COMMUNITY')),
+  category text check (category is null or category in ('ACADEMIC', 'OPPORTUNITY', 'SURVEY', 'BENEFIT', 'COMMUNITY')),
   has_reward boolean not null default false,
   reward_note text,
   requires_action boolean not null default false,
@@ -212,6 +214,7 @@ alter table public.notices
   add column if not exists reviewed_at timestamptz,
   add column if not exists review_note text,
   add column if not exists deadline_at timestamptz,
+  add column if not exists start_date date,
   add column if not exists expires_at timestamptz,
   add column if not exists is_always_open boolean not null default false,
   add column if not exists is_pinned boolean not null default false,
@@ -358,7 +361,7 @@ classified as (
       when was_academic then 'ACADEMIC'
       when was_benefit then 'BENEFIT'
       when was_community then 'COMMUNITY'
-      when current_category in ('ACADEMIC', 'OPPORTUNITY', 'BENEFIT', 'COMMUNITY')
+      when current_category in ('ACADEMIC', 'OPPORTUNITY', 'SURVEY', 'BENEFIT', 'COMMUNITY')
         then current_category
       else null
     end as category
@@ -400,7 +403,7 @@ begin
   ) then
     alter table public.notices
       add constraint notices_category_check
-      check (category is null or category in ('ACADEMIC', 'OPPORTUNITY', 'BENEFIT', 'COMMUNITY'))
+      check (category is null or category in ('ACADEMIC', 'OPPORTUNITY', 'SURVEY', 'BENEFIT', 'COMMUNITY'))
       not valid;
   end if;
 end

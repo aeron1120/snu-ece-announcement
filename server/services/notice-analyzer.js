@@ -99,6 +99,7 @@ function buildVerificationPrompt({ title, content, categories, draft, correction
   "editedContent": "원문의 수치·URL·조건을 보존한 읽기 쉬운 본문",
   "summary": ["검증된 요약 1", "검증된 요약 2", "검증된 요약 3"],
   "deadline": "YYYY-MM-DD 또는 null",
+  "startDate": "YYYY-MM-DD 또는 null",
   "targets": ["전체 또는 NN학번"],
   "keywords": ["최대 10개"],
   "existingCategoryIds": [검증된 기존 카테고리 ID],
@@ -113,6 +114,9 @@ function buildVerificationPrompt({ title, content, categories, draft, correction
 검수 원칙:
 - 원문에 없는 사실·수치·조건은 모두 제거합니다.
 - deadline은 실제 신청 또는 제출 마감이 명확할 때만 지정합니다.
+- startDate는 행사가 열리는 날 또는 접수를 받기 시작하는 날입니다.
+  "7월 20일 ~ 9월 15일"처럼 기간이 적혀 있으면 앞이 startDate, 뒤가 deadline입니다.
+  하루짜리 행사는 startDate만 채우고 deadline은 비웁니다. 근거가 없으면 null입니다.
 - 카테고리는 반드시 학사, 기회, 설문조사, 행사 중 가장 핵심적인 하나만 선택합니다.
 - requiresAction은 신청·제출·응답이 필요할 때만 true입니다.
 - hasReward는 기프티콘·상품·간식·지원금·할인 등 즉시 확인 가능한 보상이 있을 때만 true입니다.
@@ -171,6 +175,7 @@ function buildPrompt({ title, content, categories, correction }) {
   "editedContent": "원문의 사실과 링크를 보존하고 문단·목록만 읽기 쉽게 정돈한 본문",
   "summary": ["핵심 요약 1", "핵심 요약 2", "핵심 요약 3"],
   "deadline": "YYYY-MM-DD 또는 null",
+  "startDate": "YYYY-MM-DD 또는 null",
   "targets": ["전체 또는 NN학번"],
   "keywords": ["최대 10개"],
   "existingCategoryIds": [기존 카테고리 ID],

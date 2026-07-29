@@ -777,6 +777,9 @@ function normalizeNoticeInput(body = {}) {
     const target = String(body.target || '전체').trim() || '전체';
     const host = String(body.host || '기타').trim() || '기타';
     const deadlineAt = normalizeDeadlineAt(body.deadlineAt || body.deadline || null);
+    // 행사가 열리는 날 또는 신청을 받기 시작하는 날. 마감일과 짝을 이뤄
+    // 기간으로 보여준다. 없으면 등록일이 그 자리를 대신한다.
+    const startDate = normalizeDateOnly(body.startDate || body.startAt || null);
     const isAlwaysOpen = body.isAlwaysOpen === true || body.isAlwaysOpen === 'true';
     const isPinned = body.isPinned === true || body.isPinned === 'true';
     const isHidden = body.isHidden === true || body.isHidden === 'true';
@@ -806,6 +809,7 @@ function normalizeNoticeInput(body = {}) {
         host,
         deadline: deadlineAt ? deadlineAt.slice(0, 10) : '',
         deadlineAt,
+        startDate,
         isAlwaysOpen,
         isPinned,
         isHidden,
@@ -845,6 +849,12 @@ function normalizeDeadline(deadline) {
     return value ? value : null;
 }
 
+// 시작일은 시각까지 따질 일이 없어 날짜만 받는다.
+function normalizeDateOnly(value) {
+    const text = String(value || '').trim().slice(0, 10);
+    return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : null;
+}
+
 function toClientNotice(row) {
     if (!row) return null;
     const categoryIds = Array.isArray(row.categoryIds)
@@ -859,6 +869,7 @@ function toClientNotice(row) {
         host: row.host || '기타',
         deadline: row.deadline || (row.deadlineAt || row.deadline_at || '').slice(0, 10),
         deadlineAt: row.deadlineAt || row.deadline_at || null,
+        startDate: String(row.startDate || row.start_date || '').slice(0, 10) || null,
         expiresAt: row.expiresAt || row.expires_at || null,
         isAlwaysOpen: row.isAlwaysOpen === true || row.is_always_open === true,
         isPinned: row.isPinned === true || row.is_pinned === true,
@@ -901,6 +912,7 @@ function toNoticeSummary(row) {
         host: notice.host,
         deadline: notice.deadline,
         deadlineAt: notice.deadlineAt,
+        startDate: notice.startDate,
         expiresAt: notice.expiresAt,
         isAlwaysOpen: notice.isAlwaysOpen,
         isPinned: notice.isPinned,
@@ -1530,7 +1542,7 @@ async function listNoticeFilterRows() {
         const { data, error } = await supabase
             .from(SUPABASE_NOTICES_TABLE)
             .select(`
-                id,title,content,target,targets,host,deadline,deadline_at,expires_at,is_always_open,is_pinned,is_hidden,
+                id,title,content,target,targets,host,deadline,deadline_at,start_date,expires_at,is_always_open,is_pinned,is_hidden,
                 category,has_reward,reward_note,requires_action,survey_reward,
                 ai_summary,keywords,ocr_text,views,
                 source_type,source_published_at,created_at,updated_at,last_crawled_at,has_images,notice_categories(category_id)

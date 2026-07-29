@@ -473,9 +473,27 @@
 .banner-visual-column { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; min-width: 0; }
 .banner-format-editor { min-width: 0; }
 .banner-format-editor > strong { display: block; margin-bottom: 7px; color: var(--text-sub); font-size: 11px; }
-.banner-image-preview { display: grid; width: 100%; aspect-ratio: 4 / 5; place-items: center; overflow: hidden; border: 1px solid var(--border); background: #f5f7fb; }
+/* 미리보기 상자는 실제 자리와 같은 비율이어야 한다. 상자가 4:5인데 안내는
+   3:10이면 맞게 만든 사진도 틀려 보인다. */
+.banner-image-preview { display: grid; width: 100%; aspect-ratio: 3 / 10; place-items: center; overflow: hidden; border: 1px solid var(--border); background: #f5f7fb; }
 .banner-image-preview.is-mobile { aspect-ratio: 16 / 9; }
-.banner-image-preview img { display: block; width: 100%; height: 100%; object-fit: cover; }
+/* 잘라서 채우지 않고 통째로 보여준다. 비율이 어긋난 사진은 여백으로 드러나야
+   무엇이 잘못됐는지 눈으로 알 수 있다. */
+.banner-image-preview img { display: block; width: 100%; height: 100%; object-fit: contain; background: #eef1f6; }
+
+/* 고른 사진의 크기와 비율을 알리는 줄. */
+.banner-format-note {
+    margin: 7px 0 0;
+    padding: 7px 9px;
+    border-radius: 6px;
+    font-size: 11.5px;
+    line-height: 1.55;
+    word-break: keep-all;
+}
+.banner-format-note[data-state="ok"] { color: #1c6b45; background: #e6f5ee; }
+.banner-format-note[data-state="warn"] { color: #8a5300; background: #fff3e0; }
+.banner-format-note[data-state="error"] { color: #a32020; background: #fdecec; }
+.banner-format-note[hidden] { display: none; }
 .banner-image-preview span { color: var(--text-sub); font-size: 13px; line-height: 1.6; text-align: center; }
 .banner-image-preview small { color: #8b93a1; }
 .banner-upload-button { display: block; margin-top: 8px; padding: 8px 10px; border: 1px solid var(--primary); color: var(--primary); font-size: 13px; font-weight: 700; text-align: center; cursor: pointer; }

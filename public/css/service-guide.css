@@ -146,3 +146,21 @@ section p {
     .guide-replay { padding: 20px 16px; }
     .guide-replay-btn { flex: 1 1 100%; }
 }
+
+/* 카테고리 분류 기준. 이름과 설명을 나란히 세워 견주어 읽게 한다. */
+.guide-category-list { display: grid; gap: 0; margin: 18px 0; border-top: 1px solid #dfe5ef; }
+.guide-category-list > div {
+    display: grid;
+    grid-template-columns: 92px minmax(0, 1fr);
+    gap: 16px;
+    padding: 16px 0;
+    border-bottom: 1px solid #dfe5ef;
+}
+.guide-category-list dt { color: #1f3f8f; font-size: 14.5px; font-weight: 800; }
+.guide-category-list dd { margin: 0; color: #4a5468; font-size: 13.5px; line-height: 1.75; word-break: keep-all; }
+.guide-category-list strong { color: #1f2a3f; font-weight: 750; }
+.guide-category-sort { color: #6b7688; }
+
+@media (max-width: 640px) {
+    .guide-category-list > div { grid-template-columns: 1fr; gap: 6px; }
+}

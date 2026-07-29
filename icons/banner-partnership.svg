@@ -1,17 +1,25 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 900" role="img" aria-labelledby="title desc">
-  <title id="title">배너 제휴 문의 임시 배너</title>
-  <desc id="desc">남색 배경 위에 배너 제휴 문의 안내가 적힌 임시 세로 배너</desc>
-  <rect width="720" height="900" fill="#132959"/>
-  <rect x="54" y="54" width="612" height="792" fill="none" stroke="#fff" stroke-width="3"/>
-  <text x="90" y="145" fill="#b8c9ec" font-family="Arial, sans-serif" font-size="21" font-weight="700">PARTNERSHIP</text>
-  <text x="90" y="272" fill="#fff" font-family="Arial, sans-serif" font-size="66" font-weight="800">YOUR NEWS,</text>
-  <text x="90" y="350" fill="#fff" font-family="Arial, sans-serif" font-size="66" font-weight="800">OUR SPACE.</text>
-  <text x="90" y="426" fill="#d7e1f5" font-family="Arial, sans-serif" font-size="28">학내 홍보를 신청하세요.</text>
-  <rect x="90" y="500" width="250" height="66" fill="#fff"/>
-  <text x="215" y="543" fill="#17337a" font-family="Arial, sans-serif" font-size="25" font-weight="700" text-anchor="middle">문의하기 →</text>
-  <g transform="translate(410 540)" fill="none" stroke="#9eb5e6" stroke-width="12">
-    <rect width="170" height="190"/>
-    <path d="M35 54h100M35 96h100M35 138h64"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 2400" role="img" aria-labelledby="t d">
+  <title id="t">SNU ECE 학내 프로젝트 임시 배너</title>
+  <desc id="d">짙은 남색 바탕에 학내 프로젝트 소개가 적힌 세로 3대 10 임시 배너</desc>
+  <rect width="720" height="2400" fill="#e9edf6"/>
+  <rect x="40" y="40" width="640" height="2320" fill="#132959"/>
+
+  <rect x="96" y="150" width="150" height="46" fill="#ffffff"/>
+  <text x="171" y="182" fill="#132959" font-family="Arial, sans-serif" font-size="22" font-weight="700" text-anchor="middle">PROJECT</text>
+
+  <text x="96" y="360" fill="#ffffff" font-family="Arial, sans-serif" font-size="96" font-weight="800">BUILD</text>
+  <text x="96" y="470" fill="#ffffff" font-family="Arial, sans-serif" font-size="96" font-weight="800">TOGETHER</text>
+  <rect x="96" y="530" width="260" height="8" fill="#6f8bd0"/>
+
+  <text x="96" y="640" fill="#c9d6f2" font-family="Arial, sans-serif" font-size="36">SNU ECE 공지방</text>
+  <text x="96" y="700" fill="#c9d6f2" font-family="Arial, sans-serif" font-size="30">학내 프로젝트를 소개하세요.</text>
+
+  <g transform="translate(360 1350)">
+    <circle cx="0" cy="0" r="230" fill="#ffffff" opacity=".10"/>
+    <g fill="none" stroke="#ffffff" stroke-width="26" stroke-linecap="round"><path d="M0-180v90M0 90v90M-180 0h90M90 0h90M-127-127l64 64M63 63l64 64M127-127l-64 64M-63 63l-64 64"/><circle cx="0" cy="0" r="46"/></g>
   </g>
-  <text x="90" y="800" fill="#9eb5e6" font-family="Arial, sans-serif" font-size="20">TEMPORARY BANNER 03</text>
+
+  <rect x="96" y="2180" width="528" height="2" fill="#6f8bd0" opacity=".5"/>
+  <text x="96" y="2250" fill="#c9d6f2" font-family="Arial, sans-serif" font-size="26">TEMPORARY BANNER 03</text>
+  <text x="624" y="2250" fill="#c9d6f2" font-family="Arial, sans-serif" font-size="26" text-anchor="end">720 × 2400</text>
 </svg>

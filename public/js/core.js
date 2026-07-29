@@ -1086,37 +1086,63 @@ function calcDDay(deadlineStr) {
     return { text: `D-${diffDays}`, isUrgent: false, isD1: false, isExpired: false };
 }
 
-// 날짜가 없는 공지에서 구분자만 덩그러니 남지 않도록 조립한다.
-function formatDetailMeta(dateLabel, views) {
-    const count = `조회: ${Number(views) || 0}`;
-    return dateLabel
-        ? `${escapeHtml(dateLabel)} &nbsp;|&nbsp; ${count}`
-        : count;
+/* 상세 화면 윗줄. 날짜가 없는 공지에서 구분자만 덩그러니 남지 않도록 조립한다.
+   목록에는 열려 있는 기간만 적지만, 상세에서는 이 공지가 언제 올라온 것인지도
+   알 수 있어야 한다. 오래된 공지를 보고 있는지 판단하는 근거가 된다. */
+function formatDetailMeta(dateLabel, views, registeredOn = '') {
+    const parts = [];
+    if (dateLabel) parts.push(escapeHtml(dateLabel));
+    if (registeredOn) parts.push(`등록 ${escapeHtml(formatDateWithWeekday(registeredOn))}`);
+    parts.push(`조회: ${Number(views) || 0}`);
+    return parts.join(' &nbsp;|&nbsp; ');
 }
 
-// 학생에게 의미 있는 날짜는 마감일뿐이다. 공지가 언제 올라왔는지는 내부 정보라
-// 공개 화면에서는 내보내지 않는다(관리자 목록에는 그대로 남는다).
+/* 공지에 붙는 날짜.
+
+   학생이 알고 싶은 것은 '언제 열려 있는가'다. 그래서 마감일이 있으면
+   시작과 끝을 함께 적어 기간으로 보여준다. 시작일이 따로 없는 공지가 많은데,
+   그런 때는 공지가 올라온 날부터 열려 있었다고 보는 것이 사실에 가까우므로
+   등록일을 시작 자리에 세운다. 마감이 없고 날짜 하나만 있는 행사는 그 하루만
+   적는다.
+
+   시작과 끝이 같은 날이면 물결표로 잇지 않는다. 같은 날짜를 두 번 적는 셈이라
+   읽는 사람이 기간으로 오해한다. */
+function noticeRegisteredOn(notice) {
+    return String(notice.sourcePublishedAt || notice.createdAt || '').slice(0, 10);
+}
+
 function getNoticeDatePresentation(notice) {
-    if (notice.isAlwaysOpen) {
-        return {
-            badgeText: '상시',
-            badgeClass: '',
-            dateLabel: ''
-        };
-    }
     const deadline = String(notice.deadlineAt || notice.deadline || '').slice(0, 10);
+    const start = String(notice.startDate || '').slice(0, 10);
+    const registered = noticeRegisteredOn(notice);
+
+    if (notice.isAlwaysOpen) {
+        return { badgeText: '상시', badgeClass: '', dateLabel: '' };
+    }
+
     if (!deadline) {
+        // 마감이 없으면 행사가 열리는 날 하나만 알린다.
         return {
             badgeText: '',
             badgeClass: '',
-            dateLabel: ''
+            dateLabel: start ? formatDateWithWeekday(start) : ''
         };
     }
+
+    const from = start || registered;
     const dDay = calcDDay(deadline);
-    return {
+    const badge = {
         badgeText: dDay.text,
-        badgeClass: dDay.isExpired ? 'expired' : (dDay.isUrgent ? 'd-day' : ''),
-        dateLabel: `마감 ${formatDateWithWeekday(deadline)}`
+        badgeClass: dDay.isExpired ? 'expired' : (dDay.isUrgent ? 'd-day' : '')
+    };
+
+    // 시작이 마감보다 뒤면 잘못 들어온 값이다. 그럴 때는 마감만 적는다.
+    if (!from || from >= deadline) {
+        return { ...badge, dateLabel: formatDateWithWeekday(deadline) };
+    }
+    return {
+        ...badge,
+        dateLabel: `${formatDateWithWeekday(from)} ~ ${formatDateWithWeekday(deadline)}`
     };
 }
 
@@ -2659,8 +2685,11 @@ async function openDetail(idStr) {
             if (freshIdx !== -1) {
                 notices[freshIdx].views = result.notice.views;
                 if (String(currentViewId) === String(result.notice.id)) {
-                    document.getElementById('detail-meta').innerHTML =
-                        formatDetailMeta(datePresentation.dateLabel, result.notice.views);
+                    document.getElementById('detail-meta').innerHTML = formatDetailMeta(
+                        datePresentation.dateLabel,
+                        result.notice.views,
+                        noticeRegisteredOn(result.notice)
+                    );
                 }
                 renderNoticeCards();
             }
@@ -2678,8 +2707,11 @@ async function openDetail(idStr) {
         ${notice.host ? `<span class="tag">${escapeHtml(notice.host)}</span>` : ''}
     `;
     document.getElementById('detail-title').innerText = notice.title || "";
-    document.getElementById('detail-meta').innerHTML =
-        formatDetailMeta(datePresentation.dateLabel, notice.views);
+    document.getElementById('detail-meta').innerHTML = formatDetailMeta(
+        datePresentation.dateLabel,
+        notice.views,
+        noticeRegisteredOn(notice)
+    );
     document.getElementById('detail-summary').innerHTML = (notice.aiSummary || []).map(item => `<li>${escapeHtml(item)}</li>`).join('');
     document.getElementById('detail-content').innerHTML = linkify(notice.content || "");
 
