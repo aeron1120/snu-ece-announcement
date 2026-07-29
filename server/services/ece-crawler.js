@@ -105,7 +105,12 @@ export function createEceCrawler({
                                 title: detail.title,
                                 content: detail.content
                             });
-                        } catch {
+                        } catch (error) {
+                            // 이 자리에서 오류를 버리면 검수함에 "분석 failed"만
+                            // 남고 어느 규칙이 깨졌는지 알 길이 사라진다.
+                            console.warn(
+                                `공지 분석 실패 (${summary.externalId}): ${error?.message || error}`
+                            );
                             analysis = fallbackAnalysis();
                         }
                     }

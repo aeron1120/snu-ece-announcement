@@ -148,3 +148,66 @@ test('crawler caps detail requests and records partial failures', async () => {
     assert.equal(result.createdCount, 19);
     assert.equal(result.failedCount, 1);
 });
+
+test('a failed analysis says why in the log instead of vanishing', async () => {
+    // 빈 catch가 오류를 통째로 버려서, 검수함에 "분석 failed"만 남고
+    // 어느 규칙이 깨졌는지 로그에도 단서가 없었다.
+    const directory = await mkdtemp(path.join(tmpdir(), 'ece-crawler-'));
+    const store = createAutomationStore({
+        useSupabase: false,
+        filePath: path.join(directory, 'automation.json')
+    });
+
+    const fetchImpl = async url => response(String(url).includes('md=v') ? 'detail' : 'list');
+    const parser = {
+        parseAcademicsList: () => [{
+            externalId: 'only',
+            audience: '학부',
+            title: 'title',
+            sourceUrl: 'https://ece.snu.ac.kr/community/academics?md=v&bbsidx=1',
+            publishedDate: '2026-07-01'
+        }],
+        parseAcademicsDetail: (_html, sourceUrl) => ({
+            externalId: 'only',
+            title: 'detail title',
+            content: 'detail content',
+            publishedDate: '2026-07-01',
+            attachments: [],
+            sourceUrl
+        })
+    };
+    const analyzer = {
+        analyzeNotice: async () => {
+            throw new Error('deadline must be an ISO date or null');
+        }
+    };
+
+    const warnings = [];
+    const originalWarn = console.warn;
+    console.warn = (...args) => warnings.push(args.join(' '));
+
+    try {
+        const crawler = createEceCrawler({
+            store,
+            fetchImpl,
+            parser,
+            analyzer,
+            config: {
+                baseUrl: 'https://ece.snu.ac.kr/community/academics',
+                pages: 1,
+                maxDetails: 5,
+                requestDelayMs: 0,
+                timeoutMs: 10000
+            },
+            wait: async () => {}
+        });
+        await crawler.run();
+    } finally {
+        console.warn = originalWarn;
+    }
+
+    const reported = warnings.join('\n');
+    assert.match(reported, /deadline must be an ISO date or null/);
+    // 어느 공지에서 났는지도 알 수 있어야 손을 댈 수 있다.
+    assert.match(reported, /only/);
+});
