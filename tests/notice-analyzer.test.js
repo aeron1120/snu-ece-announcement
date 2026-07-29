@@ -243,3 +243,45 @@ test('calls are paced so one crawl cannot drain the minute quota', async () => {
     assert.equal(waited.length, 1);
     assert.equal(waited[0], 6000);
 });
+
+test('the second pass can be turned off to halve the daily quota cost', async () => {
+    // 무료 등급은 하루 호출 수가 막혀 있다. 공지 1건에 두 번 부르면
+    // 하루에 검수함에 넣을 수 있는 공지가 절반으로 준다.
+    // 자동 수집 공지는 어차피 사람이 검수해야 공개되므로 2차 검수는 접을 수 있다.
+    let calls = 0;
+    const analyzer = createNoticeAnalyzer({
+        apiKey: 'test-key',
+        wait: async () => {},
+        verifyAnalysis: false,
+        fetchImpl: async () => {
+            calls += 1;
+            return {
+                ok: true,
+                json: async () => ({
+                    candidates: [{
+                        content: {
+                            parts: [{
+                                text: JSON.stringify({
+                                    summary: ['핵심'],
+                                    deadline: null,
+                                    targets: ['전체'],
+                                    keywords: [],
+                                    existingCategoryIds: [2],
+                                    confidence: 0.9
+                                })
+                            }]
+                        }
+                    }]
+                })
+            };
+        },
+        categoryProvider: async () => [{ id: 2, key: 'ACADEMIC', name: '학사' }]
+    });
+
+    const result = await analyzer.analyzeNotice({ title: '제목', content: '본문' });
+
+    assert.equal(calls, 1);
+    assert.deepEqual(result.summary, ['핵심']);
+    // 카테고리는 1차 결과에서도 그대로 이어져야 한다.
+    assert.equal(result.category, 'ACADEMIC');
+});

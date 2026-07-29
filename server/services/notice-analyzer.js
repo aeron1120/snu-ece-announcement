@@ -214,6 +214,9 @@ export function createNoticeAnalyzer({
     // 무료 등급은 분당 호출 수가 막혀 있다. 크롤 한 번이 스무 건을 연속으로
     // 분석하면 한도를 즉시 넘겨, 그 창 동안 관리자의 수동 편집까지 막힌다.
     minIntervalMs = 6000,
+    // 2차 검수는 호출 수를 두 배로 만든다. 무료 등급처럼 하루 한도가 빠듯하면
+    // 접을 수 있다. 자동 수집 공지는 어차피 관리자 검수를 거쳐야 공개된다.
+    verifyAnalysis = true,
     wait = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds)),
     now = () => Date.now()
 }) {
@@ -300,6 +303,15 @@ export function createNoticeAnalyzer({
                 );
             }
 
+            const withCategory = analysis => ({
+                ...analysis,
+                category: categories.find(item =>
+                    Number(item.id) === Number(analysis.existingCategoryIds[0])
+                )?.key || null
+            });
+
+            if (!verifyAnalysis) return withCategory(draft);
+
             // 검수도 분석과 같은 횟수만큼 기회를 준다. 모델 출력은 확률적이라
             // 한 번의 흔들림으로 분석 전체를 버리면 실패율이 그대로 드러난다.
             let verificationError;
@@ -316,12 +328,7 @@ export function createNoticeAnalyzer({
                         parseModelJson(await generate(verificationPrompt)),
                         activeCategoryIds
                     );
-                    return {
-                        ...verified,
-                        category: categories.find(item =>
-                            Number(item.id) === Number(verified.existingCategoryIds[0])
-                        )?.key || null
-                    };
+                    return withCategory(verified);
                 } catch (error) {
                     if (isRateLimited(error)) throw error;
                     verificationError = error;

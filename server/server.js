@@ -76,6 +76,8 @@ const noticeAnalyzer = process.env.GEMINI_API_KEY
         // 그 창 동안 관리자의 수동 편집까지 429로 막힌다.
         // 유료 등급으로 올리면 줄여서 크롤 시간을 되돌릴 수 있다.
         minIntervalMs: Number(process.env.GEMINI_MIN_INTERVAL_MS) || 6000,
+        // 무료 등급의 하루 한도가 빠듯하면 2차 검수를 접어 호출 수를 반으로 줄인다.
+        verifyAnalysis: process.env.GEMINI_VERIFY_ANALYSIS !== 'false',
         categoryProvider: async () => {
             const categories = await automationStore.listCategories();
             const canonicalSlugs = new Set(
