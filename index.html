@@ -95,6 +95,19 @@
     </svg>
 </button>
 
+<!-- 검색창이 화면 밖으로 밀려나면 이 줄이 대신 위에 붙는다. 목록을 한참
+     내려간 뒤에도 검색으로 돌아올 길을 남겨 두려는 것이다. 모바일 전용. -->
+<button type="button" class="mobile-sticky-search mobile-only" id="mobile-sticky-search"
+        hidden aria-label="맨 위로 올라가 검색하기" onclick="jumpToNoticeSearch()">
+    <span class="mobile-sticky-search-field">
+        <span class="mobile-sticky-search-text">공지 제목과 내용을 검색해보세요</span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true">
+            <circle cx="11" cy="11" r="7"></circle>
+            <path stroke-linecap="round" d="m16.5 16.5 4 4"></path>
+        </svg>
+    </span>
+</button>
+
 <div class="header">
     <div class="header-title-area">
         <!-- 제목 자리에 워드마크를 넣는다. 이미지가 없으면 글자 제목으로 떨어진다. -->

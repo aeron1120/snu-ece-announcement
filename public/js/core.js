@@ -179,6 +179,7 @@ function setLayoutMode(mode) {
     refreshFooterSyncStatus();
     // 뷰가 바뀌면 정렬 버튼 폭도 바뀌므로 활성 알약을 다시 맞춘다.
     syncNoticeSortChips();
+    syncMobileStickySearch();
     if (document.body?.dataset.page === 'public' && document.getElementById('notice-grid')) {
         renderNoticeCards();
     }
@@ -1285,6 +1286,56 @@ function followNoticeHoverPreview() {
         }
         positionNoticeHoverPreview(hoverPreviewAnchorCard);
     });
+}
+
+/* 모바일에서 목록을 내리면 검색창이 화면 밖으로 나가 다시 찾기 어렵다.
+   실제 검색창이 위로 사라진 뒤부터 같은 자리에 고정 줄을 띄우고,
+   누르면 맨 위로 되돌려 검색창에 바로 손이 가게 한다. */
+let stickySearchFrame = 0;
+
+function syncMobileStickySearch() {
+    if (stickySearchFrame) return;
+    stickySearchFrame = requestAnimationFrame(() => {
+        stickySearchFrame = 0;
+        const bar = document.getElementById('mobile-sticky-search');
+        if (!bar) return;
+        const field = document.querySelector('.search-container .search-field');
+        const boardVisible = !document.getElementById('board-view')?.hidden;
+        // 상세 화면이나 데스크탑에서는 띄우지 않는다.
+        if (!field || !boardVisible || getLayoutMode() !== 'mobile') {
+            bar.hidden = true;
+            bar.classList.remove('visible');
+            return;
+        }
+        // 검색창 아랫변이 화면 위로 넘어가면 그때부터 대신 선다.
+        const shouldShow = field.getBoundingClientRect().bottom <= 4;
+        if (shouldShow === bar.classList.contains('visible')) return;
+        if (shouldShow) {
+            bar.hidden = false;
+            requestAnimationFrame(() => bar.classList.add('visible'));
+        } else {
+            bar.classList.remove('visible');
+            window.setTimeout(() => {
+                if (!bar.classList.contains('visible')) bar.hidden = true;
+            }, 180);
+        }
+    });
+}
+
+function jumpToNoticeSearch() {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    const input = document.getElementById('searchInput');
+    if (!input) return;
+    // 스크롤이 끝난 뒤 초점을 준다. 먼저 주면 브라우저가 즉시 끌어올려
+    // 부드럽게 올라가던 움직임이 끊긴다.
+    window.setTimeout(() => input.focus({ preventScroll: true }), 420);
+}
+
+function watchMobileStickySearch() {
+    if (!document.getElementById('mobile-sticky-search')) return;
+    window.addEventListener('scroll', syncMobileStickySearch, { passive: true });
+    window.addEventListener('resize', syncMobileStickySearch, { passive: true });
+    syncMobileStickySearch();
 }
 
 function watchNoticeHoverPreviewScroll() {
@@ -2525,6 +2576,7 @@ function showDetailView() {
         if (board) board.hidden = true;
         if (detail) detail.hidden = false;
         window.scrollTo({ top: 0, behavior: 'auto' });
+        syncMobileStickySearch();
     }, detail);
 }
 
@@ -2536,6 +2588,7 @@ function showBoardView() {
         if (board) board.hidden = false;
         currentViewId = null;
         window.scrollTo({ top: boardScrollPosition, behavior: 'auto' });
+        syncMobileStickySearch();
     }, board);
 }
 
@@ -3525,6 +3578,7 @@ document.addEventListener('DOMContentLoaded', async function () {
     initializeFooter();
     watchNoticeSortThumb();
     watchNoticeHoverPreviewScroll();
+    watchMobileStickySearch();
 
     await Promise.all([loadData(), loadCategories()]);
     const initialNoticePage = restoreNoticeListStateFromUrl();
