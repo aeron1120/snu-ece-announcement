@@ -359,7 +359,9 @@ test('notice blocks use six-dot handles and expose only left/right split targets
     assert.match(css, /\.spatial-workspace\.is-split\[data-blocks="1"\] \.compare-space\s*\{[^}]*position:\s*sticky/s);
     assert.match(css, /\.spatial-workspace\.is-split\[data-blocks="1"\] \.notice-base-block > \.grid\s*\{[^}]*grid-template-columns:\s*repeat\(2,/s);
     assert.match(css, /\.compare-space\.is-notice-drop-active \.compare-empty-slot\s*\{[^}]*display:\s*flex;/s);
-    assert.match(css, /\.compare-col-controls\s*\{[^}]*position:\s*absolute;[^}]*left:\s*-44px;[^}]*opacity:\s*0;/s);
+    // 이미 놓인 블록의 손잡이는 늘 보인다. 가려 두면 어디를 짚어야 할지 알 수 없다.
+    assert.match(css, /\.compare-col-controls\s*\{[^}]*position:\s*absolute;[^}]*left:\s*-30px;[^}]*pointer-events:\s*auto;/s);
+    assert.doesNotMatch(css, /\.compare-col-controls\s*\{[^}]*opacity:\s*0;/s);
     assert.match(css, /\.compare-col:hover > \.compare-col-controls[\s\S]*opacity:\s*1;/);
     assert.match(css, /\.compare-col\s*\{[^}]*background:\s*#fff;[^}]*border:\s*1px solid #e4e8ef;[^}]*box-shadow:\s*0 10px 28px/s);
     assert.match(css, /\.compare-col-content\s*\{[^}]*max-height:\s*none;[^}]*background:\s*transparent;[^}]*border:\s*0;/s);
@@ -2176,4 +2178,33 @@ test('drop targets light up when the dragged card overlaps them, not only the cu
     assert.equal(pick({ left: 10, right: 80, top: 10, bottom: 40 }), 'left');
     // 어느 쪽에도 닿지 않으면 아무것도 켜지 않는다.
     assert.equal(pick({ left: 200, right: 260, top: 10, bottom: 40 }), null);
+});
+
+test('a sticky search row takes over once the real search box scrolls away', async () => {
+    const html = await readFile('index.html', 'utf8');
+    const app = await readFile('js/core.js', 'utf8');
+    const mobileCss = await readFile('css/mobile.css', 'utf8');
+
+    assert.match(html, /id="mobile-sticky-search"/);
+    assert.match(html, /onclick="jumpToNoticeSearch\(\)"/);
+
+    // 진짜 검색창이 화면 위로 넘어간 뒤부터 선다.
+    const sync = readNamedFunction(app, 'syncMobileStickySearch');
+    assert.match(sync, /getBoundingClientRect\(\)\.bottom <= 4/);
+    // 상세 화면이나 데스크탑에서는 뜨지 않는다.
+    assert.match(sync, /getLayoutMode\(\) !== 'mobile'/);
+    assert.match(sync, /board-view'\)\?\.hidden/);
+    // 스크롤 처리는 프레임당 한 번으로 묶는다.
+    assert.match(sync, /requestAnimationFrame/);
+    assert.match(readNamedFunction(app, 'watchMobileStickySearch'), /addEventListener\('scroll'[\s\S]*passive: true/);
+
+    // 누르면 맨 위로 되돌리고, 스크롤이 끝난 뒤에 초점을 준다.
+    const jump = readNamedFunction(app, 'jumpToNoticeSearch');
+    assert.match(jump, /scrollTo\(\{ top: 0, behavior: 'smooth' \}\)/);
+    assert.match(jump, /preventScroll: true/);
+
+    // 화면에 붙어 있어야 스크롤해도 사라지지 않는다.
+    assert.match(mobileCss, /\.mobile-sticky-search\s*\{[^}]*position:\s*fixed;[^}]*top:\s*0/s);
+    // 왼쪽 위 메뉴 버튼과 겹치지 않게 자리를 비운다.
+    assert.match(mobileCss, /\.mobile-sticky-search\s*\{[^}]*padding:[^;]*58px/s);
 });
