@@ -81,7 +81,6 @@ let bannerManageAuthToken = '';
 let activeCategories = [];
 let selectedCategoryFilters = new Set();
 let archiveTabActive = false;
-let relatedTabActive = false;   // '관련' 칸을 보고 있는지
 const quickNoticeFilters = {
     urgent: false,
     reward: false,
@@ -96,12 +95,12 @@ const NOTICE_CATEGORY_ORDER = Object.freeze([
     'community'
 ]);
 
-/* '관련'은 주제가 아니라 출처로 묶은 칸이다.
-   학부 홈페이지에서 자동으로 모아 온 원문 공지를 한자리에서 보게 한다.
-   주제 카테고리와 축이 다르므로 데이터베이스의 카테고리로 두지 않고
-   목록을 불러올 때 출처 조건만 붙인다. 그래야 새로 긁어 온 공지가
-   따로 손대지 않아도 저절로 이 칸에 들어온다. */
-const RELATED_TAB_SLUG = 'related';
+/* '관련' 공지는 학부 홈페이지에서 자동으로 모아 온 원문 공지다.
+   주제가 아니라 출처로 가른 것이라 카테고리 탭에 함께 세우면 축이 어긋난다.
+   같은 공지가 학사와 관련에 둘 다 나오니 탭을 고르는 손이 헷갈린다.
+   그래서 상세 필터의 스위치로 옮겼다. 평소에는 켜 두어 다 보이고,
+   직접 등록한 소식만 훑고 싶을 때 끈다. */
+let includeRelatedNotices = true;
 
 function orderedNoticeCategories(categories = activeCategories) {
     const order = new Map(NOTICE_CATEGORY_ORDER.map((slug, index) => [slug, index]));
@@ -488,7 +487,7 @@ function getNoticeListFilters() {
         sort: filterState.sort,
         dateFrom: document.getElementById('filter-date-from')?.value || '',
         dateTo: document.getElementById('filter-date-to')?.value || '',
-        source: relatedTabActive ? 'crawled' : '전체',
+        source: includeRelatedNotices ? '전체' : 'manual',
         urgent: quickNoticeFilters.urgent,
         reward: quickNoticeFilters.reward,
         action: quickNoticeFilters.action,
@@ -862,11 +861,10 @@ function renderBannerSlide(slide, index, { isClone = false } = {}) {
     const src = useMobileBanner ? slide.mobileSrc : slide.src;
     if (!src) return '';
     const alt = isClone ? '' : escapeHtml(slide.altText || slide.name || '학내 홍보 이미지');
-    /* 레일은 배너 원본(4:5)보다 훨씬 길쭉하다. 원본을 잘라 채우면 좌우가
-       3분의 2쯤 날아가므로, 같은 그림을 흐리게 깐 배경으로 레일을 채우고
-       그 위에 배너를 온전한 비율로 얹는다. 남색 여백이 남지 않는다. */
-    const backdrop = `<span class="rail-ad-backdrop" aria-hidden="true"
-            style="background-image:url('${escapeHtml(src)}')"></span>`;
+    /* 배너는 자리를 남김없이 채운다. 예전에는 원본이 4:5라 레일보다 훨씬
+       짧아 흐린 배경을 뒤에 깔아 메웠는데, 그 경계가 테두리처럼 보였다.
+       권장 비율을 레일과 같은 3:10으로 정했으므로 이제는 잘라 채워도
+       잘려 나가는 부분이 거의 없다. 비율이 어긋난 그림은 등록할 때 경고한다. */
     // 트랙 밖 슬라이드는 lazy로 두면 처음 넘길 때 한 프레임 비므로 모두 즉시 받는다.
     // 배너는 최대 5장이라 부담이 크지 않다.
     const image = `<img class="rail-ad-image" src="${escapeHtml(src)}" alt="${alt}"
@@ -875,8 +873,8 @@ function renderBannerSlide(slide, index, { isClone = false } = {}) {
         ? `<a class="rail-ad-link rail-ad-image-link" href="${escapeHtml(slide.linkUrl)}" target="_blank"
                 rel="noopener noreferrer" draggable="false"
                 tabindex="${isClone ? '-1' : '0'}"
-                onclick="return allowBannerLinkClick(event)">${backdrop}${image}</a>`
-        : `${backdrop}${image}`;
+                onclick="return allowBannerLinkClick(event)">${image}</a>`
+        : image;
     return `<div class="rail-ad-slide" data-index="${index}" data-clone="${isClone}">${body}</div>`;
 }
 
@@ -1993,7 +1991,7 @@ const LEGACY_CATEGORY_REDIRECTS = Object.freeze({
     'benefits-partnerships': 'community',
     campus: 'community',
     governance: 'community',
-    // 옛 '혜택' 칸은 없앴다. 그 자리에 설문가 들어왔고, 제휴·할인은 행사로 갔다.
+    // 옛 '혜택' 칸은 없앴다. 그 자리에 설문이 들어왔고, 제휴·할인은 행사로 갔다.
     benefit: 'community',
     expired: 'all'
 });
@@ -2013,23 +2011,20 @@ function buildCategoryTabs() {
     const current = selectedCategoryFilters.size === 0
         ? 'all'
         : (selectedCategoryFilters.size === 1 ? [...selectedCategoryFilters][0] : 'multi');
-    let html = `<button type="button" class="category-tab ${!relatedTabActive && current === 'all' ? 'active' : ''}" data-category="all" onclick="selectCategoryTab('all')">전체</button>`;
+    let html = `<button type="button" class="category-tab ${current === 'all' ? 'active' : ''}" data-category="all" onclick="selectCategoryTab('all')">전체</button>`;
     html += orderedNoticeCategories().map(category => {
         const id = Number(category.id);
-        const on = !relatedTabActive && current === id;
-        return `<button type="button" class="category-tab ${on ? 'active' : ''}" data-category="${escapeHtml(category.slug)}" onclick="selectCategoryTab('${escapeHtml(category.slug)}')">${escapeHtml(category.name)}</button>`;
+        return `<button type="button" class="category-tab ${current === id ? 'active' : ''}" data-category="${escapeHtml(category.slug)}" onclick="selectCategoryTab('${escapeHtml(category.slug)}')">${escapeHtml(category.name)}</button>`;
     }).join('');
-    html += `<button type="button" class="category-tab ${relatedTabActive ? 'active' : ''}" data-category="${RELATED_TAB_SLUG}" title="학부 홈페이지에서 자동으로 모아 온 원문 공지" onclick="selectCategoryTab('${RELATED_TAB_SLUG}')">관련</button>`;
     inner.innerHTML = html;
 }
 
 function selectCategoryTab(value) {
-    relatedTabActive = value === RELATED_TAB_SLUG;
-    const category = relatedTabActive ? null : categoryFromTabValue(value);
+    const category = categoryFromTabValue(value);
     selectedCategoryFilters.clear();
     archiveTabActive = false;
     if (category) selectedCategoryFilters.add(Number(category.id));
-    const activeSlug = relatedTabActive ? RELATED_TAB_SLUG : (category ? category.slug : 'all');
+    const activeSlug = category ? category.slug : 'all';
     document.querySelectorAll('#category-tabs-inner .category-tab').forEach(tab => {
         const selected = tab.dataset.category === activeSlug;
         tab.classList.toggle('active', selected);
@@ -2042,11 +2037,11 @@ function selectCategoryTab(value) {
 }
 
 /* 기본 정렬.
-   마감이 있어야 뜻이 있는 칸만 마감임박순으로 연다. 기회와 설문가
+   마감이 있어야 뜻이 있는 칸만 마감임박순으로 연다. 기회와 설문이
    그렇다. 학사·행사는 언제 올라왔는지가 중요하고, '관련'은 학부 홈페이지에
    실린 차례 그대로 보는 편이 자연스러워 최신순으로 둔다. */
 function getDefaultSortForCategory(value = 'all') {
-    if (value === 'all' || value === RELATED_TAB_SLUG) return '최신순';
+    if (value === 'all') return '최신순';
     const category = categoryFromTabValue(value);
     return ['opportunity', 'survey'].includes(category?.slug)
         ? '마감임박순'
@@ -2194,6 +2189,15 @@ function updateFilterChips() {
         }
     });
 
+    if (!includeRelatedNotices) {
+        hasActive = true;
+        const chip = document.createElement('div');
+        chip.className = 'filter-chip';
+        chip.innerHTML = '<span>관련 공지 제외</span>'
+            + '<button onclick="event.stopPropagation(); resetRelatedNoticeFilter()">×</button>';
+        chipsArea.appendChild(chip);
+    }
+
     if (target !== '전체') {
         hasActive = true;
         const chip = document.createElement('div');
@@ -2261,7 +2265,6 @@ function resetTargetFilter() {
 function clearCategoryFilters() {
     selectedCategoryFilters.clear();
     archiveTabActive = false;
-    relatedTabActive = false;
     buildCategoryTabs();
     filterState.sort = getDefaultSortForCategory('all');
     syncNoticeSortChips();
@@ -2287,6 +2290,9 @@ function resetAllFilters() {
     if (target) target.value = '전체';
     const hostFilter = document.getElementById('hostFilter');
     if (hostFilter) hostFilter.value = FILTER_DEFAULTS.host;
+    includeRelatedNotices = true;
+    const relatedBox = document.getElementById('filter-include-related');
+    if (relatedBox) relatedBox.checked = true;
     updateFilterChips();
     filterCards();
 }
@@ -2297,6 +2303,7 @@ function hasDetailedNoticeFilters() {
     const dateTo = document.getElementById('filter-date-to')?.value || '';
     return target !== '전체'
         || selectedCategoryFilters.size > 0
+        || !includeRelatedNotices
         || Object.values(quickNoticeFilters).some(Boolean)
         || dateFrom
         || dateTo
@@ -2497,11 +2504,25 @@ function updateNoticeResultCount() {
     document.getElementById('notice-grid')?.classList.toggle('has-result-count', show);
 }
 
+/* 관련 공지 스위치. 평소에는 켜져 있으므로 끈 것만 조건을 건 것으로 센다. */
+function resetRelatedNoticeFilter() {
+    const box = document.getElementById('filter-include-related');
+    if (box) box.checked = true;
+    setRelatedNoticeFilter(true);
+}
+
+function setRelatedNoticeFilter(include) {
+    includeRelatedNotices = include !== false;
+    updateFilterChips();
+    filterCards(true);
+}
+
 // 검색어나 상세·빠른 필터 중 하나라도 기본값에서 벗어났는지.
 // 카테고리 탭은 목록을 고르는 이동이지 조건 걸기가 아니라 여기서 세지 않는다.
 function hasActiveNoticeQuery() {
     if (document.getElementById('searchInput')?.value.trim()) return true;
     if (Object.values(quickNoticeFilters).some(Boolean)) return true;
+    if (!includeRelatedNotices) return true;
     if ((document.getElementById('targetFilter')?.value || '전체') !== '전체') return true;
     if (document.getElementById('filter-date-from')?.value) return true;
     if (document.getElementById('filter-date-to')?.value) return true;

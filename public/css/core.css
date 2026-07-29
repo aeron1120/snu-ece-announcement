@@ -368,20 +368,9 @@ body {
 .rail-cta:hover { background: var(--rail-text); color: var(--rail-bg); }
 .rail-ad-link { display: block; width: 100%; color: inherit; text-decoration: none; }
 .rail-ad-image-link { position: relative; display: block; width: 100%; height: 100%; }
-/* 레일을 끝까지 메우는 흐린 배경. 잘려도 무방한 층이라 cover로 채운다. */
-.rail-ad-backdrop {
-    position: absolute;
-    inset: 0;
-    z-index: 0;
-    display: block;
-    background-position: center;
-    background-size: cover;
-    background-repeat: no-repeat;
-    filter: blur(26px) saturate(1.15) brightness(0.86);
-    transform: scale(1.25);
-    pointer-events: none;
-}
-/* 배너 원본은 비율을 지켜 통째로 보인다. */
+/* 배너는 자리를 남김없이 채운다. 비율을 지켜 통째로 보이게 하면 남는 자리가
+   생기고 그 경계가 테두리처럼 보인다. 권장 비율이 레일과 같으므로 잘라 채워도
+   잘려 나가는 부분이 거의 없다. */
 .rail-ad-image {
     position: relative;
     z-index: 1;
@@ -390,7 +379,8 @@ body {
     max-width: none;
     height: 100%;
     margin: 0;
-    object-fit: contain;
+    object-fit: cover;
+    object-position: center;
     background: transparent;
     border: 0;
     outline: 0;
@@ -2385,3 +2375,35 @@ body.reordering-compare-block .compare-trash-zone {
 
 /* 관리자 문의함의 첨부 사진 버튼 줄. */
 .admin-feedback-shots { display: flex; gap: 7px; flex-wrap: wrap; margin: 9px 0 0; }
+
+/* 상세 필터의 켬·끔 스위치. 조건을 고르는 것이 아니라 켜고 끄는 것이라
+   버튼 묶음보다 스위치가 뜻에 맞는다. */
+.filter-switch { display: flex; align-items: flex-start; gap: 10px; cursor: pointer; }
+.filter-switch input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.filter-switch-track {
+    position: relative;
+    width: 38px;
+    height: 22px;
+    flex: 0 0 auto;
+    margin-top: 1px;
+    border-radius: 999px;
+    background: #c8cfdb;
+    transition: background 0.18s ease;
+}
+.filter-switch-track::after {
+    content: '';
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(20, 30, 55, 0.3);
+    transition: transform 0.18s cubic-bezier(0.32, 0.72, 0.24, 1);
+}
+.filter-switch input:checked + .filter-switch-track { background: var(--primary); }
+.filter-switch input:checked + .filter-switch-track::after { transform: translateX(16px); }
+.filter-switch input:focus-visible + .filter-switch-track { outline: 2px solid var(--primary); outline-offset: 2px; }
+.filter-switch-text { font-size: 13px; font-weight: 600; line-height: 1.5; }
+.filter-switch-text small { display: block; margin-top: 2px; color: var(--text-sub); font-size: 11.5px; font-weight: 500; }

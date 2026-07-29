@@ -113,7 +113,7 @@ async function handleBannerImageChange(kind) {
            막지는 않는다. 의도한 비율일 수도 있고, 판단은 검토 때 한다. */
         const off = Math.abs(prepared.width / prepared.height - field.ratio) / field.ratio;
         setBannerInquiryStatus(off > 0.1
-            ? `권장 비율(${field.formatLabel})과 달라 화면에서 잘리거나 여백이 생길 수 있습니다.`
+            ? `권장 비율(${field.formatLabel})과 달라 게재하면 가장자리가 잘립니다. 비율을 맞춰 다시 만들어 주세요.`
             : '');
     } catch {
         field.input.value = '';

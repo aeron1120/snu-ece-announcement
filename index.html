@@ -227,6 +227,20 @@
                 </select>
             </div>
 
+            <!-- 관련 공지 포함 여부 -->
+            <div class="filter-group">
+                <div class="filter-group-label">관련 공지</div>
+                <label class="filter-switch">
+                    <input type="checkbox" id="filter-include-related" checked
+                           onchange="setRelatedNoticeFilter(this.checked)">
+                    <span class="filter-switch-track" aria-hidden="true"></span>
+                    <span class="filter-switch-text">
+                        학부 홈페이지에서 모아 온 공지 포함
+                        <small>끄면 직접 등록한 공지만 남습니다.</small>
+                    </span>
+                </label>
+            </div>
+
             <!-- 조회수 범위 -->
             <div class="filter-group">
                 <div class="filter-group-label">조회수</div>

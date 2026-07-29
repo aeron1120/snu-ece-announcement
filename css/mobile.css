@@ -188,9 +188,8 @@ html[data-view="mobile"] .rail-ad-stage {
     html[data-view="mobile"] .rail-ad-dot.is-active { width: 22px; }
     html[data-view="mobile"] .rail-ad-dots { padding: 7px 11px; gap: 7px; }
 }
-html[data-view="mobile"] .rail-ad-image { object-fit: cover; }
-/* 비율이 정확히 맞아 여백이 없으므로 흐린 배경 층은 필요 없다. */
-html[data-view="mobile"] .rail-ad-backdrop { display: none; }
+/* 데스크탑과 모바일 모두 자리를 꽉 채운다. 예전에 데스크탑만 통째로 보이던
+   때에는 여기서 따로 되돌려야 했지만 이제는 같은 규칙을 쓴다. */
 
 /* ---------- 헤더 ---------- */
 /* 데스크탑처럼 배경 위에 그대로 얹는다. 흰 바탕에 흰 카드를 올리면 그림자만
@@ -256,10 +255,13 @@ html[data-view="mobile"] .category-tabs {
     border-bottom: 1.5px solid var(--primary-deep);
     border-radius: 0;
 }
+/* 칸 수를 못 박지 않는다. 다섯으로 적어 두면 카테고리가 하나 늘거나 줄 때마다
+   여기까지 손대야 하고, 잊으면 마지막 칸이 삐져나가 간격이 어긋난다. */
 html[data-view="mobile"] .category-tabs-inner {
     display: grid;
     width: 100%;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
     gap: 0;
     padding: 0;
 }
