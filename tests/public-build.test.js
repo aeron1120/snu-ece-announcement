@@ -723,6 +723,29 @@ test('manual Gemini analysis saves canonical category ids with the notice', asyn
     assert.match(schema, /notice_payload \? 'categoryIds'[\s\S]*insert into public\.notice_categories/);
 });
 
+test('the compose form picks an analysis mode instead of a verification checkbox', async () => {
+    const html = await readFile('admin.html', 'utf8');
+    const admin = await readFile('js/admin.js', 'utf8');
+
+    // 체크박스는 사라지고 3지선다 선택기가 그 자리를 대신한다.
+    assert.doesNotMatch(html, /id="ai-skip-verification"/);
+    assert.match(html, /id="ai-mode"/);
+    for (const mode of ['full-verified', 'full', 'summary']) {
+        assert.match(html, new RegExp(`value="${mode}"`));
+    }
+
+    // 선택기가 없으면 가장 안전한 모드로 떨어져야 한다.
+    const accessor = readNamedFunction(admin, 'currentAiMode');
+    assert.match(accessor, /getElementById\('ai-mode'\)/);
+    assert.match(accessor, /'full-verified'/);
+
+    // 기존에 체크박스를 켜두었던 브라우저는 전체 분석 1회로 이관한다.
+    const migrate = readNamedFunction(admin, 'restoreAiModeChoice');
+    assert.match(migrate, /eceAiSkipVerification/);
+    assert.match(migrate, /eceAiMode/);
+    assert.match(migrate, /removeItem/);
+});
+
 test('admin AI work shows progress while login is isolated in a server-session page', async () => {
     const html = await readFile('admin.html', 'utf8');
     const loginHtml = await readFile('admin-login.html', 'utf8');

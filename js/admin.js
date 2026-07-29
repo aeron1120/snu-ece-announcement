@@ -176,7 +176,7 @@ async function enterAdminWorkspace() {
     document.getElementById('admin-mode-exit').textContent = '관리자 모드 나가기';
 
     applyAdminRoleToChrome();
-    restoreSkipVerificationChoice();
+    restoreAiModeChoice();
     // 첫 화면은 그 역할이 실제로 쓸 수 있는 탭이어야 한다.
     selectAdminTab(allowedAdminTabs()[0]);
 
@@ -661,18 +661,30 @@ function withResolvedCategoryIds(analysis) {
     };
 }
 
-// 2차 검수를 생략하면 Gemini 호출이 2회에서 1회로 준다. 할당량이 빠듯할 때 쓴다.
-function skipsVerification() {
-    return document.getElementById('ai-skip-verification')?.checked === true;
+// AI 분석 범위. summary는 폼에 입력란이 없는 항목만 채우고 내가 쓴 값은 건드리지 않는다.
+const AI_MODES = ['full-verified', 'full', 'summary'];
+
+function currentAiMode() {
+    const value = document.getElementById('ai-mode')?.value;
+    // 선택기가 없거나 모르는 값이면 가장 정확한 모드로 떨어진다.
+    return AI_MODES.includes(value) ? value : 'full-verified';
 }
 
-function onSkipVerificationToggle() {
-    localStorage.setItem('eceAiSkipVerification', skipsVerification() ? '1' : '0');
+function onAiModeChange() {
+    localStorage.setItem('eceAiMode', currentAiMode());
 }
 
-function restoreSkipVerificationChoice() {
-    const box = document.getElementById('ai-skip-verification');
-    if (box) box.checked = localStorage.getItem('eceAiSkipVerification') === '1';
+function restoreAiModeChoice() {
+    const select = document.getElementById('ai-mode');
+    if (!select) return;
+    let stored = localStorage.getItem('eceAiMode');
+    if (!AI_MODES.includes(stored)) {
+        // 체크박스를 쓰던 브라우저의 설정을 한 번만 옮겨온다.
+        stored = localStorage.getItem('eceAiSkipVerification') === '1' ? 'full' : 'full-verified';
+        localStorage.setItem('eceAiMode', stored);
+    }
+    localStorage.removeItem('eceAiSkipVerification');
+    select.value = stored;
 }
 
 // 기본은 2단계다. 1차 편집 결과를 그대로 쓰지 않고 2차 독립 검수 에이전트가 원문을
@@ -707,7 +719,7 @@ ${content}`;
     });
     const draft = normalizeNoticeAnalysisResult(parseAnalysisJson(result?.text || ''));
     // 생략을 켰으면 여기서 끝낸다. 2차 호출을 아예 하지 않는다.
-    if (skipsVerification()) return withResolvedCategoryIds(draft);
+    if (currentAiMode() !== 'full-verified') return withResolvedCategoryIds(draft);
     if (typeof onVerificationStart === 'function') onVerificationStart();
 
     const verificationPrompt = `당신은 공지 편집 결과를 독립적으로 재검수하는 검증 에이전트입니다.
@@ -785,7 +797,7 @@ async function analyzeNotice() {
 
         const gotSomething = parsed.subject || parsed.type || parsed.deadline;
         // 검수를 건너뛴 경우 교차 검증했다고 말하면 안 된다.
-        const doneLabel = skipsVerification()
+        const doneLabel = currentAiMode() !== 'full-verified'
             ? 'AI 1단계 분석 완료. 2차 검수를 생략했으니 수치를 직접 확인하세요.'
             : `AI 2단계 분석 완료.${parsed.verifiedNumbers.length
                 ? ` 주요 수치 ${parsed.verifiedNumbers.length}건을 교차 검증했습니다.`
