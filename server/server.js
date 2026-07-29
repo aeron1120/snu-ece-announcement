@@ -231,6 +231,56 @@ function roleSatisfies(role, required) {
     return role === required;
 }
 
+/* 로그인 실패 잠금.
+   같은 곳에서 다섯 번 틀리면 10분 동안 더 시도할 수 없다. 초당 요청 수만
+   재는 rate limit과 달리, 천천히 하나씩 찔러보는 시도까지 막는 게 목적이다.
+   성공하면 기록을 지운다. */
+const ADMIN_LOGIN_MAX_ATTEMPTS = 5;
+const ADMIN_LOGIN_LOCK_MS = 10 * 60 * 1000;
+const adminLoginAttempts = new Map();
+
+function loginAttemptKey(req) {
+    return String(req.ip || req.socket?.remoteAddress || 'unknown');
+}
+
+function getAdminLoginLock(req) {
+    const key = loginAttemptKey(req);
+    const record = adminLoginAttempts.get(key);
+    if (!record) return null;
+    if (record.lockedUntil && record.lockedUntil > Date.now()) {
+        return { key, retryAfterMs: record.lockedUntil - Date.now() };
+    }
+    // 잠금이 풀렸으면 실패 기록도 함께 비운다.
+    if (record.lockedUntil && record.lockedUntil <= Date.now()) {
+        adminLoginAttempts.delete(key);
+    }
+    return null;
+}
+
+function recordAdminLoginFailure(req) {
+    const key = loginAttemptKey(req);
+    const record = adminLoginAttempts.get(key) || { count: 0, lockedUntil: 0 };
+    record.count += 1;
+    if (record.count >= ADMIN_LOGIN_MAX_ATTEMPTS) {
+        record.lockedUntil = Date.now() + ADMIN_LOGIN_LOCK_MS;
+        record.count = 0;
+    }
+    adminLoginAttempts.set(key, record);
+    return record;
+}
+
+function clearAdminLoginFailures(req) {
+    adminLoginAttempts.delete(loginAttemptKey(req));
+}
+
+// 오래된 기록이 메모리에 계속 쌓이지 않게 이따금 치운다.
+setInterval(() => {
+    const now = Date.now();
+    for (const [key, record] of adminLoginAttempts) {
+        if (!record.lockedUntil || record.lockedUntil <= now) adminLoginAttempts.delete(key);
+    }
+}, ADMIN_LOGIN_LOCK_MS).unref?.();
+
 app.disable('x-powered-by');
 app.set('trust proxy', 1);
 
@@ -371,6 +421,17 @@ async function hasValidAdminSession(req) {
 
 app.post('/api/admin/session', authenticationLimiter, async (req, res) => {
     try {
+        // 잠겨 있으면 비밀번호가 맞아도 열어 주지 않는다.
+        const lock = getAdminLoginLock(req);
+        if (lock) {
+            const seconds = Math.ceil(lock.retryAfterMs / 1000);
+            res.setHeader('Retry-After', String(seconds));
+            return res.status(429).json({
+                error: `비밀번호를 ${ADMIN_LOGIN_MAX_ATTEMPTS}회 이상 틀렸습니다. ${Math.ceil(seconds / 60)}분 뒤에 다시 시도해주세요.`,
+                lockedForSeconds: seconds
+            });
+        }
+
         const password = String(req.body?.password || '').trim();
         const requestedRole = String(req.body?.role || '').trim();
         const settings = await getSecuritySettings();
@@ -386,9 +447,23 @@ app.post('/api/admin/session', authenticationLimiter, async (req, res) => {
             : null;
 
         if (!matched) {
-            return res.status(401).json({ error: '관리자 인증 실패' });
+            const record = recordAdminLoginFailure(req);
+            if (record.lockedUntil > Date.now()) {
+                const seconds = Math.ceil((record.lockedUntil - Date.now()) / 1000);
+                res.setHeader('Retry-After', String(seconds));
+                return res.status(429).json({
+                    error: `비밀번호를 ${ADMIN_LOGIN_MAX_ATTEMPTS}회 틀렸습니다. ${Math.ceil(seconds / 60)}분 동안 로그인할 수 없습니다.`,
+                    lockedForSeconds: seconds
+                });
+            }
+            const left = ADMIN_LOGIN_MAX_ATTEMPTS - record.count;
+            return res.status(401).json({
+                error: `관리자 인증 실패 (${left}회 더 틀리면 ${ADMIN_LOGIN_LOCK_MS / 60000}분 동안 잠깁니다)`,
+                attemptsLeft: left
+            });
         }
 
+        clearAdminLoginFailures(req);
         const sessionId = crypto.randomBytes(32).toString('base64url');
         adminSessions.set(sessionId, {
             role: matched,
@@ -843,6 +918,69 @@ function toClientSettings(settings) {
     };
 }
 
+/* Supabase 행과 설정 객체를 옮기는 자리. 역할별 해시를 한 곳에서 다뤄야
+   저장할 때와 읽을 때가 어긋나지 않는다. 예전 행에는 해시 열이 없고 배너
+   비밀번호가 평문으로만 있으므로, 파일 저장소와 똑같이 그 값을 해시로 옮겨
+   읽어 기존 비밀번호가 계속 통하게 한다. */
+function securitySettingsFromRow(data = {}) {
+    const bannerPassword = String(data.banner_password || defaultSecuritySettings.bannerPassword);
+    return {
+        adminInfo: {
+            name: String(data.admin_name || defaultAdminInfo.name),
+            phone: String(data.admin_phone || defaultAdminInfo.phone),
+            kakao: String(data.admin_kakao || defaultAdminInfo.kakao)
+        },
+        bannerInfo: {
+            name: String(data.banner_admin_name || defaultBannerInfo.name),
+            phone: String(data.banner_admin_phone || defaultBannerInfo.phone),
+            kakao: String(data.banner_admin_kakao || defaultBannerInfo.kakao)
+        },
+        bannerPassword,
+        adminTokenHash: String(data.admin_token_hash || defaultSecuritySettings.adminTokenHash),
+        bannerTokenHash: String(
+            data.banner_token_hash
+            || (data.banner_password ? hashToken(data.banner_password) : '')
+            || defaultSecuritySettings.bannerTokenHash
+        ),
+        masterTokenHash: String(data.master_token_hash || defaultSecuritySettings.masterTokenHash)
+    };
+}
+
+/* 스키마 적용과 배포의 순서는 보장되지 않는다. 새 열이 아직 없는 DB에
+   그대로 쓰면 upsert가 통째로 실패해, 비밀번호를 되돌릴 설정 화면까지 막힌다.
+   그래서 있는 열만으로 한 번 더 시도한다. */
+const SECURITY_SETTINGS_ADDED_COLUMNS = Object.freeze(['banner_token_hash', 'master_token_hash']);
+
+function legacySecuritySettingsRow(row) {
+    const legacy = { ...row };
+    for (const column of SECURITY_SETTINGS_ADDED_COLUMNS) delete legacy[column];
+    return legacy;
+}
+
+function isMissingColumnError(error) {
+    if (!error) return false;
+    if (error.code === 'PGRST204') return true;
+    const message = String(error.message || '');
+    return SECURITY_SETTINGS_ADDED_COLUMNS.some(column => message.includes(column));
+}
+
+function securitySettingsToRow(normalized) {
+    return {
+        id: 1,
+        admin_name: normalized.adminInfo.name,
+        admin_phone: normalized.adminInfo.phone,
+        admin_kakao: normalized.adminInfo.kakao,
+        banner_admin_name: normalized.bannerInfo.name,
+        banner_admin_phone: normalized.bannerInfo.phone,
+        banner_admin_kakao: normalized.bannerInfo.kakao,
+        banner_password: normalized.bannerPassword,
+        admin_token_hash: normalized.adminTokenHash,
+        banner_token_hash: normalized.bannerTokenHash,
+        master_token_hash: normalized.masterTokenHash,
+        updated_at: new Date().toISOString()
+    };
+}
+
 async function getSecuritySettings() {
     if (!useSupabase) {
         return readSettingsFile();
@@ -860,7 +998,9 @@ async function getSecuritySettings() {
                 adminInfo: { ...defaultAdminInfo },
                 bannerInfo: { ...defaultBannerInfo },
                 bannerPassword: defaultSecuritySettings.bannerPassword,
-                adminTokenHash: defaultSecuritySettings.adminTokenHash
+                adminTokenHash: defaultSecuritySettings.adminTokenHash,
+                bannerTokenHash: defaultSecuritySettings.bannerTokenHash,
+                masterTokenHash: defaultSecuritySettings.masterTokenHash
             };
             await saveSecuritySettings(seeded);
             return seeded;
@@ -868,20 +1008,7 @@ async function getSecuritySettings() {
         throw error;
     }
 
-    return {
-        adminInfo: {
-            name: String(data.admin_name || defaultAdminInfo.name),
-            phone: String(data.admin_phone || defaultAdminInfo.phone),
-            kakao: String(data.admin_kakao || defaultAdminInfo.kakao)
-        },
-        bannerInfo: {
-            name: String(data.banner_admin_name || defaultBannerInfo.name),
-            phone: String(data.banner_admin_phone || defaultBannerInfo.phone),
-            kakao: String(data.banner_admin_kakao || defaultBannerInfo.kakao)
-        },
-        bannerPassword: String(data.banner_password || defaultSecuritySettings.bannerPassword),
-        adminTokenHash: String(data.admin_token_hash || defaultSecuritySettings.adminTokenHash)
-    };
+    return securitySettingsFromRow(data);
 }
 
 async function saveSecuritySettings(settings) {
@@ -899,18 +1026,15 @@ async function saveSecuritySettings(settings) {
         return normalized;
     }
 
-    const { error } = await supabase.from(SUPABASE_SETTINGS_TABLE).upsert({
-        id: 1,
-        admin_name: normalized.adminInfo.name,
-        admin_phone: normalized.adminInfo.phone,
-        admin_kakao: normalized.adminInfo.kakao,
-        banner_admin_name: normalized.bannerInfo.name,
-        banner_admin_phone: normalized.bannerInfo.phone,
-        banner_admin_kakao: normalized.bannerInfo.kakao,
-        banner_password: normalized.bannerPassword,
-        admin_token_hash: normalized.adminTokenHash,
-        updated_at: new Date().toISOString()
-    });
+    const row = securitySettingsToRow(normalized);
+    let { error } = await supabase.from(SUPABASE_SETTINGS_TABLE).upsert(row);
+
+    if (isMissingColumnError(error)) {
+        console.warn('app_settings에 역할별 해시 열이 없습니다. server/sql/supabase-schema.sql을 적용하세요.');
+        ({ error } = await supabase
+            .from(SUPABASE_SETTINGS_TABLE)
+            .upsert(legacySecuritySettingsRow(row)));
+    }
 
     if (error) {
         throw error;
@@ -3134,15 +3258,25 @@ app.delete('/api/banner-slides/:id', requireBannerAdmin, async (req, res) => {
     }
 });
 
+// 테스트가 잠금 상태를 되돌릴 수 있게 열어 둔다. 같은 IP를 여러 테스트가
+// 공유하므로, 잠근 채로 두면 뒤따르는 테스트가 로그인하지 못한다.
+function resetAdminLoginAttempts() {
+    adminLoginAttempts.clear();
+}
+
 export {
     applyNoticeListFilters,
     app,
+    resetAdminLoginAttempts,
     buildBannerSlideUpdate,
     cleanupExpiredBanners,
     createBannerSlide,
     isBannerExpiryActive,
     listBannerSlides,
     listImminentDeadlineNotices,
+    legacySecuritySettingsRow,
+    securitySettingsFromRow,
+    securitySettingsToRow,
     normalizeNoticeListFilters,
     normalizeBannerPayload,
     toNoticeSummary,

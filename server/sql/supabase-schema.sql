@@ -37,12 +37,18 @@ create table if not exists public.app_settings (
   banner_admin_kakao text not null default 'snu_ece_ads',
   banner_password text not null,
   admin_token_hash text not null,
+  -- 배너·마스터 비밀번호도 해시로 보관한다. 기존 행에는 없을 수 있으므로
+  -- 비워 둘 수 있게 두고, 서버가 읽을 때 환경변수 기본값으로 되돌린다.
+  banner_token_hash text,
+  master_token_hash text,
   updated_at timestamptz not null default now()
 );
 
 alter table if exists public.app_settings add column if not exists banner_admin_name text not null default '학생회 대외협력국 (국장 : 이배너)';
 alter table if exists public.app_settings add column if not exists banner_admin_phone text not null default '010-8888-9999';
 alter table if exists public.app_settings add column if not exists banner_admin_kakao text not null default 'snu_ece_ads';
+alter table if exists public.app_settings add column if not exists banner_token_hash text;
+alter table if exists public.app_settings add column if not exists master_token_hash text;
 
 create table if not exists public.banner_slides (
   id bigint generated always as identity primary key,

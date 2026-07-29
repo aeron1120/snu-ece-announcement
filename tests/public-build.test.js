@@ -1475,10 +1475,19 @@ test('image notices lazy-load a poster; imageless notices show a big title poste
     assert.match(filterCardsSource, /notice\.thumbnailUrl\s*\|\|\s*['"]\/icons\/default-notice-thumbnail\.png['"]/);
     // 사진 없는 카드: 포스터 자리에 제목을 크게.
     assert.match(filterCardsSource, /card-poster is-text/);
-    assert.match(filterCardsSource, /card-poster-title/);
+    // 포스터 제목은 renderPosterTitle이 통째로 만든다(길이에 맞춘 크기 포함).
+    assert.match(filterCardsSource, /card-poster is-text">\$\{renderPosterTitle\(rawTitle\)\}/);
+    assert.match(readNamedFunction(app, 'renderPosterTitle'), /--poster-title-size:\$\{fit\.size\}px/);
     assert.match(filterCardsSource, /renderPosterTitle\(rawTitle\)/);
+    // 줄 나누기는 글자 폭 계산에 기대므로 함께 넣어 준다.
+    const posterWidthSource = readNamedFunction(app, 'posterTextWidth');
     const posterLinesSource = readNamedFunction(app, 'posterTitleLines');
-    const posterTitleLines = new Function(`${posterLinesSource}; return posterTitleLines;`)();
+    const posterTitleLines = new Function(
+        `${posterWidthSource}; ${posterLinesSource}; return posterTitleLines;`
+    )();
+    // 알파벳은 한글보다 좁으므로 같은 글자 수라도 폭이 작게 잡혀야 한다.
+    const posterTextWidth = new Function(`${posterWidthSource}; return posterTextWidth;`)();
+    assert.ok(posterTextWidth('가나다') > posterTextWidth('abc'));
     assert.deepEqual(
         posterTitleLines('[화생회] WE–Meet Project 참가자 모집'),
         ['[화생회]', 'WE–Meet Project', '참가자 모집']
@@ -1539,7 +1548,17 @@ test('notice cards are equal-height SNU-newsroom cards in the shared core layer'
     assert.match(css, /\.card-poster\s*\{[^}]*height:\s*216px/s);
     assert.match(css, /\.card-img-preview\s*\{[^}]*object-fit:\s*cover/s);
     // 사진 없는 카드는 큰 제목을 보여준다.
-    assert.match(css, /\.card-poster-title\s*\{[^}]*font-family:\s*'Pretendard'[^}]*font-size:\s*25px/s);
+    // 글자 크기는 제목 길이에 따라 정해지고, 계산이 어긋나도 상자를 넘지 않는다.
+    assert.match(css, /\.card-poster-title\s*\{[^}]*font-family:\s*'Pretendard'[^}]*font-size:\s*calc\(var\(--poster-title-size/s);
+    assert.match(css, /\.card-poster-title\s*\{[^}]*max-height:\s*100%;[^}]*overflow:\s*hidden/s);
+    const fitSource = readNamedFunction(app, 'posterTitleFit');
+    const posterTitleFit = new Function(`${fitSource}; return posterTitleFit;`)();
+    // 어떤 길이가 와도 줄 수 x 줄 높이가 포스터 안쪽(약 172px)을 넘지 않아야 한다.
+    for (const length of [8, 22, 23, 36, 37, 52, 53, 120]) {
+        const fit = posterTitleFit(length);
+        assert.ok(fit.maxLines * fit.size * 1.34 <= 172,
+            `${length}자에서 ${fit.maxLines}줄 x ${fit.size}px가 포스터를 넘칩니다`);
+    }
     assert.match(css, /\.card-poster-title-line\.is-host\s*\{/);
     assert.match(css, /\.card-excerpt\s*\{[^}]*-webkit-line-clamp:\s*2/s);
     assert.match(app, /class="notice-empty-state"/);
@@ -1891,7 +1910,14 @@ test('the left rail never scrolls and the hover preview follows its card', async
     assert.match(app, /placement === 'trash'/);
 
     // 모바일 두 열이 나란히 끝나 생기는 아래 빈 띠를 벽돌 배치로 메운다.
-    assert.match(mobileCss, /\.grid > \.card:nth-child\(2n\+1\)\s*\{\s*margin-top:\s*-22px/);
+    // 끌어올린 만큼 위를 비워 두지 않으면 첫 줄이 잘린다.
+    assert.match(mobileCss, /\.grid > \.card:nth-child\(2n\+1\)\s*\{\s*margin-top:\s*-46px/);
+    // 위에 자리를 비워 두면 오른쪽 열이 그만큼 내려가 빈 띠가 오히려 넓어진다.
+    const gridBlock = mobileCss.slice(mobileCss.indexOf('html[data-view="mobile"] .grid {'));
+    assert.doesNotMatch(gridBlock.slice(0, gridBlock.indexOf('}')), /padding-top/);
+    // "결과 N건"이 그 자리에 들어서면 끌어올리기를 멈춘다.
+    assert.match(mobileCss, /\.grid\.has-result-count > \.card:nth-child\(2n\+1\)\s*\{\s*margin-top:\s*0/);
+    assert.match(readNamedFunction(app, 'updateNoticeResultCount'), /classList\.toggle\('has-result-count', show\)/);
 });
 
 test('banner slots show one at a time and the inbox toolbar acts on the selection', async () => {
@@ -1974,4 +2000,91 @@ test('admin navigation targets files that exist on the static host', async () =>
     assert.doesNotMatch(admin, /location\.replace\(`?'?\/admin(\$\{|'|`)/);
     assert.match(admin, /location\.replace\('\/admin-login\.html'\)/);
     assert.match(admin, /location\.replace\(`\/admin-login\.html\$\{next\}`\)/);
+});
+
+test('no notice title can overflow the text poster box', async () => {
+    const app = await readFile('js/core.js', 'utf8');
+    const width = new Function(`${readNamedFunction(app, 'posterTextWidth')}; return posterTextWidth;`)();
+    const fit = new Function(`${readNamedFunction(app, 'posterTitleFit')}; return posterTitleFit;`)();
+    const split = new Function(
+        `${readNamedFunction(app, 'posterTextWidth')}; ${readNamedFunction(app, 'posterTitleLines')}; return posterTitleLines;`
+    )();
+
+    // 포스터 안쪽은 좁게 잡아 200px, 높이는 약 172px이다.
+    const INNER_WIDTH = 200;
+    const INNER_HEIGHT = 172;
+    const renderedHeight = title => {
+        const normalized = String(title || '제목 없음').replace(/\s+/g, ' ').trim();
+        const chosen = fit(normalized.length);
+        const lines = split(normalized, chosen.maxLines, chosen.perLine);
+        // 한 줄이 폭을 넘으면 브라우저가 한 번 더 접는다. 그것까지 센다.
+        const visualLines = lines.reduce(
+            (sum, line) => sum + Math.max(1, Math.ceil(width(line) * chosen.size / INNER_WIDTH)),
+            0
+        );
+        return visualLines * chosen.size * 1.34;
+    };
+
+    // perLine이 한 칸이라도 크면 줄이 두 번 접혀 높이가 배로 뛴다.
+    for (const length of [10, 22, 30, 40, 60, 120]) {
+        const chosen = fit(length);
+        assert.ok(chosen.perLine * chosen.size <= INNER_WIDTH,
+            `${chosen.size}px에서 한 줄 ${chosen.perLine}자는 ${INNER_WIDTH}px를 넘습니다`);
+    }
+
+    const samples = [
+        '',
+        '가',
+        '[학생회] ChatGPT Edu Pro 모델 이용 정책 변경 안내',
+        '2027학년도 1학기 본부 해외파견 교환학생 후보자 모집 안내',
+        "2026학년도 2학기 수강신청 안내 (전기·정보공학부 학사교과목 '정원 외 신청기간' 조정 운영 안내 포함)",
+        "[학부] 2026학년도 2학기 선이수 지정 교과목 수강 신청 안내 ('프로그래밍방법론', '기초전자기학 및 연습')",
+        // 띄어쓰기 없는 극단값도 상자를 넘지 않아야 한다.
+        '가'.repeat(300),
+        'A'.repeat(400)
+    ];
+    for (const title of samples) {
+        assert.ok(renderedHeight(title) <= INNER_HEIGHT,
+            `"${String(title).slice(0, 20)}…"가 포스터를 넘칩니다 (${Math.round(renderedHeight(title))}px)`);
+    }
+
+    // 다 담지 못하면 잘렸다는 걸 말줄임으로 알린다.
+    assert.match(split('가'.repeat(300), 7, 12).at(-1), /…$/);
+});
+
+test('drop targets light up when the dragged card overlaps them, not only the cursor', async () => {
+    const app = await readFile('js/core.js', 'utf8');
+    const source = readNamedFunction(app, 'findDropZoneUnderDrag');
+
+    // 겹치는 넓이로 고르고, 여러 개가 겹치면 더 많이 겹친 쪽을 잡는다.
+    assert.match(source, /overlapX \* overlapY/);
+    assert.match(source, /area > bestArea/);
+    // 겹치는 게 없을 때만 커서 한 점을 마지막으로 본다.
+    assert.match(source, /elementFromPoint/);
+    // 카드 드래그와 블록 재배치 양쪽에서 같은 판정을 쓴다.
+    assert.match(readNamedFunction(app, 'onNoticeHandlePointerMove'), /findDropZoneUnderDrag\(/);
+    assert.match(readNamedFunction(app, 'onCompareHandlePointerMove'), /findDropZoneUnderDrag\([\s\S]*?compareDragOverlay\)/);
+
+    // 겹침 판정을 떼어내 실제로 넓이 큰 쪽을 고르는지 확인한다.
+    const zones = [
+        { name: 'left',  rect: { left: 0,   right: 60,  top: 0, bottom: 50 } },
+        { name: 'right', rect: { left: 70,  right: 130, top: 0, bottom: 50 } }
+    ];
+    const pick = drag => {
+        let best = null;
+        let bestArea = 0;
+        for (const zone of zones) {
+            const overlapX = Math.min(drag.right, zone.rect.right) - Math.max(drag.left, zone.rect.left);
+            const overlapY = Math.min(drag.bottom, zone.rect.bottom) - Math.max(drag.top, zone.rect.top);
+            if (overlapX <= 0 || overlapY <= 0) continue;
+            const area = overlapX * overlapY;
+            if (area > bestArea) { bestArea = area; best = zone.name; }
+        }
+        return best;
+    };
+    // 두 표적에 걸쳐 있으면 더 많이 덮은 쪽이 켜진다.
+    assert.equal(pick({ left: 40, right: 120, top: 10, bottom: 40 }), 'right');
+    assert.equal(pick({ left: 10, right: 80, top: 10, bottom: 40 }), 'left');
+    // 어느 쪽에도 닿지 않으면 아무것도 켜지 않는다.
+    assert.equal(pick({ left: 200, right: 260, top: 10, bottom: 40 }), null);
 });

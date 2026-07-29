@@ -697,3 +697,14 @@
     .banner-format-editor { flex: 1 1 100%; }
     .review-actions .btn { flex: 1 1 100%; }
 }
+
+/* 비밀번호는 해시로만 저장되어 지금 값을 다시 볼 수 없다는 안내. */
+.settings-hint {
+    margin: -6px 0 16px;
+    padding: 11px 13px;
+    color: #6f7885;
+    background: #f6f7f9;
+    border-left: 3px solid var(--border);
+    font-size: 12.5px;
+    line-height: 1.65;
+}

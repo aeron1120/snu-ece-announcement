@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { app, toNoticeSummary } from '../server/server.js';
+import { app, resetAdminLoginAttempts, toNoticeSummary } from '../server/server.js';
 
 test('notice summaries expose card metadata without heavy detail fields', () => {
     const summary = toNoticeSummary({
@@ -379,4 +379,49 @@ test('credentials stay off while any origin is allowed', async t => {
     });
     assert.equal(response.headers.get('access-control-allow-origin'), '*');
     assert.equal(response.headers.get('access-control-allow-credentials'), null);
+});
+
+test('five wrong passwords lock admin login for ten minutes', async t => {
+    const settingsPath = path.join(process.cwd(), 'server', 'data', 'settings.json');
+    const originalSettings = await readFile(settingsPath, 'utf8');
+    const settings = JSON.parse(originalSettings);
+    const password = 'lockout-probe-password';
+    settings.adminTokenHash = crypto.createHash('sha256').update(password).digest('hex');
+    await writeFile(settingsPath, JSON.stringify(settings, null, 2), 'utf8');
+    t.after(() => writeFile(settingsPath, originalSettings, 'utf8'));
+    // 잠금은 IP 단위라 남겨 두면 뒤따르는 테스트가 로그인하지 못한다.
+    resetAdminLoginAttempts();
+    t.after(() => resetAdminLoginAttempts());
+
+    const server = await new Promise(resolve => {
+        const listening = app.listen(0, () => resolve(listening));
+    });
+    t.after(() => server.close());
+    const baseUrl = `http://127.0.0.1:${server.address().port}`;
+
+    const attempt = body => fetch(`${baseUrl}/api/admin/session`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+    });
+
+    // 네 번까지는 그냥 실패하고, 남은 횟수를 알려준다.
+    for (let index = 1; index <= 4; index += 1) {
+        const response = await attempt({ password: `wrong-${index}` });
+        assert.equal(response.status, 401);
+        const body = await response.json();
+        assert.equal(body.attemptsLeft, 5 - index);
+    }
+
+    // 다섯 번째에 잠긴다.
+    const locked = await attempt({ password: 'wrong-5' });
+    assert.equal(locked.status, 429);
+    const lockedBody = await locked.json();
+    assert.ok(lockedBody.lockedForSeconds > 0);
+    assert.ok(lockedBody.lockedForSeconds <= 600);
+    assert.match(locked.headers.get('retry-after') || '', /^\d+$/);
+
+    // 잠긴 동안에는 맞는 비밀번호도 통하지 않는다.
+    const blocked = await attempt({ password });
+    assert.equal(blocked.status, 429);
 });

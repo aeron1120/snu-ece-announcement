@@ -362,13 +362,21 @@
 
                 <div class="settings-divider"></div>
                 <p class="settings-note">🔑 비밀번호 변경 <span>(변경 원하지 않으면 비워두세요)</span></p>
+                <p class="settings-hint">
+                    비밀번호는 되돌릴 수 없는 형태로만 저장되어 지금 값을 다시 꺼내 볼 수 없습니다.
+                    기억나지 않으면 새 비밀번호로 바꿔 주세요.
+                </p>
                 <div class="form-group">
                     <label for="edit-admin-pwd">공지 관리자 비밀번호 변경</label>
                     <input type="password" id="edit-admin-pwd" placeholder="새 공지 관리자 비밀번호" autocomplete="new-password">
                 </div>
                 <div class="form-group">
-                    <label for="edit-banner-pwd">배너 비밀번호 변경</label>
-                    <input type="password" id="edit-banner-pwd" placeholder="새 배너 비밀번호" autocomplete="new-password">
+                    <label for="edit-banner-pwd">배너 관리자 비밀번호 변경</label>
+                    <input type="password" id="edit-banner-pwd" placeholder="새 배너 관리자 비밀번호" autocomplete="new-password">
+                </div>
+                <div class="form-group">
+                    <label for="edit-master-pwd">마스터 관리자 비밀번호 변경</label>
+                    <input type="password" id="edit-master-pwd" placeholder="새 마스터 관리자 비밀번호" autocomplete="new-password">
                 </div>
                 <div class="review-actions">
                     <button class="btn" type="button" onclick="saveAdminInfo()">저장</button>
