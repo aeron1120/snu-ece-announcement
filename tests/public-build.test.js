@@ -552,16 +552,37 @@ test('sort chips are exposed beside result count and category tabs restore their
     assert.match(app, /function selectCategoryTab[\s\S]*getDefaultSortForCategory\(category\?\.slug \|\| 'all'\)[\s\S]*syncNoticeSortChips/);
 });
 
-test('notice dates use one deadline, always-open, or registration presentation', async () => {
+test('notice dates show a deadline or nothing, never a registration date', async () => {
     const app = await readFile('js/core.js', 'utf8');
-    const presentation = readNamedFunction(app, 'getNoticeDatePresentation');
+    const source = readNamedFunction(app, 'getNoticeDatePresentation');
     const cards = readNamedFunction(app, 'renderNoticeCards');
-    assert.match(presentation, /notice\.isAlwaysOpen[\s\S]*badgeText: '상시'/);
-    assert.match(presentation, /dateLabel: `마감/);
-    assert.match(presentation, /dateLabel: createdLabel/);
+    assert.match(source, /notice\.isAlwaysOpen[\s\S]*badgeText: '상시'/);
+    assert.match(source, /dateLabel: `마감/);
     assert.match(cards, /getNoticeDatePresentation\(notice\)/);
     assert.match(app, /diffDays === 0[\s\S]*오늘 마감/);
     assert.match(app, /return `\$\{y\}\.\$\{m\}\.\$\{d\}\(\$\{WEEKDAY_KO/);
+
+    // 등록일은 학생에게 의미가 없어 공개 화면에서 내보내지 않는다.
+    assert.doesNotMatch(source, /등록/);
+    const present = new Function(`
+        const WEEKDAY_KO = ['일','월','화','수','목','금','토'];
+        ${readNamedFunction(app, 'formatDateWithWeekday')}
+        ${readNamedFunction(app, 'getCalendarDayDifference')}
+        ${readNamedFunction(app, 'calcDDay')}
+        function getCurrentDate() { return new Date('2026-07-29T00:00:00'); }
+        ${source}
+        return getNoticeDatePresentation;
+    `)();
+
+    // 마감일이 있으면 그대로 보여준다.
+    assert.equal(present({ deadline: '2026-07-31', createdAt: '2026-07-29T04:31:00Z' }).dateLabel,
+        '마감 2026.07.31(금)');
+    // 상시 공지는 뱃지만 남고 날짜줄은 비운다.
+    const always = present({ isAlwaysOpen: true, createdAt: '2026-07-29T04:31:00Z' });
+    assert.equal(always.badgeText, '상시');
+    assert.equal(always.dateLabel, '');
+    // 마감일이 없으면 아무것도 표시하지 않는다.
+    assert.equal(present({ createdAt: '2026-07-29T04:31:00Z' }).dateLabel, '');
 });
 
 test('the contact modal is an anonymous feedback box, not admin contact info', async () => {

@@ -1067,15 +1067,22 @@ function calcDDay(deadlineStr) {
     return { text: `D-${diffDays}`, isUrgent: false, isD1: false, isExpired: false };
 }
 
+// 날짜가 없는 공지에서 구분자만 덩그러니 남지 않도록 조립한다.
+function formatDetailMeta(dateLabel, views) {
+    const count = `조회: ${Number(views) || 0}`;
+    return dateLabel
+        ? `${escapeHtml(dateLabel)} &nbsp;|&nbsp; ${count}`
+        : count;
+}
+
+// 학생에게 의미 있는 날짜는 마감일뿐이다. 공지가 언제 올라왔는지는 내부 정보라
+// 공개 화면에서는 내보내지 않는다(관리자 목록에는 그대로 남는다).
 function getNoticeDatePresentation(notice) {
-    const createdLabel = notice.createdAt
-        ? `등록 ${formatDateWithWeekday(notice.createdAt)}`
-        : '등록일 없음';
     if (notice.isAlwaysOpen) {
         return {
             badgeText: '상시',
             badgeClass: '',
-            dateLabel: createdLabel
+            dateLabel: ''
         };
     }
     const deadline = String(notice.deadlineAt || notice.deadline || '').slice(0, 10);
@@ -1083,7 +1090,7 @@ function getNoticeDatePresentation(notice) {
         return {
             badgeText: '',
             badgeClass: '',
-            dateLabel: createdLabel
+            dateLabel: ''
         };
     }
     const dDay = calcDDay(deadline);
@@ -2200,7 +2207,9 @@ function renderNoticeCards(animate = false) {
                     ${notice.host ? `<span class="tag">${escapeHtml(notice.host)}</span>` : ''}
                 </div>
                 ${titleHtml}
-                <div class="card-date">${escapeHtml(datePresentation.dateLabel)}</div>
+                ${datePresentation.dateLabel
+                    ? `<div class="card-date">${escapeHtml(datePresentation.dateLabel)}</div>`
+                    : ''}
                 ${excerpt ? `<p class="card-excerpt">${escapeHtml(excerpt)}</p>` : ''}
                 <div class="card-meta">
                     ${rewardHtml}
@@ -2491,7 +2500,8 @@ async function openDetail(idStr) {
             if (freshIdx !== -1) {
                 notices[freshIdx].views = result.notice.views;
                 if (String(currentViewId) === String(result.notice.id)) {
-                    document.getElementById('detail-meta').innerHTML = `${escapeHtml(datePresentation.dateLabel)} &nbsp;|&nbsp; 조회: ${Number(result.notice.views) || 0}`;
+                    document.getElementById('detail-meta').innerHTML =
+                        formatDetailMeta(datePresentation.dateLabel, result.notice.views);
                 }
                 renderNoticeCards();
             }
@@ -2509,7 +2519,8 @@ async function openDetail(idStr) {
         ${notice.host ? `<span class="tag">${escapeHtml(notice.host)}</span>` : ''}
     `;
     document.getElementById('detail-title').innerText = notice.title || "";
-    document.getElementById('detail-meta').innerHTML = `${escapeHtml(datePresentation.dateLabel)} &nbsp;|&nbsp; 조회: ${Number(notice.views) || 0}`;
+    document.getElementById('detail-meta').innerHTML =
+        formatDetailMeta(datePresentation.dateLabel, notice.views);
     document.getElementById('detail-summary').innerHTML = (notice.aiSummary || []).map(item => `<li>${escapeHtml(item)}</li>`).join('');
     document.getElementById('detail-content').innerHTML = linkify(notice.content || "");
 
@@ -3307,7 +3318,7 @@ function renderCompareSpace(blockIds = compareBlocks) {
                         notice.host || '기타'
                     ].filter(Boolean).join(' · '))}</p>
                     <h3 class="compare-col-title">${escapeHtml(notice.title || '')}</h3>
-                    <div class="compare-col-meta">${escapeHtml(dateText)} · 조회 ${Number(notice.views) || 0}</div>
+                    <div class="compare-col-meta">${dateText ? `${escapeHtml(dateText)} · ` : ''}조회 ${Number(notice.views) || 0}</div>
                     ${thumb}
                     <div class="compare-summary-heading">
                         <h4 class="compare-col-label">AI 3줄 요약</h4>
