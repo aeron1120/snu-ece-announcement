@@ -128,7 +128,7 @@ const initialNoticeAdminToken = NOTICE_ADMIN_TOKEN;
 const defaultNotices = [];
 
 const MAX_RIGHT_RAIL_BANNERS = 5;
-const PROMO_TYPES = new Set(['club', 'project', 'council']);
+const PROMO_TYPES = new Set(['club', 'project', 'council', 'survey', 'etc']);
 const PROMO_STATUSES = new Set(['pending', 'approved', 'rejected']);
 const ADMIN_SESSION_COOKIE = 'ece_admin_session';
 const ADMIN_SESSION_TTL_MS = 8 * 60 * 60 * 1000;
@@ -705,7 +705,7 @@ function normalizeBannerPayload(body = {}) {
     };
 
     if (!PROMO_TYPES.has(payload.type)) {
-        throw new TypeError('학내 홍보 유형은 동아리, 프로젝트, 학생회 중 하나여야 합니다.');
+        throw new TypeError('학내 홍보 유형은 동아리, 프로젝트, 학생회, 설문조사, 기타 중 하나여야 합니다.');
     }
     if (!PROMO_STATUSES.has(payload.status)) {
         throw new TypeError('학내 홍보 상태는 승인 대기, 승인, 반려 중 하나여야 합니다.');
@@ -1315,6 +1315,8 @@ function normalizeNoticeListFilters(input = {}) {
     const allowedDeadlineStates = new Set(['전체', '진행중', '마감임박', '상시', '마감됨']);
     const allowedImageStates = new Set(['전체', '있음', '없음']);
     const allowedViewStates = new Set(['전체', '100이상', '50이상', '10미만']);
+    // 출처: 학부 홈페이지에서 자동으로 모아 온 것과 손으로 올린 것을 가른다.
+    const allowedSources = new Set(['전체', 'crawled', 'manual']);
     const allowedSorts = new Set(['최신순', '마감임박순', '조회순', '조회수순', '조회수낮은순']);
     const cleanDate = value => {
         const normalized = String(value || '').trim();
@@ -1324,6 +1326,7 @@ function normalizeNoticeListFilters(input = {}) {
     const hasImage = String(input.hasImage || '전체').trim();
     const views = String(input.views || '전체').trim();
     const sort = String(input.sort || '최신순').trim();
+    const source = String(input.source || '전체').trim();
 
     const archiveMode = input.archive === 'expired' ? 'expired' : '';
     const archive = input.archive === 'true' || input.archive === true || archiveMode === 'expired';
@@ -1336,6 +1339,7 @@ function normalizeNoticeListFilters(input = {}) {
         host: String(input.host || '전체').trim().slice(0, 100) || '전체',
         hasImage: allowedImageStates.has(hasImage) ? hasImage : '전체',
         views: allowedViewStates.has(views) ? views : '전체',
+        source: allowedSources.has(source) ? source : '전체',
         sort: allowedSorts.has(sort) ? sort : '최신순',
         dateFrom: cleanDate(input.dateFrom),
         dateTo: cleanDate(input.dateTo),
@@ -1393,6 +1397,14 @@ function applyNoticeListFilters(rows, filters, { now = new Date() } = {}) {
         if (filters.actionOnly && !notice.requiresAction) return false;
 
         if (filters.host !== '전체' && notice.host !== filters.host) return false;
+        /* 출처. 손으로 올린 것은 sourceType이 manual이고, 학부 홈페이지에서
+           긁어 온 것은 그 출처 이름이 붙는다. 값이 비어 있으면 손으로 올린
+           옛 공지로 본다. */
+        if (filters.source !== '전체') {
+            const crawled = String(row.sourceType || row.source_type || 'manual') !== 'manual';
+            if (filters.source === 'crawled' && !crawled) return false;
+            if (filters.source === 'manual' && crawled) return false;
+        }
         if (filters.categoryIds.length > 0
             && !filters.categoryIds.some(id => notice.categoryIds.includes(id))) return false;
 
@@ -1510,7 +1522,7 @@ async function listNoticeFilterRows() {
                 id,title,content,target,targets,host,deadline,deadline_at,expires_at,is_always_open,is_pinned,is_hidden,
                 category,has_reward,reward_note,requires_action,survey_reward,
                 ai_summary,keywords,ocr_text,views,
-                source_published_at,created_at,updated_at,last_crawled_at,has_images,notice_categories(category_id)
+                source_type,source_published_at,created_at,updated_at,last_crawled_at,has_images,notice_categories(category_id)
             `)
             .eq('is_deleted', false)
             .eq('status', 'published')

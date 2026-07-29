@@ -550,7 +550,7 @@ test('sort chips are exposed beside result count and category tabs restore their
     assert.match(html, /data-sort="최신순"[\s\S]*data-sort="마감임박순"[\s\S]*data-sort="조회순"/);
     assert.doesNotMatch(html, /id="fg-sort"/);
     const defaults = readNamedFunction(app, 'getDefaultSortForCategory');
-    assert.match(defaults, /opportunity[\s\S]*benefit[\s\S]*마감임박순/);
+    assert.match(defaults, /opportunity[\s\S]*survey[\s\S]*마감임박순/);
     assert.match(app, /function selectCategoryTab[\s\S]*getDefaultSortForCategory\(category\?\.slug \|\| 'all'\)[\s\S]*syncNoticeSortChips/);
 });
 
@@ -719,16 +719,23 @@ test('the compose form leads with content/photo/target, then AI fills date/subje
     assert.doesNotMatch(html, /class="panel-help"/);
 });
 
-test('public category tabs keep the four canonical topic categories in order', async () => {
+test('public category tabs keep the four canonical topic categories in order and add the source-based related tab', async () => {
     const app = await readFile('js/core.js', 'utf8');
     const server = await readFile('server/server.js', 'utf8');
     const categoryConfig = await readFile('server/config/notice-categories.js', 'utf8');
     const orderSource = app.match(/const NOTICE_CATEGORY_ORDER = Object\.freeze\(\[[\s\S]*?\]\);/)?.[0] || '';
 
-    assert.match(orderSource, /'academic'[\s\S]*'opportunity'[\s\S]*'benefit'[\s\S]*'community'/);
-    assert.match(categoryConfig, /ACADEMIC[\s\S]*OPPORTUNITY[\s\S]*BENEFIT[\s\S]*COMMUNITY/);
+    assert.match(orderSource, /'academic'[\s\S]*'opportunity'[\s\S]*'survey'[\s\S]*'community'/);
+    assert.match(categoryConfig, /ACADEMIC[\s\S]*OPPORTUNITY[\s\S]*SURVEY[\s\S]*COMMUNITY/);
     assert.match(server, /canonicalSlugs[\s\S]*categories\.filter/);
     assert.match(app, /function orderedNoticeCategories/);
+
+    // '관련'은 주제가 아니라 출처로 묶은 칸이라 데이터베이스 카테고리가 아니다.
+    // 목록을 부를 때 출처 조건만 붙으므로 새로 긁어 온 공지가 저절로 들어온다.
+    assert.match(app, /const RELATED_TAB_SLUG = 'related';/);
+    assert.match(app, /source: relatedTabActive \? 'crawled' : '전체'/);
+    assert.match(server, /allowedSources = new Set\(\['전체', 'crawled', 'manual'\]\)/);
+    assert.match(server, /filters\.source === 'crawled' && !crawled/);
 });
 
 test('manual Gemini analysis saves canonical category ids with the notice', async () => {
@@ -736,7 +743,7 @@ test('manual Gemini analysis saves canonical category ids with the notice', asyn
     const server = await readFile('server/server.js', 'utf8');
     const schema = await readFile('server/sql/supabase-schema.sql', 'utf8');
 
-    assert.match(admin, /"categorySlugs":\["academic\|opportunity\|benefit\|community 중 핵심 하나"\]/);
+    assert.match(admin, /"categorySlugs":\["academic\|opportunity\|survey\|community 중 핵심 하나"\]/);
     assert.match(admin, /categorySlugs는 반드시 핵심 범주 하나만 선택/);
     assert.match(admin, /"hasReward":false/);
     assert.match(admin, /"requiresAction":false/);

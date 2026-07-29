@@ -21,7 +21,7 @@ export async function preparePublic({ rootDir }) {
     await cp(path.join(rootDir, 'css'), path.join(outputDir, 'css'), { recursive: true });
     await cp(path.join(rootDir, 'js'), path.join(outputDir, 'js'), { recursive: true });
 
-    for (const filename of ['admin.html', 'admin-login.html', 'banner-inquiry.html', 'service-guide.html', 'terms.html', 'privacy.html', 'changelog.html', 'guide.html', 'faq.html', 'manifest.webmanifest', 'service-worker.js', '_headers', 'robots.txt']) {
+    for (const filename of ['admin.html', 'admin-login.html', 'banner-inquiry.html', 'service-guide.html', 'operator.html', 'terms.html', 'privacy.html', 'changelog.html', 'guide.html', 'faq.html', 'manifest.webmanifest', 'service-worker.js', '_headers', 'robots.txt']) {
         await copyIfPresent(
             path.join(rootDir, filename),
             path.join(outputDir, filename)

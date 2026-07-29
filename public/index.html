@@ -114,6 +114,10 @@
     <div class="header-title-area">
         <!-- 제목 자리에 워드마크를 넣는다. 이미지가 없으면 글자 제목으로 떨어진다. -->
         <h1 class="site-title" id="site-title">
+            <!-- 모바일에서만 보이는 학교 상징. 데스크탑은 왼쪽 레일에 이미 있어
+                 두 번 넣으면 같은 그림이 화면에 겹친다. -->
+            <img class="site-title-emblem mobile-only" src="./icons/snu-emblem-navy.png"
+                 alt="" aria-hidden="true" draggable="false" onerror="this.remove();">
             <img class="site-title-mark" id="site-title-mark" src="./icons/brand-wordmark-header.png"
                  alt="SNU ECE 공지방" draggable="false"
                  onerror="this.remove(); document.getElementById('site-title')?.classList.add('is-text');">
@@ -441,7 +445,7 @@
             <nav class="footer-column" aria-label="운영">
                 <h2 class="footer-column-title">운영</h2>
                 <ul class="footer-link-list">
-                    <li><a href="./service-guide.html">운영 주체 안내</a></li>
+                    <li><a href="./operator.html">운영 주체 안내</a></li>
                     <li><a href="./privacy.html">개인정보처리방침</a></li>
                     <li><a href="./terms.html">이용약관</a></li>
                 </ul>

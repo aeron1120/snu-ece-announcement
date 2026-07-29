@@ -658,7 +658,7 @@ function parseAnalysisJson(text) {
 }
 
 const NOTICE_ANALYSIS_CATEGORY_SLUGS = new Set([
-    'academic', 'opportunity', 'benefit', 'community'
+    'academic', 'opportunity', 'survey', 'community'
 ]);
 
 function normalizeNoticeAnalysisResult(parsed = {}) {
@@ -741,15 +741,15 @@ function restoreAiModeChoice() {
 // 폼에 입력란이 없는 항목만 요구하는 짧은 프롬프트. 핵심내용·유형·마감일은 묻지 않는다.
 function buildSummaryOnlyPrompt(content) {
     return `다음 공지 원문을 읽고 JSON만 출력해. 코드블록·설명 없이 JSON 객체 하나만.
-형식: {"summary":["요약1","요약2","요약3"],"categorySlugs":["academic|opportunity|benefit|community 중 핵심 하나"],"hasReward":false,"rewardNote":null,"requiresAction":false}
+형식: {"summary":["요약1","요약2","요약3"],"categorySlugs":["academic|opportunity|survey|community 중 핵심 하나"],"hasReward":false,"rewardNote":null,"requiresAction":false}
 - summary는 각 줄 명사형 종결의 3줄 요약.
 - 사진 없는 카드에서 2~3줄로 자연스럽게 나뉘도록, 긴 한 덩어리 대신 의미가 분명한 짧은 어절 묶음으로 작성.
 - 격식적인 보도자료 문체보다 학생이 빠르게 읽는 자연스럽고 캐주얼한 표현을 사용.
 - 물음표 반복, 깨진 문자, 불완전한 조사, 같은 단어 반복을 절대 포함하지 말 것. 원문 글자가 깨졌다면 문맥상 확실한 내용만 한국어로 복원.
 - academic: 수강·학점·졸업·성적·전공진입에 직접 영향.
-- opportunity: 인턴·연구실·모집·공모전·대회·장학·교환 등 참여 기회.
-- benefit: 할인·지원·물품·제휴처럼 놓쳐도 학사상 불이익이 없는 혜택.
-- community: 학생 자치, 학내 행사, 시설·출입·교통 등 공동체와 캠퍼스 생활.
+- opportunity: 인턴·연구실·공모전·대회·장학·교환처럼 선발을 거쳐 자리나 자격을 얻는 것.
+- survey: 설문·인터뷰·실험 피험자·사용자 조사처럼 선발 없이 참여해 응답하면 끝나는 모집. 사례비나 기프티콘이 걸려 있어도 참여가 목적이면 여기다.
+- community: 학생 자치, 학내 행사, 시설·출입·교통, 제휴·할인 등 캠퍼스 생활.
 - categorySlugs는 반드시 핵심 범주 하나만 선택.
 - 신청·제출·응답이 필요하면 requiresAction=true.
 - 상품·기프티콘·사례비·지원금·할인이 확인되면 hasReward=true와 rewardNote를 채움.
@@ -765,7 +765,7 @@ async function runNoticeAnalysis(content, onVerificationStart = null) {
     const mode = currentAiMode();
     const today = new Date().toISOString().slice(0, 10);
     const prompt = `다음 공지 원문을 분석해서 JSON만 출력해. 코드블록·설명 없이 JSON 객체 하나만.
-형식: {"deadline":"YYYY-MM-DD 또는 빈문자열","subject":"포스터용 핵심 문구 10~28자","type":"${TITLE_KINDS.join('|')} 중 하나","summary":["요약1","요약2","요약3"],"categorySlugs":["academic|opportunity|benefit|community 중 핵심 하나"],"hasReward":false,"rewardNote":null,"requiresAction":false}
+형식: {"deadline":"YYYY-MM-DD 또는 빈문자열","subject":"포스터용 핵심 문구 10~28자","type":"${TITLE_KINDS.join('|')} 중 하나","summary":["요약1","요약2","요약3"],"categorySlugs":["academic|opportunity|survey|community 중 핵심 하나"],"hasReward":false,"rewardNote":null,"requiresAction":false}
 - 오늘 날짜는 ${today}. 마감일이 원문에 없거나 불명확하면 deadline은 빈문자열.
 - type은 반드시 제시한 보기 중 하나.
 - subject에는 유형 단어(${TITLE_KINDS.join(', ')})를 넣지 말고 핵심 명사구만. 예: "개강총회 참가자".
@@ -774,9 +774,9 @@ async function runNoticeAnalysis(content, onVerificationStart = null) {
 - 물음표 반복, 깨진 문자, 불완전한 조사, 같은 단어 반복을 절대 포함하지 말 것. 원문 글자가 깨졌다면 문맥상 확실한 내용만 한국어로 복원.
 - summary는 각 줄 명사형 종결의 3줄 요약.
 - academic: 수강·학점·졸업·성적·전공진입에 직접 영향.
-- opportunity: 인턴·연구실·모집·공모전·대회·장학·교환 등 참여 기회.
-- benefit: 할인·지원·물품·제휴처럼 놓쳐도 학사상 불이익이 없는 혜택.
-- community: 학생 자치, 학내 행사, 시설·출입·교통 등 공동체와 캠퍼스 생활.
+- opportunity: 인턴·연구실·공모전·대회·장학·교환처럼 선발을 거쳐 자리나 자격을 얻는 것.
+- survey: 설문·인터뷰·실험 피험자·사용자 조사처럼 선발 없이 참여해 응답하면 끝나는 모집. 사례비나 기프티콘이 걸려 있어도 참여가 목적이면 여기다.
+- community: 학생 자치, 학내 행사, 시설·출입·교통, 제휴·할인 등 캠퍼스 생활.
 - categorySlugs는 반드시 핵심 범주 하나만 선택.
 - 신청·제출·응답이 필요하면 requiresAction=true.
 - 상품·기프티콘·사례비·지원금·할인이 확인되면 hasReward=true와 rewardNote를 채움.
@@ -805,7 +805,9 @@ ${content}`;
 1. 날짜, 시각, 금액, 인원, 학점, 학기, 기간, 횟수, 비율, 연락처 등 주요 수치를 원문 그대로 대조합니다.
 2. 원문에 없는 수치나 조건이 summary에 추가됐으면 삭제하거나 바로잡습니다.
 3. deadline은 실제 신청/제출 마감일일 때만 YYYY-MM-DD로 적고 불명확하면 빈 문자열입니다.
-4. categorySlugs는 academic/opportunity/benefit/community 중 핵심 하나만 고릅니다.
+4. categorySlugs는 academic/opportunity/survey/community 중 핵심 하나만 고릅니다.
+   기회와 설문조사는 선발이 있느냐로 가릅니다. 붙고 떨어지는 일이 있으면 기회,
+   조건만 맞으면 참여로 끝나면 설문조사입니다.
 5. 신청·제출·응답은 requiresAction, 상품·지원·할인은 hasReward와 rewardNote로 다시 검증합니다.
 
 출력 형식:
@@ -2376,6 +2378,8 @@ function renderBannerSection(placement, title) {
                         <span>홍보 유형</span>
                         <select class="banner-input-type-${safeId}">
                             <option value="club" ${slide.type === 'club' ? 'selected' : ''}>동아리</option>
+                            <option value="survey" ${slide.type === 'survey' ? 'selected' : ''}>설문조사</option>
+                            <option value="etc" ${slide.type === 'etc' ? 'selected' : ''}>기타</option>
                             <option value="project" ${slide.type === 'project' ? 'selected' : ''}>프로젝트</option>
                             <option value="council" ${slide.type === 'council' ? 'selected' : ''}>학생회</option>
                         </select>
@@ -2472,6 +2476,8 @@ function renderBannerSection(placement, title) {
                     <span>홍보 유형</span>
                     <select id="new-right_rail-type" ${isAtLimit ? 'disabled' : ''}>
                         <option value="club">동아리</option>
+                        <option value="survey">설문조사</option>
+                        <option value="etc">기타</option>
                         <option value="project">프로젝트</option>
                         <option value="council">학생회</option>
                     </select>

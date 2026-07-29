@@ -34,30 +34,23 @@
             <h2>사용 설명서 다시 보기</h2>
             <p>화면을 하나씩 짚어가며 알려드리는 안내입니다. 실제 버튼을 직접 눌러보며 익힐 수 있고, 공지 목록에서 검색창 오른쪽 돋보기를 눌러도 같은 안내가 열립니다.</p>
             <div class="guide-replay-actions">
-                <a class="guide-replay-btn" href="./index.html?tutorial=1">사용 설명서 열기</a>
-                <a class="guide-replay-btn is-quiet" href="./guide.html">글로 된 설명서</a>
-                <a class="guide-replay-btn is-quiet" href="./faq.html">자주 묻는 질문</a>
-                <button class="guide-replay-btn is-quiet" type="button" onclick="resetGuideHint(this)">
-                    첫 방문 안내 다시 받기
-                </button>
+                <!-- 처음 왔을 때 받는 화면 안내를 그대로 다시 튼다. 눌러 본 적이
+                     있다는 기록도 지워, 다음에 목록을 열면 첫 안내가 또 뜬다. -->
+                <a class="guide-replay-btn" href="./index.html?tutorial=1"
+                   onclick="forgetGuideHint()">첫 방문 안내 다시 보기</a>
+                <a class="guide-replay-btn is-quiet" href="./guide.html">글로 된 설명서 보기</a>
             </div>
-            <p class="guide-replay-status" id="guide-replay-status" role="status" aria-live="polite"></p>
         </section>
     </main>
 
     <script>
         // 첫 방문 안내는 한 번 보면 기기에 기록이 남아 다시 뜨지 않는다.
-        // 그 기록만 지워 다음에 공지 목록을 열 때 다시 보이게 한다.
-        function resetGuideHint(button) {
-            const status = document.getElementById('guide-replay-status');
+        // 그 기록을 지워야 목록으로 돌아갔을 때도 안내가 다시 보인다.
+        function forgetGuideHint() {
             try {
                 localStorage.removeItem('eceGuideHintSeen');
-                status.textContent = '다음에 공지 목록을 열면 첫 방문 안내가 다시 나타납니다.';
-                status.dataset.state = 'done';
-                button.disabled = true;
             } catch {
-                status.textContent = '이 브라우저에서는 설정을 저장할 수 없어 되돌리지 못했습니다.';
-                status.dataset.state = 'error';
+                // 저장이 막힌 브라우저에서도 안내 자체는 열리므로 그냥 넘어간다.
             }
         }
     </script>

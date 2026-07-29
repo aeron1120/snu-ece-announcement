@@ -10,14 +10,14 @@ const mode = args.includes('--apply') ? 'apply' : (args.includes('--rollback') ?
 
 const OLD_DIRECT_MAP = Object.freeze({
     academics: 'ACADEMIC',
-    'benefits-partnerships': 'BENEFIT',
+    'benefits-partnerships': 'OPPORTUNITY',
     campus: 'COMMUNITY',
     governance: 'COMMUNITY',
-    survey: 'BENEFIT'
+    survey: 'SURVEY'
 });
 const ACADEMIC_RE = /수강\s*신청|수강신청|수강\s*정정|졸업|성적|전공\s*진입/i;
 const OPPORTUNITY_RE = /인턴|연구실|모집|공모전|경진대회|대회|장학|교환\s*학생|교환학생/i;
-const BENEFIT_RE = /혜택|제휴|할인|지원금|기프티콘|상품권|쿠폰|간식|증정/i;
+const SURVEY_RE = /설문|서베이|survey|인터뷰|면담|피험자|실험\s*참여|참여자\s*모집|응답자|사용자\s*조사/i;
 const COMMUNITY_RE = /학생회|대의원|총회|축제|행사|정전|출입|시설|교통|캠퍼스/i;
 const REWARD_RE = /(?:추첨|선착순|참여자|응답자|사례비|리워드|상품|경품|기프티콘|쿠폰)[^.!?\n]{0,80}(?:원|명|개|기프티콘|쿠폰|상품권|사례비|지급|증정|제공)/i;
 
@@ -32,7 +32,7 @@ function classifyApplication(title, content) {
 function inferFallback(text) {
     if (ACADEMIC_RE.test(text)) return 'ACADEMIC';
     if (OPPORTUNITY_RE.test(text)) return 'OPPORTUNITY';
-    if (BENEFIT_RE.test(text)) return 'BENEFIT';
+    if (SURVEY_RE.test(text)) return 'SURVEY';
     if (COMMUNITY_RE.test(text)) return 'COMMUNITY';
     return null;
 }

@@ -82,16 +82,16 @@
                 <fieldset>
                     <legend>신청자 정보</legend>
                     <div class="form-grid two">
-                        <label>실명 <span>*</span>
+                        <label><span class="field-name">실명 <b class="req" aria-hidden="true">*</b></span>
                             <input id="inquiry-name" name="name" maxlength="40" autocomplete="name" required>
                         </label>
-                        <label>소속/단체명 <span>*</span>
+                        <label><span class="field-name">소속/단체명 <b class="req" aria-hidden="true">*</b></span>
                             <input id="inquiry-organization" name="organization" maxlength="80" required>
                         </label>
-                        <label>전화번호
+                        <label><span class="field-name">전화번호</span>
                             <input id="inquiry-phone" name="phone" maxlength="30" inputmode="tel" autocomplete="tel">
                         </label>
-                        <label>이메일
+                        <label><span class="field-name">이메일</span>
                             <input id="inquiry-email" name="email" maxlength="120" type="email" autocomplete="email">
                         </label>
                     </div>
@@ -100,29 +100,31 @@
 
                 <fieldset>
                     <legend>홍보 내용</legend>
-                    <label>홍보 유형 <span>*</span>
+                    <label><span class="field-name">홍보 유형 <b class="req" aria-hidden="true">*</b></span>
                         <select id="inquiry-type" name="type" required>
                             <option value="club">동아리</option>
                             <option value="project">프로젝트</option>
                             <option value="council">학생회</option>
+                            <option value="survey">설문조사</option>
+                            <option value="etc">기타</option>
                         </select>
                     </label>
-                    <label>홍보 제목 <span>*</span>
+                    <label><span class="field-name">홍보 제목 <b class="req" aria-hidden="true">*</b></span>
                         <input id="inquiry-title" name="title" maxlength="80" placeholder="예: 2026 학생 모집 안내" required>
                     </label>
-                    <label>홍보 설명 <span>*</span>
+                    <label><span class="field-name">홍보 설명 <b class="req" aria-hidden="true">*</b></span>
                         <textarea id="inquiry-description" name="description" maxlength="600" rows="5"
-                                  placeholder="대상, 목적, 핵심 혜택 또는 일정을 2~3문장으로 적어주세요." required></textarea>
+                                  placeholder="대상, 목적, 참여 방법 또는 일정을 2~3문장으로 적어주세요." required></textarea>
                     </label>
-                    <label>연결 링크
+                    <label><span class="field-name">연결 링크</span>
                         <input id="inquiry-link" name="linkUrl" maxlength="500" type="url" inputmode="url"
                                placeholder="https://">
                     </label>
                     <div class="form-grid two">
-                        <label>희망 시작일 <span>*</span>
+                        <label><span class="field-name">희망 시작일 <b class="req" aria-hidden="true">*</b></span>
                             <input id="inquiry-start" name="startDate" type="date" required>
                         </label>
-                        <label>희망 종료일 <span>*</span>
+                        <label><span class="field-name">희망 종료일 <b class="req" aria-hidden="true">*</b></span>
                             <input id="inquiry-end" name="endDate" type="date" required>
                         </label>
                     </div>
@@ -135,7 +137,7 @@
                     <div class="banner-format-grid">
                         <div class="banner-format-card">
                             <div class="banner-format-heading">
-                                <strong>데스크탑 배너 <span>*</span></strong>
+                                <strong>데스크탑 배너 <b class="req" aria-hidden="true">*</b></strong>
                                 <small>세로로 긴 형태 · 권장 720×2400px (3:10)</small>
                             </div>
                             <label class="image-upload is-desktop" for="inquiry-desktop-image">
@@ -146,7 +148,7 @@
                                 <small>최대 5MB</small>
                             </label>
                             <div class="image-preview" id="inquiry-desktop-image-preview" hidden>
-                                <img id="inquiry-desktop-image-preview-img" alt="선택한 데스크탑 배너 미리보기">
+                                <img id="inquiry-desktop-image-preview-img" alt="" src="">
                                 <div>
                                     <strong id="inquiry-desktop-image-name"></strong>
                                     <span id="inquiry-desktop-image-meta"></span>
@@ -156,7 +158,7 @@
                         </div>
                         <div class="banner-format-card">
                             <div class="banner-format-heading">
-                                <strong>모바일 배너 <span>*</span></strong>
+                                <strong>모바일 배너 <b class="req" aria-hidden="true">*</b></strong>
                                 <small>16:9 가로형 · 권장 1200×675px</small>
                             </div>
                             <label class="image-upload is-mobile" for="inquiry-mobile-image">
@@ -167,7 +169,7 @@
                                 <small>최대 5MB</small>
                             </label>
                             <div class="image-preview" id="inquiry-mobile-image-preview" hidden>
-                                <img id="inquiry-mobile-image-preview-img" alt="선택한 모바일 배너 미리보기">
+                                <img id="inquiry-mobile-image-preview-img" alt="" src="">
                                 <div>
                                     <strong id="inquiry-mobile-image-name"></strong>
                                     <span id="inquiry-mobile-image-meta"></span>

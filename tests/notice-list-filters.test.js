@@ -118,6 +118,7 @@ test('notice list filter normalization rejects unknown states instead of widenin
             host: '전체',
             hasImage: '전체',
             views: '전체',
+            source: '전체',
             sort: '최신순',
             dateFrom: '',
             dateTo: '',

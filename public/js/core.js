@@ -81,6 +81,7 @@ let bannerManageAuthToken = '';
 let activeCategories = [];
 let selectedCategoryFilters = new Set();
 let archiveTabActive = false;
+let relatedTabActive = false;   // '관련' 칸을 보고 있는지
 const quickNoticeFilters = {
     urgent: false,
     reward: false,
@@ -91,9 +92,16 @@ const quickNoticeFilters = {
 const NOTICE_CATEGORY_ORDER = Object.freeze([
     'academic',
     'opportunity',
-    'benefit',
+    'survey',
     'community'
 ]);
+
+/* '관련'은 주제가 아니라 출처로 묶은 칸이다.
+   학부 홈페이지에서 자동으로 모아 온 원문 공지를 한자리에서 보게 한다.
+   주제 카테고리와 축이 다르므로 데이터베이스의 카테고리로 두지 않고
+   목록을 불러올 때 출처 조건만 붙인다. 그래야 새로 긁어 온 공지가
+   따로 손대지 않아도 저절로 이 칸에 들어온다. */
+const RELATED_TAB_SLUG = 'related';
 
 function orderedNoticeCategories(categories = activeCategories) {
     const order = new Map(NOTICE_CATEGORY_ORDER.map((slug, index) => [slug, index]));
@@ -480,6 +488,7 @@ function getNoticeListFilters() {
         sort: filterState.sort,
         dateFrom: document.getElementById('filter-date-from')?.value || '',
         dateTo: document.getElementById('filter-date-to')?.value || '',
+        source: relatedTabActive ? 'crawled' : '전체',
         urgent: quickNoticeFilters.urgent,
         reward: quickNoticeFilters.reward,
         action: quickNoticeFilters.action,
@@ -1871,10 +1880,11 @@ async function loadCategories() {
 const LEGACY_CATEGORY_REDIRECTS = Object.freeze({
     application: 'opportunity',
     academics: 'academic',
-    'benefits-partnerships': 'benefit',
+    'benefits-partnerships': 'community',
     campus: 'community',
     governance: 'community',
-    survey: 'benefit',
+    // 옛 '혜택' 칸은 없앴다. 그 자리에 설문조사가 들어왔고, 제휴·할인은 행사로 갔다.
+    benefit: 'community',
     expired: 'all'
 });
 
@@ -1893,36 +1903,42 @@ function buildCategoryTabs() {
     const current = selectedCategoryFilters.size === 0
         ? 'all'
         : (selectedCategoryFilters.size === 1 ? [...selectedCategoryFilters][0] : 'multi');
-    let html = `<button type="button" class="category-tab ${current === 'all' ? 'active' : ''}" data-category="all" onclick="selectCategoryTab('all')">전체</button>`;
+    let html = `<button type="button" class="category-tab ${!relatedTabActive && current === 'all' ? 'active' : ''}" data-category="all" onclick="selectCategoryTab('all')">전체</button>`;
     html += orderedNoticeCategories().map(category => {
         const id = Number(category.id);
-        return `<button type="button" class="category-tab ${current === id ? 'active' : ''}" data-category="${escapeHtml(category.slug)}" onclick="selectCategoryTab('${escapeHtml(category.slug)}')">${escapeHtml(category.name)}</button>`;
+        const on = !relatedTabActive && current === id;
+        return `<button type="button" class="category-tab ${on ? 'active' : ''}" data-category="${escapeHtml(category.slug)}" onclick="selectCategoryTab('${escapeHtml(category.slug)}')">${escapeHtml(category.name)}</button>`;
     }).join('');
+    html += `<button type="button" class="category-tab ${relatedTabActive ? 'active' : ''}" data-category="${RELATED_TAB_SLUG}" title="학부 홈페이지에서 자동으로 모아 온 원문 공지" onclick="selectCategoryTab('${RELATED_TAB_SLUG}')">관련</button>`;
     inner.innerHTML = html;
 }
 
 function selectCategoryTab(value) {
-    const category = categoryFromTabValue(value);
+    relatedTabActive = value === RELATED_TAB_SLUG;
+    const category = relatedTabActive ? null : categoryFromTabValue(value);
     selectedCategoryFilters.clear();
     archiveTabActive = false;
     if (category) selectedCategoryFilters.add(Number(category.id));
+    const activeSlug = relatedTabActive ? RELATED_TAB_SLUG : (category ? category.slug : 'all');
     document.querySelectorAll('#category-tabs-inner .category-tab').forEach(tab => {
-        const selected = !category
-            ? tab.dataset.category === 'all'
-            : tab.dataset.category === category.slug;
+        const selected = tab.dataset.category === activeSlug;
         tab.classList.toggle('active', selected);
         tab.setAttribute('aria-current', selected ? 'true' : 'false');
     });
-    filterState.sort = getDefaultSortForCategory(category?.slug || 'all');
+    filterState.sort = getDefaultSortForCategory(activeSlug);
     syncNoticeSortChips();
     updateFilterChips();
     filterCards(true);
 }
 
+/* 기본 정렬.
+   마감이 있어야 뜻이 있는 칸만 마감임박순으로 연다. 기회와 설문조사가
+   그렇다. 학사·행사는 언제 올라왔는지가 중요하고, '관련'은 학부 홈페이지에
+   실린 차례 그대로 보는 편이 자연스러워 최신순으로 둔다. */
 function getDefaultSortForCategory(value = 'all') {
-    if (value === 'all') return '최신순';
+    if (value === 'all' || value === RELATED_TAB_SLUG) return '최신순';
     const category = categoryFromTabValue(value);
-    return ['opportunity', 'benefit'].includes(category?.slug)
+    return ['opportunity', 'survey'].includes(category?.slug)
         ? '마감임박순'
         : '최신순';
 }
@@ -2135,6 +2151,7 @@ function resetTargetFilter() {
 function clearCategoryFilters() {
     selectedCategoryFilters.clear();
     archiveTabActive = false;
+    relatedTabActive = false;
     buildCategoryTabs();
     filterState.sort = getDefaultSortForCategory('all');
     syncNoticeSortChips();

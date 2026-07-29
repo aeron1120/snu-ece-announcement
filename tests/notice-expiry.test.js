@@ -26,7 +26,7 @@ test('notice expiry is derived directly from the deadline without category grace
     assert.equal(academic.expiresAt, '2026-08-01T14:59:59.000Z');
 
     const noDeadline = calculateNoticeLifecycle({
-        categorySlugs: ['benefit'],
+        categorySlugs: ['survey'],
         createdAt: '2026-07-01T00:00:00.000Z'
     });
     assert.equal(noDeadline.expiresAt, null);

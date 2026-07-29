@@ -49,7 +49,7 @@
         {
             target: '#category-tabs',
             title: '카테고리로 나눠 보기',
-            body: '학사·기회·혜택·커뮤니티로 갈라 봅니다. 기회와 혜택은 마감이 급한 순서로, 학사와 커뮤니티는 최신 순서로 자동 정렬됩니다.'
+            body: '학사·기회·설문조사·행사로 갈라 보고, 맨 오른쪽 관련은 학부 홈페이지에서 자동으로 모아 온 원문만 모읍니다. 기회와 설문조사는 마감이 급한 순서로 자동 정렬됩니다.'
         },
         {
             target: '#notice-quick-filters',
@@ -528,7 +528,11 @@
         lastTarget = null;
         layer.hidden = false;
         requestAnimationFrame(() => layer.classList.add('is-open'));
-        window.addEventListener('scroll', reposition, true);
+        /* 스크롤은 듣지 않는다.
+           화면을 굴리는 것은 오직 이 안내뿐이고(사람 손은 막아 두었다),
+           굴릴 때마다 스크롤 소식이 날아와 다시 맞추면 그리던 움직임을
+           스스로 끊어 버린다. 실제로 그래서 자리를 옮기는 단계마다 툭툭
+           끊겼다. 창 크기만 살핀다. */
         window.addEventListener('resize', reposition);
         document.addEventListener('keydown', onKeyDown, true);
         render();
@@ -542,7 +546,6 @@
         currentHole = null;
         currentSpot = null;
         lastTarget = null;
-        window.removeEventListener('scroll', reposition, true);
         window.removeEventListener('resize', reposition);
         document.removeEventListener('keydown', onKeyDown, true);
         layer.classList.remove('is-open');

@@ -92,3 +92,7 @@
     font-size: 13.5px; font-weight: 700; color: #1f3f8f;
     text-decoration: underline; text-underline-offset: 3px;
 }
+
+/* 문서 맨 아래의 최종 수정일. */
+.guide-updated { margin-top: 34px; padding-top: 18px; border-top: 1px solid #dfe5ef;
+                 color: #7c88a6; font-size: 12.5px; }

@@ -141,7 +141,7 @@ function validateBannerInquiry(payload) {
     }
     if (!payload.phone && !payload.email) return '전화번호 또는 이메일 중 하나를 입력해주세요.';
     if (payload.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(payload.email)) return '이메일 주소를 확인해주세요.';
-    if (!['club', 'project', 'council'].includes(payload.type)) return '홍보 유형을 선택해주세요.';
+    if (!['club', 'project', 'council', 'survey', 'etc'].includes(payload.type)) return '홍보 유형을 선택해주세요.';
     if (payload.title.length < 2 || payload.description.length < 10) return '홍보 제목과 10자 이상의 설명을 입력해주세요.';
     if (payload.linkUrl && !/^https?:\/\//i.test(payload.linkUrl)) return '연결 링크는 http:// 또는 https://로 시작해야 합니다.';
     if (!payload.startDate || !payload.endDate) return '희망 게재 시작일과 종료일을 선택해주세요.';

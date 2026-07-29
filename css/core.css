@@ -2333,3 +2333,6 @@ body.reordering-compare-block .compare-trash-zone {
 @media (prefers-reduced-motion: reduce) {
     .notice-loading-spinner { animation-duration: 2s; }
 }
+
+/* 제목 옆 학교 상징. 데스크탑에서는 mobile-only 규칙이 지운다. */
+.site-title-emblem { display: none; }

@@ -210,8 +210,21 @@ html[data-view="mobile"] .header {
 html[data-view="mobile"] .header-title-area { width: auto; flex: 1; }
 html[data-view="mobile"] .header h1,
 html[data-view="mobile"] .site-title { font-size: 22px; white-space: normal; }
-/* 제목만 살짝 오른쪽으로 들여 밑줄 왼쪽 끝과 어긋나게 둔다. */
-html[data-view="mobile"] .site-title-mark { height: 32px; margin-left: 6px; }
+/* 상징과 글씨를 한 줄에 나란히 세운다. 글씨는 상징이 차지한 만큼만
+   오른쪽으로 밀리고, 그 왼쪽 끝은 예전처럼 밑줄과 살짝 어긋난 자리에 선다. */
+html[data-view="mobile"] .site-title {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+}
+html[data-view="mobile"] .site-title-emblem {
+    display: block;
+    width: auto;
+    height: 30px;
+    margin-left: 6px;
+    flex: 0 0 auto;
+}
+html[data-view="mobile"] .site-title-mark { height: 32px; margin-left: 0; }
 html[data-view="mobile"] .header-actions {
     width: auto;
     margin-left: 0;
