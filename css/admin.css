@@ -210,6 +210,8 @@
     background: var(--primary-light); border: 1px solid #d2ddef; border-left: 3px solid var(--primary);
 }
 .analyze-bar .btn { white-space: nowrap; }
+/* 이 줄은 가운데 정렬이라 .title-manual-row의 위 여백을 그대로 두면 체크박스만 내려앉는다. */
+.analyze-bar .title-manual-row { margin-top: 0; white-space: nowrap; }
 .analysis-fields { padding: 16px; border: 1px solid var(--border); background: #fafbfc; margin-bottom: 22px; }
 .analysis-fields .title-builder-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .ai-progress-overlay {

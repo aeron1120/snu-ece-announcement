@@ -169,6 +169,10 @@
             <!-- 2단계: AI가 마감일·핵심내용·유형을 정해진 보기 안에서 골라 채운다 -->
             <div class="analyze-bar">
                 <button class="btn" type="button" id="ai-analyze-btn" onclick="analyzeNotice()">AI 자동 편집</button>
+                <label class="title-manual-row" title="Gemini 호출이 2회에서 1회로 줄어듭니다. 할당량이 빠듯할 때 켜세요.">
+                    <input type="checkbox" id="ai-skip-verification" onchange="onSkipVerificationToggle()">
+                    2차 검수 생략 (호출 절반)
+                </label>
                 <span id="analyze-status" class="review-status" style="margin:0;"></span>
             </div>
 

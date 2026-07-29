@@ -176,6 +176,7 @@ async function enterAdminWorkspace() {
     document.getElementById('admin-mode-exit').textContent = '관리자 모드 나가기';
 
     applyAdminRoleToChrome();
+    restoreSkipVerificationChoice();
     // 첫 화면은 그 역할이 실제로 쓸 수 있는 탭이어야 한다.
     selectAdminTab(allowedAdminTabs()[0]);
 
@@ -649,8 +650,34 @@ function normalizeNoticeAnalysisResult(parsed = {}) {
     };
 }
 
-// 1차 편집 결과를 그대로 쓰지 않고, 2차 독립 검수 에이전트가 원문을 다시 읽어
-// 날짜·금액·인원·학점·기간과 카테고리를 교차 검증한 결과만 최종값으로 사용한다.
+// 분석 결과의 categorySlugs를 실제 카테고리 id로 옮긴다. 1차·2차 어느 결과에도 쓴다.
+function withResolvedCategoryIds(analysis) {
+    return {
+        ...analysis,
+        categoryIds: analysis.categorySlugs
+            .map(slug => activeCategories.find(category => category.slug === slug)?.id)
+            .map(Number)
+            .filter(Number.isSafeInteger)
+    };
+}
+
+// 2차 검수를 생략하면 Gemini 호출이 2회에서 1회로 준다. 할당량이 빠듯할 때 쓴다.
+function skipsVerification() {
+    return document.getElementById('ai-skip-verification')?.checked === true;
+}
+
+function onSkipVerificationToggle() {
+    localStorage.setItem('eceAiSkipVerification', skipsVerification() ? '1' : '0');
+}
+
+function restoreSkipVerificationChoice() {
+    const box = document.getElementById('ai-skip-verification');
+    if (box) box.checked = localStorage.getItem('eceAiSkipVerification') === '1';
+}
+
+// 기본은 2단계다. 1차 편집 결과를 그대로 쓰지 않고 2차 독립 검수 에이전트가 원문을
+// 다시 읽어 날짜·금액·인원·학점·기간과 카테고리를 교차 검증한 결과만 최종값으로 쓴다.
+// '2차 검수 생략'을 켜면 1차 결과로 끝내고 Gemini 호출을 2회에서 1회로 줄인다.
 async function runNoticeAnalysis(content, onVerificationStart = null) {
     const today = new Date().toISOString().slice(0, 10);
     const prompt = `다음 공지 원문을 분석해서 JSON만 출력해. 코드블록·설명 없이 JSON 객체 하나만.
@@ -679,6 +706,8 @@ ${content}`;
         body: JSON.stringify({ prompt, model: GEMINI_MODEL })
     });
     const draft = normalizeNoticeAnalysisResult(parseAnalysisJson(result?.text || ''));
+    // 생략을 켰으면 여기서 끝낸다. 2차 호출을 아예 하지 않는다.
+    if (skipsVerification()) return withResolvedCategoryIds(draft);
     if (typeof onVerificationStart === 'function') onVerificationStart();
 
     const verificationPrompt = `당신은 공지 편집 결과를 독립적으로 재검수하는 검증 에이전트입니다.
@@ -710,13 +739,7 @@ ${JSON.stringify(draft)}`;
     if (!verified.subject && !verified.type && verified.summary.length === 0) {
         throw new Error('2차 검수 결과를 해석하지 못했습니다. 다시 분석해주세요.');
     }
-    return {
-        ...verified,
-        categoryIds: verified.categorySlugs
-            .map(slug => activeCategories.find(category => category.slug === slug)?.id)
-            .map(Number)
-            .filter(Number.isSafeInteger)
-    };
+    return withResolvedCategoryIds(verified);
 }
 
 async function analyzeNotice() {
@@ -761,11 +784,14 @@ async function analyzeNotice() {
         refreshTitlePreview();
 
         const gotSomething = parsed.subject || parsed.type || parsed.deadline;
-        const verificationLabel = parsed.verifiedNumbers.length
-            ? ` 주요 수치 ${parsed.verifiedNumbers.length}건을 교차 검증했습니다.`
-            : ' 수치와 카테고리 교차 검증을 완료했습니다.';
+        // 검수를 건너뛴 경우 교차 검증했다고 말하면 안 된다.
+        const doneLabel = skipsVerification()
+            ? 'AI 1단계 분석 완료. 2차 검수를 생략했으니 수치를 직접 확인하세요.'
+            : `AI 2단계 분석 완료.${parsed.verifiedNumbers.length
+                ? ` 주요 수치 ${parsed.verifiedNumbers.length}건을 교차 검증했습니다.`
+                : ' 수치와 카테고리 교차 검증을 완료했습니다.'} 값을 확인하고 필요하면 직접 고치세요.`;
         setStatus(gotSomething
-            ? `AI 2단계 분석 완료.${verificationLabel} 값을 확인하고 필요하면 직접 고치세요.`
+            ? doneLabel
             : 'AI가 값을 추출하지 못했습니다. 직접 입력해주세요.', !gotSomething);
         finishAiProgress('Gemini 분석이 완료되었습니다.');
         await new Promise(resolve => setTimeout(resolve, 250));
@@ -1197,6 +1223,7 @@ async function generateAIAndSave() {
     let requiresAction = false;
     let finalImages = [];
     let existing = null;
+    let analysisFailure = '';
 
     if (editingNoticeId) {
         existing = notices.find(n => String(n.id) === String(editingNoticeId)) || null;
@@ -1223,8 +1250,12 @@ async function generateAIAndSave() {
                 hasReward = analysis.hasReward;
                 requiresAction = analysis.requiresAction;
             } catch (error) {
-                if (isGeminiRateLimitError(error)) throw error;
+                // 분석은 부가 정보일 뿐이므로 실패해도 공지 저장 자체는 막지 않는다.
+                // 할당량 초과는 일시적인데 이걸로 작성한 내용을 통째로 잃으면 안 된다.
                 console.error('저장 직전 분석 실패:', error);
+                analysisFailure = isGeminiRateLimitError(error)
+                    ? 'Gemini 분당 호출 한도를 초과해 AI 요약·카테고리를 채우지 못했습니다.'
+                    : `AI 분석에 실패해 요약·카테고리를 채우지 못했습니다(${error.message}).`;
                 aiSummary = existing?.aiSummary || [];
                 categoryIds = existing?.categoryIds || [];
                 surveyReward = existing?.surveyReward || '';
@@ -1302,7 +1333,11 @@ async function generateAIAndSave() {
         hideAiProgress();
     }
 
-    alert(editingNoticeId ? '공지가 수정되었습니다.' : '공지가 등록되었습니다.');
+    const savedMessage = editingNoticeId ? '공지가 수정되었습니다.' : '공지가 등록되었습니다.';
+    // 분석이 빠진 채 저장됐다면 반드시 알린다. 조용히 성공한 척하면 안 된다.
+    alert(analysisFailure
+        ? `${savedMessage}\n\n${analysisFailure}\n목록에서 이 공지를 [수정]으로 연 뒤 'AI 자동 편집'을 눌러 다시 채워주세요.`
+        : savedMessage);
     resetComposeForm();
     renderAdminNoticeList();
 }
@@ -1382,6 +1417,7 @@ function renderAdminNoticeList() {
                         <span class="admin-notice-ago">${escapeHtml(formatRelativeFromNow(notice.createdAt))}</span>
                         · 조회 ${Number(notice.views) || 0}
                         ${notice.isHidden ? ' · 숨김' : ''}
+                        ${(notice.aiSummary || []).length === 0 ? ' · <strong>AI 요약 없음</strong>' : ''}
                     </span>
                 </div>
                 <div class="admin-notice-row-actions">

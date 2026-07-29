@@ -713,7 +713,9 @@ test('manual Gemini analysis saves canonical category ids with the notice', asyn
     assert.match(admin, /categorySlugs는 반드시 핵심 범주 하나만 선택/);
     assert.match(admin, /"hasReward":false/);
     assert.match(admin, /"requiresAction":false/);
-    assert.match(admin, /categoryIds:\s*verified\.categorySlugs/);
+    // 카테고리 매핑은 1차·2차 어느 결과에도 같게 적용된다.
+    assert.match(admin, /categoryIds:\s*analysis\.categorySlugs/);
+    assert.match(admin, /return withResolvedCategoryIds\(verified\)/);
     assert.match(admin, /verificationPrompt/);
     assert.match(admin, /verifiedNumbers/);
     assert.match(admin, /const newNoticeData = \{[\s\S]*categoryIds,/);
