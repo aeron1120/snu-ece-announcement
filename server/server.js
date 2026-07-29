@@ -666,8 +666,8 @@ function normalizeBannerPayload(body = {}) {
     const placement = Object.hasOwn(body, 'placement')
         ? String(body.placement).trim()
         : 'header';
-    if (!['header', 'right_rail'].includes(placement)) {
-        throw new TypeError('배너 표시 위치는 header 또는 right_rail이어야 합니다.');
+    if (!['header', 'right_rail', 'staging'].includes(placement)) {
+        throw new TypeError('배너 표시 위치는 header, right_rail, staging 중 하나여야 합니다.');
     }
 
     const linkUrl = String(body.linkUrl || '').trim();
@@ -3159,7 +3159,9 @@ app.post('/api/summary', requireNoticeAdmin, async (req, res) => {
 
 app.get('/api/banner-slides', async (req, res) => {
     try {
-        const slides = await listBannerSlides();
+        // 임시 배너는 아직 자리를 못 정한 대기 항목이라 공개 화면에 내보내지 않는다.
+        const slides = (await listBannerSlides())
+            .filter(slide => slide.placement !== 'staging');
         res.json({ slides });
     } catch (error) {
         res.status(500).json({ error: error.message || '배너 조회 실패' });
@@ -3246,6 +3248,68 @@ app.put('/api/banner-slides/:id', requireBannerAdmin, async (req, res) => {
     }
 });
 
+/* 임시 배너를 실제 노출 자리로 올린다.
+   승인만으로는 공개되지 않고, 다섯 자리 중 어디를 바꿀지 관리자가 고른 뒤에야
+   레일에 오른다. 자리를 비워 두고 싶으면 targetId 없이 빈 자리를 고르면 된다.
+   바뀌어 내려가는 배너는 지우지 않고 임시 자리로 물러나 되돌릴 수 있게 둔다. */
+app.post('/api/banner-slides/:id/promote', requireBannerAdmin, async (req, res) => {
+    try {
+        const id = Number(req.params.id);
+        const targetOrder = Number(req.body?.order);
+        if (!Number.isFinite(id)) {
+            return res.status(400).json({ error: '유효하지 않은 id입니다.' });
+        }
+        if (!Number.isInteger(targetOrder) || targetOrder < 0 || targetOrder >= MAX_RIGHT_RAIL_BANNERS) {
+            return res.status(400).json({
+                error: `바꿀 자리는 1번부터 ${MAX_RIGHT_RAIL_BANNERS}번 사이여야 합니다.`
+            });
+        }
+
+        const all = await listBannerSlides(Date.now(), { includeUnpublished: true });
+        const staged = all.find(slide => Number(slide.id) === id);
+        if (!staged) {
+            return res.status(404).json({ error: '임시 배너를 찾을 수 없습니다.' });
+        }
+        if (staged.placement !== 'staging') {
+            return res.status(400).json({ error: '임시 배너만 자리에 올릴 수 있습니다.' });
+        }
+        if (!staged.src || !staged.mobileSrc) {
+            return res.status(400).json({
+                error: '데스크탑과 모바일 이미지가 모두 있어야 자리에 올릴 수 있습니다.'
+            });
+        }
+
+        // 그 자리에 있던 배너는 임시 자리로 물러난다. 실수로 바꿔도 되돌릴 수 있다.
+        const replaced = all.find(slide =>
+            slide.placement === 'right_rail'
+            && slide.status === 'approved'
+            && Number(slide.order) === targetOrder);
+        if (replaced) {
+            await updateBannerSlide(Number(replaced.id), {
+                ...replaced,
+                placement: 'staging',
+                status: 'approved',
+                order: 0
+            });
+        }
+
+        const promoted = await updateBannerSlide(id, {
+            ...staged,
+            placement: 'right_rail',
+            status: 'approved',
+            order: targetOrder
+        });
+
+        res.json({
+            ok: true,
+            slide: promoted,
+            replacedId: replaced ? Number(replaced.id) : null
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message || '임시 배너 반영 실패' });
+    }
+});
+
 app.delete('/api/banner-slides/:id', requireBannerAdmin, async (req, res) => {
     try {
         const id = Number(req.params.id);
@@ -3264,10 +3328,14 @@ app.delete('/api/banner-slides/:id', requireBannerAdmin, async (req, res) => {
     }
 });
 
-// 테스트가 잠금 상태를 되돌릴 수 있게 열어 둔다. 같은 IP를 여러 테스트가
-// 공유하므로, 잠근 채로 두면 뒤따르는 테스트가 로그인하지 못한다.
+/* 테스트가 로그인 제한을 되돌릴 수 있게 열어 둔다. 같은 IP를 여러 테스트가
+   공유하므로, 실패 기록이나 요청 수 제한이 남아 있으면 뒤따르는 테스트가
+   로그인하지 못한다. 둘 다 여기서 함께 비운다. */
 function resetAdminLoginAttempts() {
     adminLoginAttempts.clear();
+    authenticationLimiter.resetKey?.('::ffff:127.0.0.1');
+    authenticationLimiter.resetKey?.('127.0.0.1');
+    authenticationLimiter.store?.resetAll?.();
 }
 
 export {

@@ -2025,12 +2025,99 @@ function renderBannerSubnav() {
             </button>`;
     }).join('');
 
-    // 배너 문의는 위 탭으로 옮겼으므로 여기에는 배너 자리만 남는다.
+    // 승인만 하고 아직 자리를 못 정한 배너들. 다섯 자리 아래에 모아 둔다.
+    const staged = getBannerSlidesByPlacement('staging');
+    const stagingActive = activeBannerSlot === 'staging';
+    const stagingItem = `
+        <p class="banner-subnav-heading">대기</p>
+        <button type="button" class="banner-subnav-item${stagingActive ? ' is-active' : ''}${staged.length ? '' : ' is-empty'}"
+                aria-current="${stagingActive ? 'true' : 'false'}"
+                onclick="selectBannerSlot('staging')">
+            <span class="banner-subnav-label">임시 배너</span>
+            <span class="banner-subnav-sub">${staged.length ? `${staged.length}개 대기 중` : '없음'}</span>
+        </button>`;
+
+    // 배너 문의는 위 탭으로 옮겼으므로 여기에는 배너 자리와 대기함만 남는다.
     nav.innerHTML = `
         <p class="banner-subnav-heading">배너 자리</p>
-        ${slotItems}`;
+        ${slotItems}
+        ${stagingItem}`;
 
     applyBannerSlotVisibility();
+    renderStagingBanners();
+}
+
+/* 임시 배너 목록. 여기서 "이 자리에 반영"을 누르면 고른 자리의 배너와 바뀐다.
+   내려간 배너는 지워지지 않고 이 목록으로 물러나므로 되돌릴 수 있다. */
+function renderStagingBanners() {
+    const list = document.getElementById('staging-banner-list');
+    if (!list) return;
+    const staged = getBannerSlidesByPlacement('staging');
+    const railSlides = getBannerSlidesByPlacement('right_rail');
+
+    if (!staged.length) {
+        list.innerHTML = `
+            <p class="banner-empty-slot-note">
+                대기 중인 배너가 없습니다. 배너 문의에서 신청을 승인하면 여기로 들어옵니다.
+            </p>`;
+        return;
+    }
+
+    const slotOptions = Array.from({ length: 5 }, (_, index) => {
+        const taken = railSlides[index];
+        const label = taken ? (taken.name || taken.text || '이름 없는 배너') : '비어 있음';
+        return `<option value="${index}">배너 ${index + 1} — ${escapeHtml(label)}</option>`;
+    }).join('');
+
+    list.innerHTML = staged.map(slide => {
+        const id = Number(slide.id);
+        const ready = Boolean(slide.src && slide.mobileSrc);
+        return `
+            <div class="banner-item staging-item">
+                <div class="banner-item-header">
+                    <span class="banner-item-text">${escapeHtml(slide.name || slide.text || '이름 없는 배너')}</span>
+                    <span class="staging-flag${ready ? '' : ' is-blocked'}">${ready ? '반영 가능' : '이미지 미비'}</span>
+                </div>
+                <div class="staging-preview">
+                    ${slide.src ? `<img src="${escapeHtml(slide.src)}" alt="">` : '<span>데스크탑 이미지 없음</span>'}
+                    ${slide.mobileSrc ? `<img src="${escapeHtml(slide.mobileSrc)}" alt="">` : '<span>모바일 이미지 없음</span>'}
+                </div>
+                ${slide.description ? `<p class="staging-desc">${escapeHtml(slide.description)}</p>` : ''}
+                <div class="staging-actions">
+                    <label for="staging-target-${id}">바꿀 자리</label>
+                    <select id="staging-target-${id}">${slotOptions}</select>
+                    <button class="btn btn-small" type="button" ${ready ? '' : 'disabled'}
+                            onclick="promoteStagingBanner(${id})">확정해서 반영</button>
+                    <button class="btn btn-danger btn-small" type="button"
+                            onclick="deleteBannerSlide(${id})">삭제</button>
+                </div>
+            </div>`;
+    }).join('');
+}
+
+async function promoteStagingBanner(id) {
+    const select = document.getElementById(`staging-target-${id}`);
+    const order = Number(select?.value);
+    if (!Number.isInteger(order)) return;
+    const slotLabel = select.options[select.selectedIndex]?.textContent || `배너 ${order + 1}`;
+    if (!window.confirm(`${slotLabel}
+
+이 자리에 반영할까요? 지금 그 자리에 있던 배너는 임시 배너로 물러납니다.`)) return;
+
+    try {
+        const result = await apiRequest(`/api/banner-slides/${encodeURIComponent(id)}/promote`, {
+            method: 'POST',
+            headers: getBannerManageHeaders(),
+            body: JSON.stringify({ order })
+        });
+        await loadBannerSlides(true);
+        renderBannerList();
+        setBannerSaveState(result?.replacedId
+            ? '배너를 바꿨습니다. 물러난 배너는 임시 배너에 있습니다.'
+            : '빈 자리에 배너를 올렸습니다.');
+    } catch (error) {
+        setBannerSaveState(`반영 실패: ${error.message}`, true);
+    }
 }
 
 function selectBannerSlot(slot) {
@@ -2041,17 +2128,48 @@ function selectBannerSlot(slot) {
 // 고른 항목만 남기고 나머지는 접는다. 편집 중 입력값이 날아가지 않도록
 // 지우지 않고 감추기만 한다.
 function applyBannerSlotVisibility() {
+    const showStaging = activeBannerSlot === 'staging';
+    const slotsSection = document.getElementById('banner-slots-section');
+    const stagingSection = document.getElementById('banner-staging-section');
+    if (slotsSection) slotsSection.hidden = showStaging;
+    if (stagingSection) stagingSection.hidden = !showStaging;
+
     // 고른 자리 하나만 남기고 접는다. 편집 중 입력값이 날아가지 않도록
     // 지우지 않고 감추기만 한다.
     document.querySelectorAll('#right-rail-slides-list .banner-item')
         .forEach((item, index) => {
-            item.hidden = index !== activeBannerSlot;
+            item.hidden = showStaging || index !== activeBannerSlot;
         });
 
     // 아직 등록되지 않은 자리를 고르면 새로 만들라고 안내한다.
     const emptyNote = document.getElementById('banner-empty-slot-note');
     const slideCount = getBannerSlidesByPlacement('right_rail').length;
-    if (emptyNote) emptyNote.hidden = activeBannerSlot < slideCount;
+    if (emptyNote) emptyNote.hidden = showStaging || activeBannerSlot < slideCount;
+}
+
+/* 저장 상태 표시.
+   배너 편집은 칸이 많아 어디까지 반영됐는지 알기 어렵다. 값을 건드리면
+   "저장 안 됨"으로, 저장이 끝나면 시각과 함께 "저장됨"으로 바꾼다. */
+function setBannerSaveState(message, isError = false) {
+    const box = document.getElementById('banner-save-state');
+    if (!box) return;
+    box.hidden = false;
+    box.dataset.state = isError ? 'error' : 'saved';
+    box.textContent = message;
+}
+
+function markBannerDirty() {
+    const box = document.getElementById('banner-save-state');
+    if (!box) return;
+    box.hidden = false;
+    box.dataset.state = 'dirty';
+    box.textContent = '저장하지 않은 변경이 있습니다.';
+}
+
+function formatBannerSavedAt() {
+    const now = new Date();
+    const pad = n => String(n).padStart(2, '0');
+    return `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
 }
 
 // 상단 가로 배너가 사라져 갈 곳이 없어진 슬라이드들. 관리 화면에서 아예 안 보이면
@@ -2115,11 +2233,11 @@ function renderBannerSection(placement, title) {
             <div class="banner-editor-layout">
                 <div class="banner-visual-column">
                     <section class="banner-format-editor">
-                        <strong>데스크탑 · 4:5</strong>
+                        <strong>데스크탑 · 3:10</strong>
                         <div class="banner-image-preview ${safeImage ? '' : 'is-empty'}" id="banner-preview-${safeId}">
                             ${safeImage
                                 ? `<img src="${safeImage}" alt="">`
-                                : '<span>이미지 미등록<br><small>권장 800×1000px</small></span>'}
+                                : '<span>이미지 미등록<br><small>권장 720×2400px</small></span>'}
                         </div>
                         <label class="banner-upload-button">
                             데스크탑 사진 교체
@@ -2225,9 +2343,9 @@ function renderBannerSection(placement, title) {
         <div class="banner-editor-layout ${isAtLimit ? 'is-disabled' : ''}">
             <div class="banner-visual-column">
                 <section class="banner-format-editor">
-                    <strong>데스크탑 · 4:5</strong>
+                    <strong>데스크탑 · 3:10</strong>
                     <div class="banner-image-preview is-empty" id="new-banner-preview">
-                        <span>사진 미리보기<br><small>권장 800×1000px</small></span>
+                        <span>사진 미리보기<br><small>권장 720×2400px</small></span>
                     </div>
                     <label class="banner-upload-button ${isAtLimit ? 'is-disabled' : ''}">
                         데스크탑 사진 업로드
@@ -2479,7 +2597,8 @@ async function updateBannerSlide(slideId) {
         const idx = bannerSlides.findIndex(slide => Number(slide.id) === Number(slideId));
         if (idx !== -1) bannerSlides[idx] = result.slide;
         renderBannerList();
-        alert('학내 홍보가 수정되었습니다.');
+        // 창을 띄우지 않고 위쪽 표시만 바꾼다. 어느 배너가 언제 저장됐는지 남는다.
+        setBannerSaveState(`저장됨 · ${formatBannerSavedAt()}`);
     } catch (error) {
         alert(`배너 수정 실패: ${error.message}`);
     }

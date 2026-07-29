@@ -272,6 +272,10 @@
                 <nav class="banner-subnav" id="banner-subnav" aria-label="배너 항목"></nav>
 
                 <div class="banner-workspace-body">
+                    <!-- 어디까지 반영됐는지 알 수 있게 저장 상태를 위에 붙여 둔다. -->
+                    <p class="banner-save-state" id="banner-save-state" data-state="saved" hidden
+                       role="status" aria-live="polite"></p>
+
                     <section class="banner-placement-section" id="banner-slots-section"
                              aria-labelledby="right-rail-manager-title">
                         <div class="banner-manager-heading">
@@ -285,6 +289,19 @@
                         <p class="banner-empty-slot-note" id="banner-empty-slot-note" hidden>
                             이 자리는 아직 비어 있습니다. 배너 문의에서 접수된 신청을 승인하면 이 자리에 들어갑니다.
                         </p>
+                    </section>
+
+                    <!-- 승인은 됐지만 아직 자리를 못 정한 배너. 여기서 어느 자리를
+                         바꿀지 고르면 그때 공개된다. -->
+                    <section class="banner-placement-section" id="banner-staging-section" hidden
+                             aria-labelledby="banner-staging-title">
+                        <div class="banner-manager-heading">
+                            <div>
+                                <h3 id="banner-staging-title">임시 배너</h3>
+                                <p>배너 문의에서 승인한 신청이 여기로 들어옵니다. 바꿀 자리를 고르고 확정하면 공개 화면에 반영됩니다. 밀려난 배너는 지워지지 않고 이 목록으로 물러납니다.</p>
+                            </div>
+                        </div>
+                        <div class="banner-slides-list" id="staging-banner-list"></div>
                     </section>
 
                     <!-- 상단 배너 시절에 등록된 항목. 노출되는 자리가 없으므로 삭제만 남긴다. -->

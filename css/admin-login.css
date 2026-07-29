@@ -34,7 +34,13 @@ body {
 }
 .login-eyebrow { margin: 0 0 8px; color: var(--navy); font-size: 12px; font-weight: 900; letter-spacing: .14em; }
 h1 { margin: 0; font-size: 28px; }
-.login-card > p:not(.login-eyebrow) { margin: 12px 0 26px; color: var(--sub); line-height: 1.65; }
+/* 한글은 낱말 중간에서 끊지 않는다. 좁은 화면에서 '화/면만'처럼 갈라지던 문제. */
+.login-card > p:not(.login-eyebrow) {
+    margin: 12px 0 26px;
+    color: var(--sub);
+    line-height: 1.65;
+    word-break: keep-all;
+}
 form { display: grid; gap: 10px; }
 
 /* 직책 고르기. 무엇을 할 수 있는지 한 줄로 함께 보여준다. */

@@ -425,3 +425,87 @@ test('five wrong passwords lock admin login for ten minutes', async t => {
     const blocked = await attempt({ password });
     assert.equal(blocked.status, 429);
 });
+
+test('approved banners wait in staging until an admin picks the slot they replace', async t => {
+    const bannerPath = path.join(process.cwd(), 'server', 'data', 'banner-slides.json');
+    const originalBanners = await readFile(bannerPath, 'utf8');
+    t.after(() => writeFile(bannerPath, originalBanners, 'utf8'));
+
+    const settingsPath = path.join(process.cwd(), 'server', 'data', 'settings.json');
+    const originalSettings = await readFile(settingsPath, 'utf8');
+    const settings = JSON.parse(originalSettings);
+    const password = 'staging-flow-password';
+    settings.bannerTokenHash = crypto.createHash('sha256').update(password).digest('hex');
+    await writeFile(settingsPath, JSON.stringify(settings, null, 2), 'utf8');
+    t.after(() => writeFile(settingsPath, originalSettings, 'utf8'));
+    resetAdminLoginAttempts();
+    t.after(() => resetAdminLoginAttempts());
+
+    const server = await new Promise(resolve => {
+        const listening = app.listen(0, () => resolve(listening));
+    });
+    t.after(() => server.close());
+    const baseUrl = `http://127.0.0.1:${server.address().port}`;
+
+    const login = await fetch(`${baseUrl}/api/admin/session`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password, role: 'banner' })
+    });
+    assert.equal(login.status, 201, `배너 관리자 로그인 실패: ${await login.clone().text()}`);
+    const cookie = (login.headers.get('set-cookie') || '').split(';')[0];
+
+    // 승인된 신청은 곧바로 레일에 오르지 않고 임시 자리에서 기다린다.
+    const created = await fetch(`${baseUrl}/api/banner-slides`, {
+        method: 'POST',
+        headers: { Cookie: cookie, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            name: '대기 배너', text: '대기', owner: '테스트', type: 'club',
+            placement: 'staging', status: 'approved',
+            src: '/icons/banner-recruit.svg', mobileSrc: '/icons/banner-recruit-mobile.svg'
+        })
+    });
+    assert.equal(created.status, 201);
+    const stagedId = (await created.json()).slide.id;
+
+    // 공개 화면에는 나오지 않는다.
+    const publicSlides = (await (await fetch(`${baseUrl}/api/banner-slides`)).json()).slides;
+    assert.ok(publicSlides.every(slide => slide.placement !== 'staging'));
+    assert.ok(publicSlides.every(slide => Number(slide.id) !== Number(stagedId)));
+
+    const manageSlides = async () => (await (await fetch(`${baseUrl}/api/banner-slides/manage`, {
+        headers: { Cookie: cookie }
+    })).json()).slides;
+
+    const before = await manageSlides();
+    const displaced = before.find(slide => slide.placement === 'right_rail' && Number(slide.order) === 1);
+    assert.ok(displaced, '2번 자리에 배너가 있어야 시험이 성립한다');
+
+    // 자리를 골라 확정하면 그때 레일에 오른다.
+    const promote = await fetch(`${baseUrl}/api/banner-slides/${stagedId}/promote`, {
+        method: 'POST',
+        headers: { Cookie: cookie, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order: 1 })
+    });
+    assert.equal(promote.status, 200);
+    assert.equal((await promote.json()).replacedId, Number(displaced.id));
+
+    const after = await manageSlides();
+    const promoted = after.find(slide => Number(slide.id) === Number(stagedId));
+    assert.equal(promoted.placement, 'right_rail');
+    assert.equal(promoted.order, 1);
+
+    // 밀려난 배너는 지워지지 않고 임시 자리로 물러난다. 내용도 그대로다.
+    const pushedBack = after.find(slide => Number(slide.id) === Number(displaced.id));
+    assert.equal(pushedBack.placement, 'staging');
+    assert.equal(pushedBack.src, displaced.src);
+    assert.equal(pushedBack.name, displaced.name);
+
+    // 자리 번호가 범위를 벗어나면 받지 않는다.
+    const bad = await fetch(`${baseUrl}/api/banner-slides/${stagedId}/promote`, {
+        method: 'POST',
+        headers: { Cookie: cookie, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order: 9 })
+    });
+    assert.equal(bad.status, 400);
+});

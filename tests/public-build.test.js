@@ -642,7 +642,9 @@ test('banner inquiries use a dedicated identified submission page and protected 
     assert.match(html, /id="inquiry-type"[^>]*required/);
     assert.match(html, /id="inquiry-desktop-image"[^>]*type="file"/);
     assert.match(html, /id="inquiry-mobile-image"[^>]*type="file"/);
-    assert.match(html, /4:5 세로형/);
+        // 레일은 240px 폭에 화면 높이 전체라 4:5로는 한참 짧다.
+    assert.match(html, /세로형 3 : 10/);
+    assert.match(html, /720×2400px/);
     assert.match(html, /16:9 가로형/);
     assert.match(html, /개인정보 수집 및 이용/);
     assert.match(html, /무료 학내 홍보 운영 규칙/);
@@ -1938,7 +1940,10 @@ test('banner slots show one at a time and the inbox toolbar acts on the selectio
     // .banner-item에 display를 명시했으므로 [hidden]의 기본값이 밀린다.
     // 눌러 주지 않으면 배너 1을 골라도 다섯 개가 전부 보인다.
     assert.match(adminCss, /\.banner-slides-list \.banner-item\[hidden\]\s*\{\s*display:\s*none !important/);
-    assert.match(readNamedFunction(admin, 'applyBannerSlotVisibility'), /item\.hidden = index !== activeBannerSlot/);
+    assert.match(readNamedFunction(admin, 'applyBannerSlotVisibility'), /item\.hidden = showStaging \|\| index !== activeBannerSlot/);
+    // 임시 배너 자리는 다섯 자리 아래에 따로 선다.
+    assert.match(adminHtml, /id="banner-staging-section"/);
+    assert.match(readNamedFunction(admin, 'promoteStagingBanner'), /\/promote/);
 
     // 배너 문의는 왼쪽 목록이 아니라 위 탭으로 옮겼다.
     assert.match(adminHtml, /data-tab="banner-inquiry"/);
