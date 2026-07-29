@@ -767,6 +767,17 @@ test('summary mode asks only for the fields the compose form cannot collect', as
     assert.match(source, /mode !== 'full-verified'/);
 });
 
+test('summary mode leaves the typed subject, type, and deadline alone', async () => {
+    const admin = await readFile('js/admin.js', 'utf8');
+    const source = readNamedFunction(admin, 'analyzeNotice');
+
+    // 폼에 값을 쓰기 전에 모드를 확인해야 한다.
+    assert.match(source, /const mode = currentAiMode\(\)/);
+    assert.match(source, /if \(mode !== 'summary'\)/);
+    // 요약과 카테고리는 어느 모드에서나 채운다.
+    assert.match(source, /composeAiCategoryIds = parsed\.categoryIds/);
+});
+
 test('admin AI work shows progress while login is isolated in a server-session page', async () => {
     const html = await readFile('admin.html', 'utf8');
     const loginHtml = await readFile('admin-login.html', 'utf8');

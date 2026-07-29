@@ -803,10 +803,14 @@ async function analyzeNotice() {
         });
         updateAiProgress(82, '분석 결과를 입력 항목에 정리하고 있습니다.', 'process', 94);
 
-        if (parsed.subject) document.getElementById('title-subject').value = parsed.subject;
-        if (parsed.type) document.getElementById('title-kind').value = parsed.type;
-        aiDeadlineCandidate = parsed.deadline || '';
-        renderAiDeadlineCandidate();
+        // summary 모드는 내가 직접 넣은 값을 덮어쓰지 않는 것이 존재 이유다.
+        const mode = currentAiMode();
+        if (mode !== 'summary') {
+            if (parsed.subject) document.getElementById('title-subject').value = parsed.subject;
+            if (parsed.type) document.getElementById('title-kind').value = parsed.type;
+            aiDeadlineCandidate = parsed.deadline || '';
+            renderAiDeadlineCandidate();
+        }
         composeAiSummary = parsed.summary;
         composeAiCategoryIds = parsed.categoryIds;
         composeSurveyReward = parsed.surveyReward;
@@ -819,13 +823,18 @@ async function analyzeNotice() {
         document.getElementById('post-title-manual').classList.remove('is-editable');
         refreshTitlePreview();
 
-        const gotSomething = parsed.subject || parsed.type || parsed.deadline;
-        // 검수를 건너뛴 경우 교차 검증했다고 말하면 안 된다.
-        const doneLabel = currentAiMode() !== 'full-verified'
-            ? 'AI 1단계 분석 완료. 2차 검수를 생략했으니 수치를 직접 확인하세요.'
-            : `AI 2단계 분석 완료.${parsed.verifiedNumbers.length
+        // 모드마다 성공의 기준이 다르다. summary는 요약이 나왔으면 성공이다.
+        const gotSomething = mode === 'summary'
+            ? parsed.summary.length > 0
+            : (parsed.subject || parsed.type || parsed.deadline);
+        // 하지 않은 교차 검증을 했다고 말하지 않는다.
+        const doneLabel = {
+            'full-verified': `AI 2단계 분석 완료.${parsed.verifiedNumbers.length
                 ? ` 주요 수치 ${parsed.verifiedNumbers.length}건을 교차 검증했습니다.`
-                : ' 수치와 카테고리 교차 검증을 완료했습니다.'} 값을 확인하고 필요하면 직접 고치세요.`;
+                : ' 수치와 카테고리 교차 검증을 완료했습니다.'} 값을 확인하고 필요하면 직접 고치세요.`,
+            full: 'AI 1단계 분석 완료. 2차 검수를 생략했으니 수치를 직접 확인하세요.',
+            summary: '요약·카테고리·리워드만 채웠습니다. 핵심 내용과 유형은 입력하신 값 그대로입니다.'
+        }[mode];
         setStatus(gotSomething
             ? doneLabel
             : 'AI가 값을 추출하지 못했습니다. 직접 입력해주세요.', !gotSomething);
