@@ -802,6 +802,32 @@ test('the three-line summary is an editable field that drives the save', async (
     assert.match(readNamedFunction(admin, 'editAdminNotice'), /writeSummaryField\(notice\.aiSummary/);
 });
 
+test('notice images are downscaled and re-encoded before they reach the database', async () => {
+    const admin = await readFile('js/admin.js', 'utf8');
+
+    // 공지 이미지가 들어오는 두 경로 모두 압축을 거쳐야 한다.
+    assert.doesNotMatch(admin, /pastedImages\.push\(await getBase64\(/);
+    assert.doesNotMatch(admin, /finalImages\.push\(await getBase64\(/);
+    assert.match(admin, /pastedImages\.push\(await compressNoticeImage\(/);
+    assert.match(admin, /finalImages\.push\(await compressNoticeImage\(/);
+
+    // 배너·OCR이 쓰는 공용 getBase64는 그대로 둔다.
+    assert.match(admin, /const images = await Promise\.all\(files\.map\(getBase64\)\)/);
+
+    // 긴 변을 기준으로 줄이고, 상한보다 작은 그림은 확대하지 않는다.
+    const sizing = readNamedFunction(admin, 'noticeImageTargetSize');
+    const targetSize = new Function(`${sizing} return noticeImageTargetSize;`)();
+    assert.deepEqual(targetSize(3024, 4032, 2000), { width: 1500, height: 2000 });
+    assert.deepEqual(targetSize(4032, 3024, 2000), { width: 2000, height: 1500 });
+    assert.deepEqual(targetSize(800, 600, 2000), { width: 800, height: 600 });
+
+    // 캔버스로 다시 그리면 애니메이션이 죽으므로 GIF는 원본을 유지한다.
+    const compress = readNamedFunction(admin, 'compressNoticeImage');
+    assert.match(compress, /image\/gif/);
+    // 압축이 실패하거나 되레 커지면 원본으로 되돌아간다.
+    assert.match(compress, /getBase64\(file\)/);
+});
+
 test('the admin list flags notices missing a summary or a category', async () => {
     const admin = await readFile('js/admin.js', 'utf8');
     const source = readNamedFunction(admin, 'renderAdminNoticeList');

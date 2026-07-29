@@ -561,6 +561,45 @@ function removePastedImage(idx) {
     renderPastePreview();
 }
 
+// 붙여넣은 캡처와 첨부 사진은 원본 그대로면 Base64로 수십 MB가 되어 Postgres가
+// statement timeout으로 저장을 끊는다. DB에 넣기 전에 긴 변을 상한까지만 줄이고
+// WebP로 다시 인코딩한다. 잘라내는 것이 아니라 축소이므로 그림은 전부 남는다.
+const NOTICE_IMAGE_MAX_EDGE = 2000;
+const NOTICE_IMAGE_QUALITY = 0.85;
+
+// 긴 변을 상한에 맞춘다. 상한보다 작은 그림은 억지로 키우지 않는다.
+function noticeImageTargetSize(width, height, maxEdge = NOTICE_IMAGE_MAX_EDGE) {
+    const scale = Math.min(1, maxEdge / Math.max(width, height));
+    return {
+        width: Math.round(width * scale),
+        height: Math.round(height * scale)
+    };
+}
+
+async function compressNoticeImage(file) {
+    // GIF는 캔버스로 다시 그리면 첫 프레임만 남아 애니메이션이 죽는다.
+    if (file.type === 'image/gif') return getBase64(file);
+
+    let bitmap;
+    try {
+        bitmap = await createImageBitmap(file);
+        const { width, height } = noticeImageTargetSize(bitmap.width, bitmap.height);
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        canvas.getContext('2d').drawImage(bitmap, 0, 0, width, height);
+        const encoded = canvas.toDataURL('image/webp', NOTICE_IMAGE_QUALITY);
+        // 이미 잘 압축된 작은 그림은 되레 커질 수 있다. 그럴 땐 원본이 낫다.
+        if (encoded.length * 0.75 < file.size) return encoded;
+    } catch (error) {
+        // 압축에 실패해도 첨부 자체를 포기하지는 않는다.
+        console.error('이미지 압축 실패, 원본을 사용합니다:', error);
+    } finally {
+        bitmap?.close();
+    }
+    return getBase64(file);
+}
+
 // 클립보드에 이미지가 있으면 base64로 담는다. 여러 장이면 모두 받는다.
 async function handleImagePaste(event) {
     const items = Array.from(event.clipboardData?.items || []);
@@ -578,7 +617,7 @@ async function handleImagePaste(event) {
         const file = item.getAsFile();
         if (!file) continue;
         try {
-            pastedImages.push(await getBase64(file));
+            pastedImages.push(await compressNoticeImage(file));
         } catch (error) {
             console.error('붙여넣은 이미지 처리 실패:', error);
         }
@@ -1339,7 +1378,7 @@ async function generateAIAndSave() {
         }
         for (let i = 0; i < fileInput.files.length; i++) {
             if (finalImages.length >= MAX_NOTICE_IMAGES) break;
-            finalImages.push(await getBase64(fileInput.files[i]));
+            finalImages.push(await compressNoticeImage(fileInput.files[i]));
         }
         // 붙여넣기도 파일 첨부도 없으면, 수정 중인 공지의 기존 사진을 그대로 유지한다.
         if (finalImages.length === 0 && existing) {
