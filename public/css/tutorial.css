@@ -35,10 +35,9 @@
     pointer-events: none;
     box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.92), 0 0 0 6px rgba(90, 140, 255, 0.35);
     opacity: 0;
-    transition: opacity 0.2s ease, top 0.24s cubic-bezier(0.32, 0.72, 0.24, 1),
-                left 0.24s cubic-bezier(0.32, 0.72, 0.24, 1),
-                width 0.24s cubic-bezier(0.32, 0.72, 0.24, 1),
-                height 0.24s cubic-bezier(0.32, 0.72, 0.24, 1);
+    /* 자리 옮기기는 자바스크립트가 매 프레임 직접 그린다. 여기서 전환을
+       걸어 두면 프레임마다 새 전환이 시작돼 뭉개진다. */
+    transition: opacity 0.2s ease;
 }
 
 .tutorial-layer.is-open .tutorial-ring { opacity: 1; }
@@ -62,9 +61,7 @@
     pointer-events: auto;
     opacity: 0;
     transform: translateY(6px);
-    transition: opacity 0.2s ease, transform 0.2s ease,
-                top 0.24s cubic-bezier(0.32, 0.72, 0.24, 1),
-                left 0.24s cubic-bezier(0.32, 0.72, 0.24, 1);
+    transition: opacity 0.2s ease, transform 0.2s ease;
 }
 
 .tutorial-layer.is-open .tutorial-card { opacity: 1; transform: translateY(0); }
@@ -183,16 +180,14 @@
 
 .tutorial-next:hover { background: #1a3579; }
 
-/* 마지막 인사. 가리킬 버튼이 없어 화면 가운데에 홀로 선다. */
+/* 마지막 인사. 가리킬 버튼이 없어 화면 가운데에 홀로 선다.
+   자리는 다른 단계와 똑같이 자바스크립트가 잡는다. 여기서 위치까지 정하면
+   마지막으로 넘어갈 때만 움직임이 끊겨 툭 튄다. */
 .tutorial-card.is-centered {
-    top: 50% !important;
-    left: 50% !important;
-    transform: translate(-50%, -50%);
     width: min(380px, calc(100vw - 40px));
     text-align: center;
 }
 
-.tutorial-layer.is-open .tutorial-card.is-centered { transform: translate(-50%, -50%); }
 .tutorial-card.is-centered .tutorial-actions { justify-content: center; }
 .tutorial-card.is-centered .tutorial-skip { display: none; }
 
@@ -215,7 +210,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .tutorial-shade, .tutorial-ring, .tutorial-card, .tutorial-progress-fill { transition: none; }
+    .tutorial-shade, .tutorial-card, .tutorial-progress-fill { transition: none; }
     .tutorial-ring { animation: none; }
     .tutorial-hint-dot { animation: none; }
 }
@@ -223,13 +218,6 @@
 /* hidden은 표시 규칙보다 앞선다. 위에서 display를 명시한 요소가 있어
    숨기라는 지시가 묻히는 일을 막는다. */
 .tutorial-layer [hidden] { display: none !important; }
-
-/* 화면이 굴러가는 동안. 테두리와 카드는 표적에 붙어 따라다녀야 하므로
-   전환을 꺼 둔다. 켜 둔 채로 따라가면 목표가 매 프레임 바뀌어 흔들린다. */
-.tutorial-layer.is-moving .tutorial-ring,
-.tutorial-layer.is-moving .tutorial-card {
-    transition: opacity 0.2s ease;
-}
 
 /* 안내 중에는 손으로 화면을 끌 수 없다. */
 .tutorial-layer { touch-action: none; }
