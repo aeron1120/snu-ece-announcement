@@ -38,7 +38,7 @@ let kakaoBackfillBatchId = '';
 let kakaoBackfillDrafts = [];
 
 // 제목 양식에서 쓰는 유형 목록. 편집할 때 기존 제목을 되돌려 읽는 데에도 쓴다.
-const TITLE_KINDS = ['모집', '안내', '신청', '접수', '공지', '행사', '변경 안내', '결과 발표', '기간 연장'];
+const TITLE_KINDS = ['모집', '안내', '신청', '접수', '공지', '행사', '변경 안내', '결과 발표', '기간 연장', '설문', '제휴'];
 const AI_PROGRESS_STEPS = ['prepare', 'analyze', 'process', 'save'];
 
 function setAiProgress(value, status, activeStep = null, ceiling = value) {
