@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp } from 'node:fs/promises';
+import { mkdtemp, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { runInNewContext } from 'node:vm';
 import { createAutomationStore } from '../server/storage/automation-store.js';
 import {
     createPushService,
@@ -110,6 +111,38 @@ test('push subscription validates endpoints and requires its token for deletion'
     await service.deleteSubscription(created.subscription.id, created.managementToken);
 
     assert.equal((await store.listPushSubscriptions()).length, 0);
+});
+
+// 종이 노란색으로 바뀌려면 ecePushSubscriptionId가 남아야 한다. 클라이언트가 읽는
+// 필드 이름이 서버 응답과 어긋나면 저장은 성공한 척하면서 종만 꺼져 있게 된다.
+test('the client stores the subscription id that the server actually returns', async () => {
+    const { service } = await fixture();
+    const created = await service.createSubscription(browserSubscription('bell'), {
+        admissionYear: '25학번'
+    });
+
+    // 원본에서 실제 저장 두 줄을 그대로 가져와 서버 응답에 적용한다.
+    const source = await readFile('js/core.js', 'utf8');
+    const persistence = source
+        .split('\n')
+        .filter(line => line.includes("localStorage.setItem('ecePush"))
+        .join('\n');
+    assert.equal(persistence.split('\n').length, 2, '저장 코드는 두 줄이어야 한다');
+
+    const saved = new Map();
+    runInNewContext(persistence, {
+        result: created,
+        localStorage: {
+            getItem: key => (saved.has(key) ? saved.get(key) : null),
+            setItem: (key, value) => saved.set(key, String(value))
+        }
+    });
+
+    assert.equal(saved.get('ecePushSubscriptionId'), String(created.subscription.id));
+    assert.equal(saved.get('ecePushManagementToken'), created.managementToken);
+
+    // isPushSubscribed()가 참이어야 updateBellState()가 종을 켠다.
+    assert.equal(Boolean(saved.get('ecePushSubscriptionId')), true);
 });
 
 test('notification worker sends each matching delivery only once', async () => {

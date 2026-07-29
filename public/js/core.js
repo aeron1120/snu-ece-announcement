@@ -3424,7 +3424,12 @@ async function saveNotificationPreferences() {
             })
         });
 
-        if (result?.subscriptionId) localStorage.setItem('ecePushSubscriptionId', String(result.subscriptionId));
+        // 서버는 { subscription: { id, ... }, managementToken } 을 돌려준다.
+        // 여기서 id를 놓치면 종은 계속 꺼진 채 저장만 성공한 것처럼 보인다.
+        if (!result?.subscription?.id) {
+            throw new Error('서버가 구독 정보를 돌려주지 않았습니다. 잠시 후 다시 시도해주세요.');
+        }
+        localStorage.setItem('ecePushSubscriptionId', String(result.subscription.id));
         if (result?.managementToken) localStorage.setItem('ecePushManagementToken', result.managementToken);
 
         document.getElementById('notification-delete').hidden = false;
