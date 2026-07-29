@@ -101,13 +101,15 @@
     </span>
 </button>
 
+<!-- 화면 왼쪽 위에 떠 있는 손잡이. 흐름에서 빠져 있어 아래 제목은
+     이 버튼이 없는 것처럼 왼쪽 끝에 붙는다. -->
+<button type="button" class="mobile-menu-btn" aria-label="메뉴 열기" onclick="openMobileDrawer()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+        <path stroke-linecap="round" d="M4 7h16M4 12h16M4 17h16"/>
+    </svg>
+</button>
+
 <div class="header">
-    <!-- 손잡이 - 제목 - 동작 차례는 데스크탑과 같다. -->
-    <button type="button" class="mobile-menu-btn" aria-label="메뉴 열기" onclick="openMobileDrawer()">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-            <path stroke-linecap="round" d="M4 7h16M4 12h16M4 17h16"/>
-        </svg>
-    </button>
     <div class="header-title-area">
         <!-- 제목 자리에 워드마크를 넣는다. 이미지가 없으면 글자 제목으로 떨어진다. -->
         <h1 class="site-title" id="site-title">
@@ -118,7 +120,13 @@
         </h1>
         <button type="button" class="bell-toggle" id="bell-toggle" aria-pressed="false"
                 aria-label="공지 알림 받기" title="공지 알림 받기"
-                onclick="openNotificationPreferences()">🔔</button>
+                onclick="openNotificationPreferences()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M18 8.5a6 6 0 1 0-12 0c0 4.2-1.2 6-2 6.8h16c-.8-.8-2-2.6-2-6.8Z"/>
+                <path d="M10.2 18.6a2 2 0 0 0 3.6 0"/>
+            </svg>
+        </button>
     </div>
 
     <div class="header-actions">
@@ -418,7 +426,6 @@
                 <h2 class="footer-column-title">서비스</h2>
                 <ul class="footer-link-list">
                     <li><a href="./service-guide.html">서비스 안내</a></li>
-                    <li><a href="./guide.html">사용 설명서</a></li>
                     <li><button type="button" onclick="openNotificationPreferences()">알림 설정</button></li>
                     <li><a href="./changelog.html">업데이트 내역</a></li>
                 </ul>

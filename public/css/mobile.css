@@ -85,14 +85,16 @@ html[data-view="mobile"] .drawer-scrim.drawer-open { display: block; }
     background: rgba(72, 82, 100, 0.62);
     border-color: rgba(255, 255, 255, 0.42);
 }
-/* 헤더 줄 맨 왼쪽에 그대로 선다. 데스크탑과 같은 차례(손잡이 - 제목 - 동작)다.
-   바탕과 테두리를 지워 배경에 묻히고 아이콘만 남는다. */
+/* 화면 왼쪽 위에 떠 있는 버튼. 흐름에서 빠져 있어 제목은 이 버튼이 없는
+   것처럼 왼쪽 끝에 붙는다. 바탕과 테두리는 지워 배경에 묻힌다. */
 html[data-view="mobile"] .mobile-menu-btn {
     display: grid;
-    position: static;
-    width: 34px;
-    height: 34px;
-    margin-left: -4px;
+    position: fixed;
+    top: 8px;
+    left: 8px;
+    z-index: 1050;
+    width: 36px;
+    height: 36px;
     color: #9aa2b1;
     background: transparent;
     border-color: transparent;
@@ -104,6 +106,11 @@ html[data-view="mobile"] .mobile-menu-btn:focus-visible {
     color: var(--primary);
     background: transparent;
     border-color: transparent;
+}
+/* 서랍이 열리면 그 위에 남지 않게 비킨다. */
+html[data-view="mobile"] .rail-left.drawer-open ~ .page-main .mobile-menu-btn {
+    opacity: 0;
+    pointer-events: none;
 }
 /* 서랍이 열려 있는 동안에는 서랍 뒤에 가려 두고 손도 닿지 않게 한다. */
 
@@ -172,7 +179,8 @@ html[data-view="mobile"] .header {
     row-gap: 10px;
     align-items: center;
     gap: 8px;
-    margin-bottom: 12px;
+    /* 왼쪽 위에 뜬 손잡이 아래에서 시작한다. 제목은 왼쪽 끝에 그대로 붙는다. */
+    margin: 34px 0 12px;
     padding: 6px 0 10px;
     background: transparent;
     border: 0;
@@ -600,17 +608,11 @@ html[data-view="mobile"] .site-footer-sync[data-state="failed"] .footer-sync-lab
 /* 2열 × 2행. 각 칸 오른쪽·아래에 1px 선을 두되 마지막 열과 행은 뺀다. */
 html[data-view="mobile"] .site-footer-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    align-items: stretch;
-    gap: 0;
+    align-items: start;
+    gap: 4px 16px;
 }
-html[data-view="mobile"] .footer-column {
-    padding: 14px 12px;
-    border-right: 1px solid var(--border-soft);
-    border-bottom: 1px solid var(--border-soft);
-}
-html[data-view="mobile"] .footer-column:nth-child(2n) { border-right: 0; padding-right: 2px; }
-html[data-view="mobile"] .footer-column:nth-child(2n+1) { padding-left: 2px; }
-html[data-view="mobile"] .footer-column:nth-last-child(-n+2) { border-bottom: 0; }
+/* 십자 구분선을 걷어내고 칸 사이 여백만으로 가른다. */
+html[data-view="mobile"] .footer-column { padding: 10px 2px 18px; }
 html[data-view="mobile"] .footer-column-title {
     margin-bottom: 8px;
     color: var(--text-sub);

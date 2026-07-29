@@ -197,8 +197,12 @@ test('the public page drops the top banner, the saved-posts feature, and the ref
     assert.doesNotMatch(app, /function reloadNoticeBoard/);
     assert.match(app, /function updateBellState/);
     assert.doesNotMatch(css, /site-title:hover[\s\S]*text-decoration:\s*underline/);
-    assert.match(css, /\.bell-toggle\s*\{[^}]*filter:\s*grayscale\(1\)/s);
-    assert.match(css, /\.bell-toggle\[aria-pressed="true"\]\s*\{[^}]*filter:\s*none/s);
+    // 종은 이모지가 아니라 직접 그린 선 아이콘이다. 기기마다 모양이 달라지지 않는다.
+    assert.match(html, /id="bell-toggle"[\s\S]*?<svg/);
+    assert.doesNotMatch(html, /id="bell-toggle"[\s\S]{0,200}🔔/);
+    assert.match(css, /\.bell-toggle\[aria-pressed="true"\]\s*\{[^}]*color:\s*var\(--primary\)/s);
+    // 켜지면 안쪽이 옅게 차서 색만이 아니라 형태로도 구분된다.
+    assert.match(css, /\.bell-toggle\[aria-pressed="true"\] svg path:first-child\s*\{[^}]*fill:\s*var\(--primary-light\)/s);
 });
 
 test('layout mode is chosen before first paint and follows the real viewport', async () => {
@@ -2186,7 +2190,10 @@ test('mobile stacks notices, then the banner, then the footer', async () => {
 
     // 푸터에 자주 묻는 질문과 사용 설명서가 있다.
     assert.match(html, /href="\.\/faq\.html">자주 묻는 질문</);
-    assert.match(html, /href="\.\/guide\.html">사용 설명서</);
+    // 사용 설명서는 푸터에 따로 걸지 않고 서비스 안내 안에서 연다.
+    assert.doesNotMatch(html, /href="\.\/guide\.html">사용 설명서</);
+    const serviceGuidePage = await readFile('service-guide.html', 'utf8');
+    assert.match(serviceGuidePage, /href="\.\/guide\.html"/);
 });
 
 test('closing a filter chip does not collapse the detail panel', async () => {
@@ -2205,8 +2212,11 @@ test('closing a filter chip does not collapse the detail panel', async () => {
     // 서랍 손잡이는 헤더 줄 안에서 배경에 묻히고 아이콘만 남는다.
     const menuBlock = mobileCss.slice(mobileCss.indexOf('html[data-view="mobile"] .mobile-menu-btn {'));
     const menuRule = menuBlock.slice(0, menuBlock.indexOf('}'));
-    assert.match(menuRule, /position:\s*static/);
+    // 흐름에서 빠져 떠 있어야 제목이 버튼 없는 것처럼 왼쪽 끝에 붙는다.
+    assert.match(menuRule, /position:\s*fixed/);
     assert.match(menuRule, /background:\s*transparent/);
+    // 푸터 2x2의 십자 구분선은 없앤다.
+    assert.doesNotMatch(mobileCss, /\.footer-column\s*\{[^}]*border-right/s);
     // 헤더도 흰 카드가 아니라 배경 위에 그대로 얹힌다.
     assert.match(mobileCss, /\.header\s*\{[^}]*background:\s*transparent;[^}]*box-shadow:\s*none/s);
     // 모바일 배너 위아래로 레일 남색이 비치지 않는다.

@@ -519,19 +519,31 @@ body {
 }
 
 /* 알림 종. 꺼짐은 흑백, 켜짐은 노란색. */
+/* 알림 종. 이모지는 기기마다 모양이 달라 화면의 결을 깨뜨리므로 선 아이콘을
+   직접 그린다. 꺼짐은 옅은 회색 선, 켜짐은 브랜드 남색으로 채운다. */
 .bell-toggle {
+    display: grid;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    place-items: center;
+    color: #9aa2b1;
     background: none;
     border: 0;
-    padding: 4px;
-    font-size: 24px;
-    line-height: 1;
+    border-radius: 10px;
     cursor: pointer;
-    filter: grayscale(1) opacity(0.55);
-    transition: filter 0.15s, transform 0.15s;
+    transition: color 0.15s ease, background-color 0.15s ease, transform 0.15s ease;
 }
-.bell-toggle:hover { filter: grayscale(1) opacity(0.85); transform: scale(1.08); }
-.bell-toggle.active { filter: none drop-shadow(0 0 0 var(--bell-on)); }
-.bell-toggle[aria-pressed="true"] { filter: none; }
+.bell-toggle svg { width: 22px; height: 22px; }
+.bell-toggle:hover { color: var(--primary); background: var(--primary-light); }
+.bell-toggle:active { transform: scale(0.94); }
+/* 켜지면 선이 남색으로 진해지고 안쪽이 옅게 찬다. 색만으로 알리지 않도록
+   aria-pressed도 함께 바뀐다. */
+.bell-toggle[aria-pressed="true"] { color: var(--primary); }
+.bell-toggle[aria-pressed="true"] svg path:first-child {
+    fill: var(--primary-light);
+    stroke-width: 1.9;
+}
 .bell-toggle:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 
 .header-actions { display: flex; gap: 8px; align-items: center; margin-left: auto; }
