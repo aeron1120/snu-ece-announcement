@@ -2255,3 +2255,28 @@ test('a sticky search row takes over once the real search box scrolls away', asy
     // 왼쪽 위 메뉴 버튼과 겹치지 않게 자리를 비운다.
     assert.match(mobileCss, /\.mobile-sticky-search\s*\{[^}]*padding:[^;]*58px/s);
 });
+
+test('the operator page names who runs the site and the footer points at it', async () => {
+    const operator = await readFile('operator.html', 'utf8');
+    const html = await readFile('index.html', 'utf8');
+    const prepare = await readFile('scripts/prepare-public.mjs', 'utf8');
+
+    // 운영 주체는 이름으로 밝힌다. 그게 이 페이지의 존재 이유다.
+    assert.match(operator, /김태현/);
+    assert.match(operator, /최재원/);
+    // 학부 공식 서비스로 오해받으면 안 된다.
+    assert.match(operator, /비공식/);
+    // 개인 연락처는 싣지 않는다. 문의는 기존 창구로 받는다.
+    assert.doesNotMatch(operator, /010-\d{4}-\d{4}/);
+
+    // 푸터의 '운영 주체 안내'가 서비스 안내가 아니라 이 페이지를 가리켜야 한다.
+    const operationColumn = html.slice(
+        html.indexOf('<nav class="footer-column" aria-label="운영">'),
+        html.indexOf('</nav>', html.indexOf('<nav class="footer-column" aria-label="운영">'))
+    );
+    assert.match(operationColumn, /href="\.\/operator\.html">운영 주체 안내/);
+    assert.doesNotMatch(operationColumn, /service-guide\.html/);
+
+    // 복사 목록에서 빠지면 서버가 404를 준다.
+    assert.match(prepare, /operator\.html/);
+});
