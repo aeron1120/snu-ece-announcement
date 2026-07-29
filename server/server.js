@@ -1589,6 +1589,26 @@ async function getPublishedNoticeById(id) {
     return data ? toClientNotice(data) : null;
 }
 
+// 지울 공지의 사진 주소만 읽는다. 숨긴 공지도 지울 수 있으므로 status를 보지
+// 않는다 — getPublishedNoticeById는 published만 돌려줘서 숨긴 공지의 파일이
+// 공개 버킷에 그대로 남는다.
+async function getNoticeImagesById(id) {
+    if (!useSupabase) return [];
+
+    const { data, error } = await supabase
+        .from(SUPABASE_NOTICES_TABLE)
+        .select('images')
+        .eq('id', id)
+        .maybeSingle();
+
+    // 주소를 못 읽으면 파일은 남지만, 그것 때문에 공지 삭제까지 막지는 않는다.
+    if (error) {
+        console.warn('공지 이미지 주소 조회 실패:', error.message || error);
+        return [];
+    }
+    return Array.isArray(data?.images) ? data.images : [];
+}
+
 async function loadPublishedNoticeThumbnailSource(id) {
     if (!useSupabase) {
         const notice = await getPublishedNoticeById(id);
@@ -3096,14 +3116,14 @@ app.delete('/api/notices/:id', requireNoticeAdmin, async (req, res) => {
 
         // 소프트 삭제라 행은 남지만 되살리는 경로가 없다. 공개 버킷에 파일만
         // 남으면 주소를 아는 사람은 계속 볼 수 있으므로 지운다.
-        const existing = await getPublishedNoticeById(id);
+        const doomedImages = await getNoticeImagesById(id);
 
         const deleted = await softDeleteNotice(id);
         if (!deleted) {
             return res.status(404).json({ error: '공지 없음' });
         }
 
-        await noticeImageStore.removeImages(existing?.images || []);
+        await noticeImageStore.removeImages(doomedImages);
 
         res.status(204).send();
     } catch (error) {
