@@ -1447,8 +1447,10 @@ body.notice-dragging .notice-hover-preview { display: none !important; }
     pointer-events: none;
     transition: opacity 0.15s ease, transform 0.15s ease;
 }
+/* 사용 설명서가 이 손잡이를 짚는 동안에도 보이게 한다. */
 .card:hover .card-block-controls,
-.card:focus-within .card-block-controls {
+.card:focus-within .card-block-controls,
+.card-block-controls.is-tutorial-shown {
     opacity: 1;
     transform: translateX(0);
     pointer-events: auto;

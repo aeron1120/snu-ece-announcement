@@ -223,3 +223,13 @@
 /* hidden은 표시 규칙보다 앞선다. 위에서 display를 명시한 요소가 있어
    숨기라는 지시가 묻히는 일을 막는다. */
 .tutorial-layer [hidden] { display: none !important; }
+
+/* 화면이 굴러가는 동안. 테두리와 카드는 표적에 붙어 따라다녀야 하므로
+   전환을 꺼 둔다. 켜 둔 채로 따라가면 목표가 매 프레임 바뀌어 흔들린다. */
+.tutorial-layer.is-moving .tutorial-ring,
+.tutorial-layer.is-moving .tutorial-card {
+    transition: opacity 0.2s ease;
+}
+
+/* 안내 중에는 손으로 화면을 끌 수 없다. */
+.tutorial-layer { touch-action: none; }

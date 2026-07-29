@@ -72,8 +72,15 @@
         {
             target: '#notice-grid .card .card-drag-handle, #notice-grid .card',
             title: '끌어서 나란히 비교',
-            body: '카드의 손잡이를 잡아 왼쪽이나 오른쪽에 놓으면 공지를 나란히 펼쳐 비교합니다. 아래 휴지통에 놓으면 비교에서 뺍니다.',
-            desktopOnly: true
+            body: '카드 왼쪽 위 6점 손잡이를 잡아 왼쪽이나 오른쪽에 놓으면 공지를 나란히 펼쳐 비교합니다. 아래 휴지통에 놓으면 비교에서 뺍니다.',
+            desktopOnly: true,
+            /* 손잡이는 카드에 마우스를 올려야 나타난다. 설명하는 동안에는
+               가리키는 것이 눈에 보여야 하므로 붙잡아 둔다. */
+            onEnter(target) {
+                const holder = target.closest('.card')?.querySelector('.card-block-controls');
+                holder?.classList.add('is-tutorial-shown');
+                return () => holder?.classList.remove('is-tutorial-shown');
+            }
         },
         {
             target: '#right-ad-rail',
@@ -178,9 +185,18 @@
             }
         };
         swallow(['click', 'dblclick', 'mousedown', 'mouseup', 'contextmenu'], true);
-        /* 손가락과 포인터는 막기만 하고 취소하지는 않는다. 취소해 버리면
-           화면을 쓸어 내리는 동작까지 함께 죽어 아래를 볼 수 없게 된다. */
+        /* 손가락과 포인터는 여기서 취소하지 않는다. 취소하면 브라우저가
+           탭으로 이어지는 흐름까지 끊어 카드 버튼이 둔해진다. 어차피 층이
+           받아내므로 아래로는 내려가지 않는다. */
         swallow(['pointerdown', 'pointerup', 'touchstart', 'touchend'], false);
+        /* 손으로 굴리는 것도 막는다. 안내가 짚는 자리로 화면을 옮겨 주는데
+           그 위에서 사람이 또 끌면 두 움직임이 겹쳐 위치가 어긋난다. */
+        for (const type of ['wheel', 'touchmove']) {
+            layer.addEventListener(type, event => {
+                if (card.contains(event.target)) return;
+                event.preventDefault();
+            }, { passive: false, capture: true });
+        }
     }
 
     function isVisible(element) {
@@ -206,6 +222,33 @@
             if (step.desktopOnly && document.documentElement.dataset.view === 'mobile') return false;
             return resolveTarget(step) !== undefined;
         });
+    }
+
+    /* 설명 카드를 어디에 놓을지.
+       짚는 자리를 가리지 않는 것이 우선이다. 위아래로 붙일 자리가 없으면
+       옆으로 돌리고, 세로로 긴 공지 카드처럼 사방이 좁으면 덜 가려지는
+       쪽 끝에 붙인다. */
+    function pickCardSpot(rect, cw, ch, vw, vh) {
+        const clampV = value => Math.min(Math.max(EDGE, value), Math.max(EDGE, vh - ch - EDGE));
+        const clampH = value => Math.min(Math.max(EDGE, value), Math.max(EDGE, vw - cw - EDGE));
+        const middle = clampH(rect.left + rect.width / 2 - cw / 2);
+
+        const beside = [];
+        if (rect.right + CARD_GAP + cw + EDGE <= vw) beside.push({ left: rect.right + CARD_GAP, top: clampV(rect.top) });
+        if (rect.left - CARD_GAP - cw - EDGE >= 0) beside.push({ left: rect.left - CARD_GAP - cw, top: clampV(rect.top) });
+
+        const stacked = [];
+        if (rect.bottom + CARD_GAP + ch + EDGE <= vh) stacked.push({ top: rect.bottom + CARD_GAP, left: middle });
+        if (rect.top - CARD_GAP - ch - EDGE >= 0) stacked.push({ top: rect.top - CARD_GAP - ch, left: middle });
+
+        // 세로로 긴 표적은 옆에 세우는 편이 낫다. 넓적한 것은 아래위가 자연스럽다.
+        const tall = rect.height > vh * 0.4;
+        const order = tall ? [...beside, ...stacked] : [...stacked, ...beside];
+        if (order.length) return order[0];
+
+        return vh - rect.bottom >= rect.top
+            ? { top: Math.max(EDGE, vh - ch - EDGE), left: middle }
+            : { top: EDGE, left: middle };
     }
 
     function place(rect) {
@@ -244,32 +287,56 @@
             width: `${Math.max(0, right - left)}px`, height: `${Math.max(0, bottom - top)}px`
         });
 
-        // 카드는 구멍을 가리지 않는 쪽에 붙인다. 아래가 좁으면 위로 올린다.
         const cardRect = card.getBoundingClientRect();
-        const belowRoom = vh - bottom - CARD_GAP - EDGE;
-        const cardTop = belowRoom >= cardRect.height
-            ? bottom + CARD_GAP
-            : Math.max(EDGE, top - CARD_GAP - cardRect.height);
-        const centered = rect.left + rect.width / 2 - cardRect.width / 2;
-        const cardLeft = Math.min(Math.max(EDGE, centered), Math.max(EDGE, vw - cardRect.width - EDGE));
-
-        card.style.top = `${Math.min(cardTop, Math.max(EDGE, vh - cardRect.height - EDGE))}px`;
-        card.style.left = `${cardLeft}px`;
+        const spot = pickCardSpot(rect, cardRect.width, cardRect.height, vw, vh);
+        card.style.top = `${spot.top}px`;
+        card.style.left = `${spot.left}px`;
     }
 
     function reposition() {
         place(currentTarget ? currentTarget.getBoundingClientRect() : null);
     }
 
-    /* 화면을 옮긴 뒤에는 곧바로 재지 않는다. 부드럽게 움직이는 중이라
-       그때 잰 위치는 이미 지난 위치다. 잠시 따라다니며 다시 그린다. */
-    function followScroll(duration = 620) {
-        window.clearInterval(followTimer);
-        const until = Date.now() + duration;
-        followTimer = window.setInterval(() => {
+    /* 화면을 얼마나 굴려야 표적과 카드가 함께 보이는지.
+       둘을 세로로 세워도 들어가면 그 묶음을 가운데로, 표적이 화면보다 길면
+       카드가 앉을 자리만 위에 비우고 표적을 그 아래로 내린다. */
+    function scrollAmountFor(rect, cardHeight) {
+        const vh = window.innerHeight;
+        const vw = window.innerWidth;
+        const cardWidth = card.getBoundingClientRect().width;
+        const fitsBeside = rect.right + CARD_GAP + cardWidth + EDGE <= vw
+            || rect.left - CARD_GAP - cardWidth - EDGE >= 0;
+
+        // 옆에 세울 수 있으면 표적만 가운데로 올리면 된다.
+        if (fitsBeside) return rect.top - Math.max(EDGE, (vh - Math.min(rect.height, vh)) / 2);
+
+        const group = rect.height + CARD_GAP + cardHeight;
+        if (group + EDGE * 2 <= vh) return rect.top - (vh - group) / 2;
+        return rect.top - (cardHeight + CARD_GAP + EDGE);
+    }
+
+    /* 굴러가는 동안에는 테두리와 카드를 표적에 붙여 따라다니게 하고 전환은 꺼 둔다.
+       전환을 켠 채로 따라가면 목표가 매 프레임 바뀌어 흔들린다. */
+    function trackUntilSettled() {
+        window.cancelAnimationFrame(followTimer);
+        layer.classList.add('is-moving');
+        const deadline = Date.now() + 900;
+        let lastY = Number.NaN;
+        let steady = 0;
+
+        const tick = () => {
             reposition();
-            if (Date.now() > until) window.clearInterval(followTimer);
-        }, 60);
+            const y = Math.round(window.scrollY);
+            if (y === lastY) steady += 1;
+            else { steady = 0; lastY = y; }
+            if (steady >= 3 || Date.now() > deadline) {
+                layer.classList.remove('is-moving');
+                reposition();
+                return;
+            }
+            followTimer = window.requestAnimationFrame(tick);
+        };
+        followTimer = window.requestAnimationFrame(tick);
     }
 
     function render() {
@@ -292,17 +359,17 @@
         elements.prev.disabled = index === 0;
         elements.next.textContent = step.final ? '시작하기' : '다음';
 
-        if (currentTarget) {
-            const rect = currentTarget.getBoundingClientRect();
-            const offscreen = rect.top < 80 || rect.bottom > window.innerHeight - 80;
-            if (offscreen) {
-                currentTarget.scrollIntoView({ block: 'center', behavior: 'smooth' });
-                followScroll();
+        layer.classList.add('is-moving');
+        // 카드 크기는 글을 넣은 뒤에야 정해진다. 한 프레임 기다렸다 재야
+        // 얼마나 굴릴지 제대로 계산된다.
+        window.requestAnimationFrame(() => {
+            if (currentTarget) {
+                const cardHeight = card.getBoundingClientRect().height;
+                const delta = scrollAmountFor(currentTarget.getBoundingClientRect(), cardHeight);
+                if (Math.abs(delta) > 3) window.scrollBy({ top: delta, behavior: 'smooth' });
             }
-        }
-        reposition();
-        // 카드 높이는 글을 넣은 뒤에야 확정되므로 한 프레임 뒤 다시 맞춘다.
-        requestAnimationFrame(reposition);
+            trackUntilSettled();
+        });
         elements.next.focus({ preventScroll: true });
     }
 
@@ -349,7 +416,7 @@
     function closeTutorial() {
         if (!layer || layer.hidden) return;
         if (leaveStep) { leaveStep(); leaveStep = null; }
-        window.clearInterval(followTimer);
+        window.cancelAnimationFrame(followTimer);
         window.removeEventListener('scroll', reposition, true);
         window.removeEventListener('resize', reposition);
         document.removeEventListener('keydown', onKeyDown, true);
