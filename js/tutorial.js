@@ -18,7 +18,8 @@
     const RING_PADDING = 8;
     const CARD_GAP = 14;
     const EDGE = 12;
-    const MOVE_MS = 420;
+    const MOVE_MIN_MS = 300;
+    const MOVE_MAX_MS = 1000;
 
     /* hint를 적으면 카드 아래에 한 줄 덧붙는다. */
     const STEPS = [
@@ -118,6 +119,7 @@
     let currentHole = null;   // 지금 뚫려 있는 자리(화면 좌표)
     let currentSpot = null;   // 지금 카드가 앉은 자리
     let currentAlpha = 1;     // 지금 테두리의 진하기
+    let correctedStep = -1;   // 어긋남을 이미 바로잡은 단계
 
     function buildLayer() {
         if (layer) return;
@@ -378,9 +380,18 @@
             return;
         }
 
+        /* 걸리는 시간은 가는 거리에 맞춘다. 화면 끝에서 끝까지 가는 길을
+           짧은 시간에 밀어붙이면 한 프레임에 수백 픽셀씩 건너뛰어, 움직였다기보다
+           장면이 바뀐 것처럼 보인다. 반대로 가까운 거리를 오래 끌면 굼뜨다. */
+        const travel = Math.hypot(
+            Math.abs(endY - startY) + Math.abs(hole.top - fromHole.top),
+            Math.abs(hole.left - fromHole.left)
+        );
+        const span = Math.min(MOVE_MAX_MS, MOVE_MIN_MS + Math.sqrt(travel) * 16);
+
         const began = performance.now();
         const tick = now => {
-            const t = Math.min(1, (now - began) / MOVE_MS);
+            const t = Math.min(1, (now - began) / span);
             const e = ease(t);
             if (endY !== startY) window.scrollTo(0, lerp(startY, endY, e));
             applyFrame(lerpHole(fromHole, hole, e), {
@@ -388,8 +399,23 @@
                 left: lerp(fromSpot.left, spot.left, e)
             }, lerp(fromAlpha, alpha, e));
             if (t < 1) followTimer = window.requestAnimationFrame(tick);
+            else settleAfterMove(target);
         };
         followTimer = window.requestAnimationFrame(tick);
+    }
+
+    /* 도착하고 나서 한 번 확인한다.
+       멀리 굴러가는 동안 그림이 늦게 떠서 문서 길이가 달라지면, 미리 재 둔
+       도착 자리가 어긋난다. 그런 때만 조용히 다시 맞춘다. 한 단계에 한 번만
+       손대므로 서로 밀며 되풀이될 일은 없다. */
+    function settleAfterMove(target) {
+        if (!target || target !== currentTarget || correctedStep === index) return;
+        const rect = target.getBoundingClientRect();
+        const drifted = Math.abs(rect.top - RING_PADDING - currentHole.top) > 2
+            || rect.bottom < 0 || rect.top > window.innerHeight;
+        if (!drifted) return;
+        correctedStep = index;
+        moveTo(target);
     }
 
     // 창 크기가 바뀌면 계산이 통째로 어긋나므로 움직임 없이 다시 맞춘다.
@@ -434,6 +460,7 @@
 
         // 카드 크기는 글을 넣은 뒤에야 정해진다. 한 프레임 기다렸다 재야
         // 어디에 놓고 얼마나 굴릴지 제대로 계산된다.
+        correctedStep = -1;
         window.requestAnimationFrame(() => moveTo(currentTarget));
         elements.next.focus({ preventScroll: true });
     }
