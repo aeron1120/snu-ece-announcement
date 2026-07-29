@@ -519,19 +519,31 @@ body {
 }
 
 /* 알림 종. 꺼짐은 흑백, 켜짐은 노란색. */
+/* 알림 종. 이모지는 기기마다 모양이 달라 화면의 결을 깨뜨리므로 선 아이콘을
+   직접 그린다. 꺼짐은 옅은 회색 선, 켜짐은 브랜드 남색으로 채운다. */
 .bell-toggle {
+    display: grid;
+    width: 42px;
+    height: 42px;
+    padding: 0;
+    place-items: center;
+    color: #9aa2b1;
     background: none;
     border: 0;
-    padding: 4px;
-    font-size: 24px;
-    line-height: 1;
+    border-radius: 10px;
     cursor: pointer;
-    filter: grayscale(1) opacity(0.55);
-    transition: filter 0.15s, transform 0.15s;
+    transition: color 0.15s ease, background-color 0.15s ease, transform 0.15s ease;
 }
-.bell-toggle:hover { filter: grayscale(1) opacity(0.85); transform: scale(1.08); }
-.bell-toggle.active { filter: none drop-shadow(0 0 0 var(--bell-on)); }
-.bell-toggle[aria-pressed="true"] { filter: none; }
+.bell-toggle svg { width: 28px; height: 28px; }
+.bell-toggle:hover { color: var(--primary); background: var(--primary-light); }
+.bell-toggle:active { transform: scale(0.94); }
+/* 켜지면 선이 남색으로 진해지고 안쪽이 옅게 찬다. 색만으로 알리지 않도록
+   aria-pressed도 함께 바뀐다. */
+.bell-toggle[aria-pressed="true"] { color: var(--primary); }
+.bell-toggle[aria-pressed="true"] svg path:first-child {
+    fill: var(--primary-light);
+    stroke-width: 1.9;
+}
 .bell-toggle:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 
 .header-actions { display: flex; gap: 8px; align-items: center; margin-left: auto; }
@@ -819,7 +831,22 @@ body {
     background: var(--primary); color: white; font-size: 11.5px; font-weight: 600;
     padding: 3px 9px; display: flex; align-items: center; gap: 5px;
 }
-.filter-chip button { background: none; border: none; color: rgba(255,255,255,0.85); cursor: pointer; font-size: 13px; padding: 0; line-height: 1; }
+/* x가 너무 작으면 손가락이 빗나가 뒤에 있는 바가 눌린다. 글자 크기는
+   그대로 두고 누를 수 있는 영역만 넓힌다. */
+.filter-chip button {
+    display: grid;
+    width: 20px;
+    height: 20px;
+    margin: -4px -5px -4px 0;
+    place-items: center;
+    background: none;
+    border: none;
+    border-radius: 50%;
+    color: rgba(255,255,255,0.85);
+    cursor: pointer;
+    font-size: 13px;
+    line-height: 1;
+}
 .filter-chip button:hover { color: white; }
 
 .filter-panel {
@@ -1026,12 +1053,34 @@ body {
     object-position: top center;
     display: block;
 }
-/* 사진 없는 공지: 포스터 자리에 제목을 크게 보여준다 (SNU 텍스트 카드처럼) */
+/* 사진 없는 공지: 학생회 홍보물과 같은 결로 짠다.
+   남색 배경 위에 흰 가로줄을 긋고 그 아래 제목, 맨 아래 등록일을 둔다.
+   줄과 글자는 CSS로 그리므로 카드 크기가 달라져도 자리가 어긋나지 않는다. */
 .card-poster.is-text {
     display: flex;
-    align-items: center;
-    padding: 22px 22px;
-    background: linear-gradient(160deg, #f6f8fc 0%, #eef2f9 100%);
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    gap: 10px;
+    padding: 18px 18px 16px;
+    color: #fff;
+    background-color: #24365e;
+    background-image: url('../icons/notice-poster-bg.jpg');
+    background-position: center;
+    background-size: cover;
+}
+.card-poster-rule {
+    display: block;
+    height: 2px;
+    flex-shrink: 0;
+    background: rgba(255, 255, 255, 0.92);
+}
+.card-poster-date {
+    margin-top: auto;
+    color: rgba(255, 255, 255, 0.78);
+    font-size: 11.5px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
 }
 .card-poster-title {
     /* 제목 길이에 따라 renderPosterTitle이 --poster-title-size를 넘겨준다.
@@ -1044,7 +1093,7 @@ body {
     line-height: 1.34;
     font-weight: 750;
     letter-spacing: -0.025em;
-    color: var(--primary-deep);
+    color: #fff;
     word-break: keep-all;
     display: flex;
     flex-direction: column;
@@ -1058,6 +1107,7 @@ body {
 .card-poster-title-line { display: block; overflow-wrap: anywhere; }
 .card-poster-title-line.is-host {
     margin-bottom: 2px;
+    color: rgba(255, 255, 255, 0.72);
     font-size: 0.72em;
     font-weight: 800;
     letter-spacing: -0.01em;
@@ -1397,8 +1447,10 @@ body.notice-dragging .notice-hover-preview { display: none !important; }
     pointer-events: none;
     transition: opacity 0.15s ease, transform 0.15s ease;
 }
+/* 사용 설명서가 이 손잡이를 짚는 동안에도 보이게 한다. */
 .card:hover .card-block-controls,
-.card:focus-within .card-block-controls {
+.card:focus-within .card-block-controls,
+.card-block-controls.is-tutorial-shown {
     opacity: 1;
     transform: translateX(0);
     pointer-events: auto;
@@ -1804,11 +1856,14 @@ body.reordering-compare-block .compare-trash-zone {
     background: #fff0ee;
     border-color: #c94a3d;
 }
+/* 높이 변화만 CSS가 맡는다. 자바스크립트는 시작·끝 높이만 정해 준다. */
 .compare-col-body {
     display: block;
     min-width: 0;
     max-height: 440px;
     overflow: hidden;
+    transition: max-height 0.28s cubic-bezier(0.32, 0.72, 0.24, 1);
+    will-change: max-height;
     padding: 0 34px 0 0;
     color: var(--text-main);
     background: transparent;
@@ -2191,3 +2246,142 @@ body.reordering-compare-block .compare-trash-zone {
 @media (prefers-reduced-motion: reduce) {
     * { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
 }
+
+/* 처음 온 사람에게 돋보기가 사용 설명서라는 걸 알리는 줄. 한 번 보면 사라진다. */
+.guide-hint {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    margin: 0 0 14px;
+    padding: 13px 14px 13px 16px;
+    color: var(--primary-deep);
+    background: var(--primary-light);
+    border: 1px solid #cfdcf4;
+    border-left: 3px solid var(--primary);
+    border-radius: 10px;
+}
+.guide-hint[hidden] { display: none; }
+.guide-hint-body { min-width: 0; }
+.guide-hint-body strong { display: block; margin-bottom: 3px; font-size: 14px; font-weight: 800; }
+.guide-hint-body p { margin: 0; color: #45566f; font-size: 13px; line-height: 1.6; }
+.guide-hint-key {
+    display: inline-grid;
+    width: 20px;
+    height: 20px;
+    place-items: center;
+    color: var(--primary);
+    background: #fff;
+    border: 1px solid #c3d2ee;
+    border-radius: 6px;
+    vertical-align: -5px;
+}
+.guide-hint-key svg { width: 13px; height: 13px; }
+.guide-hint-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.guide-hint-close {
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    color: #6f7885;
+    background: transparent;
+    border: 0;
+    border-radius: 8px;
+    font-size: 20px;
+    line-height: 1;
+    cursor: pointer;
+}
+.guide-hint-close:hover { color: var(--primary-deep); background: rgba(255, 255, 255, 0.7); }
+
+/* 공지를 여는 동안의 표시. 화면을 덮되 뒤가 비치게 두어 어디서 눌렀는지 알 수 있다. */
+.notice-loading {
+    position: fixed;
+    inset: 0;
+    z-index: 2600;
+    display: grid;
+    place-items: center;
+    background: rgba(255, 255, 255, 0.6);
+    opacity: 0;
+    pointer-events: none;
+    -webkit-backdrop-filter: blur(2px);
+    backdrop-filter: blur(2px);
+    transition: opacity 0.16s ease;
+}
+.notice-loading[hidden] { display: none; }
+.notice-loading.visible { opacity: 1; pointer-events: auto; }
+.notice-loading-card {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    padding: 15px 20px;
+    color: var(--primary-deep);
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: 0 12px 32px rgba(20, 43, 88, 0.16);
+    font-size: 14px;
+    font-weight: 700;
+}
+.notice-loading-spinner {
+    width: 18px;
+    height: 18px;
+    border: 2.5px solid #d8e0f1;
+    border-top-color: var(--primary);
+    border-radius: 50%;
+    animation: notice-loading-spin 0.7s linear infinite;
+}
+@keyframes notice-loading-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+    .notice-loading-spinner { animation-duration: 2s; }
+}
+
+/* 제목 옆 학교 상징. 데스크탑에서는 mobile-only 규칙이 지운다. */
+.site-title-emblem { display: none; }
+
+/* 익명 피드백에 붙이는 화면 사진. */
+.feedback-shots { margin-bottom: 14px; }
+.feedback-shots-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.feedback-shot-add {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 8px 13px;
+    border: 1px dashed #b9c2d4;
+    border-radius: 8px;
+    color: var(--primary);
+    font-size: 12.5px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease;
+}
+.feedback-shot-add:hover { background: #f1f5fd; border-color: var(--primary); }
+.feedback-shot-add svg { width: 16px; height: 16px; }
+.feedback-shot-add input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+/* 세 장을 다 채우면 더 고를 수 없다는 것을 눈으로 알려준다. */
+.feedback-shot-add.is-full { opacity: .45; pointer-events: none; }
+.feedback-shot-hint { color: var(--text-sub); font-size: 11.5px; }
+.feedback-shot-list { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.feedback-shot { position: relative; width: 84px; height: 84px; margin: 0; }
+.feedback-shot img {
+    width: 100%; height: 100%;
+    object-fit: cover;
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    background: #f5f7fb;
+}
+.feedback-shot-remove {
+    position: absolute;
+    top: -7px; right: -7px;
+    width: 22px; height: 22px;
+    display: grid;
+    place-items: center;
+    border: 0;
+    border-radius: 50%;
+    background: #1f2a3f;
+    color: #fff;
+    font-size: 14px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+/* 관리자 문의함의 첨부 사진 버튼 줄. */
+.admin-feedback-shots { display: flex; gap: 7px; flex-wrap: wrap; margin: 9px 0 0; }

@@ -99,6 +99,7 @@ function buildVerificationPrompt({ title, content, categories, draft, correction
   "editedContent": "원문의 수치·URL·조건을 보존한 읽기 쉬운 본문",
   "summary": ["검증된 요약 1", "검증된 요약 2", "검증된 요약 3"],
   "deadline": "YYYY-MM-DD 또는 null",
+  "startDate": "YYYY-MM-DD 또는 null",
   "targets": ["전체 또는 NN학번"],
   "keywords": ["최대 10개"],
   "existingCategoryIds": [검증된 기존 카테고리 ID],
@@ -113,7 +114,10 @@ function buildVerificationPrompt({ title, content, categories, draft, correction
 검수 원칙:
 - 원문에 없는 사실·수치·조건은 모두 제거합니다.
 - deadline은 실제 신청 또는 제출 마감이 명확할 때만 지정합니다.
-- 카테고리는 반드시 학사, 기회, 혜택, 행사 중 가장 핵심적인 하나만 선택합니다.
+- startDate는 행사가 열리는 날 또는 접수를 받기 시작하는 날입니다.
+  "7월 20일 ~ 9월 15일"처럼 기간이 적혀 있으면 앞이 startDate, 뒤가 deadline입니다.
+  하루짜리 행사는 startDate만 채우고 deadline은 비웁니다. 근거가 없으면 null입니다.
+- 카테고리는 반드시 학사, 기회, 설문, 행사 중 가장 핵심적인 하나만 선택합니다.
 - requiresAction은 신청·제출·응답이 필요할 때만 true입니다.
 - hasReward는 기프티콘·상품·간식·지원금·할인 등 즉시 확인 가능한 보상이 있을 때만 true입니다.
 
@@ -171,6 +175,7 @@ function buildPrompt({ title, content, categories, correction }) {
   "editedContent": "원문의 사실과 링크를 보존하고 문단·목록만 읽기 쉽게 정돈한 본문",
   "summary": ["핵심 요약 1", "핵심 요약 2", "핵심 요약 3"],
   "deadline": "YYYY-MM-DD 또는 null",
+  "startDate": "YYYY-MM-DD 또는 null",
   "targets": ["전체 또는 NN학번"],
   "keywords": ["최대 10개"],
   "existingCategoryIds": [기존 카테고리 ID],
@@ -182,10 +187,12 @@ function buildPrompt({ title, content, categories, correction }) {
 
 카테고리 분류 원칙:
 - 학사: 수강·학점·졸업·성적·전공진입에 직접 영향을 줍니다.
-- 기회: 인턴·연구실·모집·공모전·대회·장학·교환 등 참여 기회입니다.
-- 혜택: 할인·지원·물품·제휴처럼 놓쳐도 학사상 불이익이 없는 경제적 혜택입니다.
-- 행사: 학생 자치, 학내 행사, 시설·출입·교통 등 공동체와 캠퍼스 생활 정보입니다.
+- 기회: 인턴·연구실·공모전·대회·장학·교환처럼 선발을 거쳐 자리나 자격을 얻는 것입니다.
+- 설문: 설문·인터뷰·실험 피험자·사용자 조사처럼 선발 없이 참여해 응답하면 끝나는 모집입니다.
+  사례비나 기프티콘이 걸려 있어도 참여가 목적이면 여기입니다.
+- 행사: 학생 자치, 학내 행사, 시설·출입·교통, 제휴·할인 등 캠퍼스 생활 정보입니다.
 - 네 카테고리 중 가장 핵심적인 하나만 선택합니다.
+- 기회와 설문는 선발이 있느냐로 가릅니다. 붙고 떨어지는 일이 있으면 기회입니다.
 - requiresAction은 신청·제출·응답이 필요할 때 true입니다.
 - hasReward는 상품·기프티콘·사례비·지원금·할인 등이 확인될 때 true이며 rewardNote에 짧게 적습니다.
 - 제목의 단어만 보지 말고 본문의 행동 요구, 마감, 실제 영향과 수신 대상을 근거로 판단합니다.

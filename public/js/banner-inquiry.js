@@ -11,6 +11,9 @@ const bannerImageFields = {
         image: document.getElementById('inquiry-desktop-image-preview-img'),
         name: document.getElementById('inquiry-desktop-image-name'),
         meta: document.getElementById('inquiry-desktop-image-meta'),
+        // 오른쪽 레일은 폭 240px에 화면 높이만큼 길다. 이 비율이라야 꽉 찬다.
+        ratio: 720 / 2400,
+        formatLabel: '세로 3:10 (720×2400px)',
         prepared: ''
     },
     mobile: {
@@ -19,6 +22,8 @@ const bannerImageFields = {
         image: document.getElementById('inquiry-mobile-image-preview-img'),
         name: document.getElementById('inquiry-mobile-image-name'),
         meta: document.getElementById('inquiry-mobile-image-meta'),
+        ratio: 1200 / 675,
+        formatLabel: '가로 16:9 (1200×675px)',
         prepared: ''
     }
 };
@@ -102,7 +107,14 @@ async function handleBannerImageChange(kind) {
         field.meta.textContent =
             `${prepared.width} × ${prepared.height}px · ${formatBytes(file.size)}`;
         field.preview.hidden = false;
-        setBannerInquiryStatus('');
+
+        /* 비율이 어긋난 사진은 화면에서 잘리거나 여백이 생긴다. 제출하고 나서
+           돌려받으면 다시 만들어 오는 수고가 크므로 고르는 자리에서 알린다.
+           막지는 않는다. 의도한 비율일 수도 있고, 판단은 검토 때 한다. */
+        const off = Math.abs(prepared.width / prepared.height - field.ratio) / field.ratio;
+        setBannerInquiryStatus(off > 0.1
+            ? `권장 비율(${field.formatLabel})과 달라 화면에서 잘리거나 여백이 생길 수 있습니다.`
+            : '');
     } catch {
         field.input.value = '';
         setBannerInquiryStatus('이미지를 읽지 못했습니다. 다른 파일을 선택해주세요.', true);
@@ -141,7 +153,7 @@ function validateBannerInquiry(payload) {
     }
     if (!payload.phone && !payload.email) return '전화번호 또는 이메일 중 하나를 입력해주세요.';
     if (payload.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(payload.email)) return '이메일 주소를 확인해주세요.';
-    if (!['club', 'project', 'council'].includes(payload.type)) return '홍보 유형을 선택해주세요.';
+    if (!['club', 'project', 'council', 'survey', 'etc'].includes(payload.type)) return '홍보 유형을 선택해주세요.';
     if (payload.title.length < 2 || payload.description.length < 10) return '홍보 제목과 10자 이상의 설명을 입력해주세요.';
     if (payload.linkUrl && !/^https?:\/\//i.test(payload.linkUrl)) return '연결 링크는 http:// 또는 https://로 시작해야 합니다.';
     if (!payload.startDate || !payload.endDate) return '희망 게재 시작일과 종료일을 선택해주세요.';

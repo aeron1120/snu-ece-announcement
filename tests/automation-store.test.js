@@ -43,7 +43,7 @@ test('JSON automation store supplies the four topic-only notice categories in or
 
     assert.deepEqual(
         categories.map(category => category.name),
-        ['학사', '기회', '혜택', '행사']
+        ['학사', '기회', '설문', '행사']
     );
     assert.ok(categories.every(category => category.definition));
 

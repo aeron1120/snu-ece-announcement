@@ -1,16 +1,25 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 900" role="img" aria-labelledby="title desc">
-  <title id="title">SNU ECE 캠퍼스 소식 임시 배너</title>
-  <desc id="desc">파란 배경 위에 캠퍼스 소식 안내가 적힌 임시 세로 배너</desc>
-  <rect width="720" height="900" fill="#f4f7fc"/>
-  <rect x="48" y="48" width="624" height="804" fill="#1f3f8f"/>
-  <rect x="88" y="92" width="108" height="36" fill="#fff"/>
-  <text x="142" y="117" fill="#1f3f8f" font-family="Arial, sans-serif" font-size="18" font-weight="700" text-anchor="middle">NOTICE</text>
-  <text x="88" y="235" fill="#fff" font-family="Arial, sans-serif" font-size="68" font-weight="800">CAMPUS</text>
-  <text x="88" y="313" fill="#fff" font-family="Arial, sans-serif" font-size="68" font-weight="800">UPDATE</text>
-  <rect x="88" y="360" width="210" height="6" fill="#9eb5e6"/>
-  <text x="88" y="425" fill="#dce6fa" font-family="Arial, sans-serif" font-size="28">SNU ECE 공지방</text>
-  <text x="88" y="470" fill="#dce6fa" font-family="Arial, sans-serif" font-size="24">새 소식을 빠르게 확인하세요.</text>
-  <circle cx="530" cy="650" r="112" fill="#fff" opacity=".12"/>
-  <path d="M438 708h184M470 708V585l60-45 60 45v123M506 708v-78h48v78" fill="none" stroke="#fff" stroke-width="14"/>
-  <text x="88" y="790" fill="#fff" font-family="Arial, sans-serif" font-size="20">TEMPORARY BANNER 01</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 2400" role="img" aria-labelledby="t d">
+  <title id="t">SNU ECE 캠퍼스 소식 임시 배너</title>
+  <desc id="d">남색 바탕에 캠퍼스 소식 안내가 적힌 세로 3대 10 임시 배너</desc>
+  <rect width="720" height="2400" fill="#f4f7fc"/>
+  <rect x="40" y="40" width="640" height="2320" fill="#1f3f8f"/>
+
+  <rect x="96" y="150" width="150" height="46" fill="#ffffff"/>
+  <text x="171" y="182" fill="#1f3f8f" font-family="Arial, sans-serif" font-size="22" font-weight="700" text-anchor="middle">NOTICE</text>
+
+  <text x="96" y="360" fill="#ffffff" font-family="Arial, sans-serif" font-size="96" font-weight="800">CAMPUS</text>
+  <text x="96" y="470" fill="#ffffff" font-family="Arial, sans-serif" font-size="96" font-weight="800">UPDATE</text>
+  <rect x="96" y="530" width="260" height="8" fill="#9eb5e6"/>
+
+  <text x="96" y="640" fill="#dce6fa" font-family="Arial, sans-serif" font-size="36">SNU ECE 공지방</text>
+  <text x="96" y="700" fill="#dce6fa" font-family="Arial, sans-serif" font-size="30">새 소식을 빠르게 확인하세요.</text>
+
+  <g transform="translate(360 1350)">
+    <circle cx="0" cy="0" r="230" fill="#ffffff" opacity=".10"/>
+    <path d="M-190 130h380M-140 130V-70l140-105 140 105v200M-60 130V-30h120v160" fill="none" stroke="#ffffff" stroke-width="26" stroke-linejoin="round"/>
+  </g>
+
+  <rect x="96" y="2180" width="528" height="2" fill="#9eb5e6" opacity=".5"/>
+  <text x="96" y="2250" fill="#dce6fa" font-family="Arial, sans-serif" font-size="26">TEMPORARY BANNER 01</text>
+  <text x="624" y="2250" fill="#dce6fa" font-family="Arial, sans-serif" font-size="26" text-anchor="end">720 × 2400</text>
 </svg>

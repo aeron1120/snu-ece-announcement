@@ -65,7 +65,10 @@ h1 { margin: 0; color: var(--navy-deep); font-family: Georgia, "Nanum Myeongjo",
 .section-heading { padding-bottom: 24px; border-bottom: 1px solid var(--line); }
 .section-heading h2 { margin: 0; color: var(--navy-deep); font-size: 27px; }
 .section-heading > p:last-child { margin: 8px 0 0; color: var(--muted); font-size: 12px; }
-.section-heading span, label > span, .consent-row b { color: var(--danger); }
+.section-heading > p span, .req, .consent-row b { color: var(--danger); }
+.req { font-weight: 800; }
+/* 라벨의 글자는 한 덩어리다. 이렇게 묶어야 별표가 다음 줄로 떨어지지 않는다. */
+.field-name { display: block; }
 fieldset { margin: 0; padding: 28px 0; border: 0; border-bottom: 1px solid var(--line); }
 legend { margin-bottom: 18px; color: var(--navy-deep); font-size: 16px; font-weight: 850; }
 .form-grid { display: grid; gap: 16px; }
@@ -103,6 +106,7 @@ input:focus, textarea:focus, select:focus { border-color: var(--navy); box-shado
 .upload-plus { display: grid; width: 38px; height: 38px; place-items: center; border: 1px solid currentColor; border-radius: 50%; font-size: 24px; font-weight: 300; }
 .image-upload strong { font-size: 14px; }
 .image-upload small { color: var(--muted); font-size: 12px; }
+.image-preview[hidden] { display: none; }
 .image-preview { display: grid; grid-template-columns: 96px 1fr; gap: 16px; margin-top: 14px; padding: 14px; align-items: center; background: var(--soft); }
 .image-preview img { width: 96px; height: 136px; object-fit: contain; background: #fff; border: 1px solid var(--line); }
 .image-preview div { display: grid; gap: 6px; min-width: 0; }
@@ -110,15 +114,16 @@ input:focus, textarea:focus, select:focus { border-color: var(--navy); box-shado
 .image-preview span { color: var(--muted); font-size: 12px; }
 .image-preview button { width: fit-content; padding: 0; color: var(--navy); background: none; border: 0; font-size: 12px; font-weight: 750; cursor: pointer; }
 .banner-format-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 14px; }
-.banner-format-card { min-width: 0; padding: 14px; border: 1px solid var(--line); background: #fff; }
+.banner-format-card { display: flex; flex-direction: column; min-width: 0; padding: 14px; border: 1px solid var(--line); background: #fff; }
 .banner-format-heading { display: grid; gap: 4px; margin-bottom: 10px; }
 .banner-format-heading strong { color: var(--ink); font-size: 14px; }
 .banner-format-heading strong span { color: var(--danger); }
 .banner-format-heading small { color: var(--muted); font-size: 12px; }
-.banner-format-card .image-upload { min-height: 170px; }
-.banner-format-card .image-upload.is-mobile { min-height: 118px; }
+.banner-format-card .image-upload { flex: 1 1 auto; min-height: 150px; }
 .banner-format-card .image-preview { grid-template-columns: 78px minmax(0, 1fr); gap: 10px; padding: 10px; }
-.banner-format-card .image-preview img { width: 78px; height: 78px; }
+/* 세로로 긴 배너와 가로로 넓은 배너를 같은 칸에 넣으므로 높이는 자유롭게 두고
+   비율만 지킨다. 잘라내면 신청자가 낸 그림을 잘못 판단하게 된다. */
+.banner-format-card .image-preview img { width: 78px; height: auto; max-height: 104px; }
 .consent-row { display: flex; gap: 10px; margin: 24px 0 0; align-items: flex-start; color: #4e5664; font-size: 12px; line-height: 1.65; cursor: pointer; }
 .consent-row input { width: 17px; height: 17px; margin-top: 1px; flex: 0 0 auto; accent-color: var(--navy); }
 .submit-status { min-height: 22px; margin: 18px 0 8px; color: var(--navy); font-size: 13px; font-weight: 700; }

@@ -192,13 +192,15 @@ test('the public page drops the top banner, the saved-posts feature, and the ref
     assert.match(html, /<h1 class="site-title" id="site-title">[\s\S]*?id="site-title-mark"[\s\S]*?alt="SNU ECE 공지방"/);
     assert.match(html, /<span class="site-title-text">SNU ECE 공지방<\/span>/);
     assert.doesNotMatch(html, /제목을 누르면 새로고침|site-title-hint|reloadNoticeBoard/);
-    assert.match(html, /id="bell-toggle"[\s\S]*?aria-pressed="false"/);
+    // 종은 화면에서 뺐다. 알림은 푸터의 "알림 설정"으로만 연다.
+    assert.doesNotMatch(html, /id="bell-toggle"/);
+    assert.match(html, />알림 설정</);
     assert.match(html, /onclick="openNotificationPreferences\(\)"/);
     assert.doesNotMatch(app, /function reloadNoticeBoard/);
     assert.match(app, /function updateBellState/);
     assert.doesNotMatch(css, /site-title:hover[\s\S]*text-decoration:\s*underline/);
-    assert.match(css, /\.bell-toggle\s*\{[^}]*filter:\s*grayscale\(1\)/s);
-    assert.match(css, /\.bell-toggle\[aria-pressed="true"\]\s*\{[^}]*filter:\s*none/s);
+
+
 });
 
 test('layout mode is chosen before first paint and follows the real viewport', async () => {
@@ -548,41 +550,65 @@ test('sort chips are exposed beside result count and category tabs restore their
     assert.match(html, /data-sort="최신순"[\s\S]*data-sort="마감임박순"[\s\S]*data-sort="조회순"/);
     assert.doesNotMatch(html, /id="fg-sort"/);
     const defaults = readNamedFunction(app, 'getDefaultSortForCategory');
-    assert.match(defaults, /opportunity[\s\S]*benefit[\s\S]*마감임박순/);
+    assert.match(defaults, /opportunity[\s\S]*survey[\s\S]*마감임박순/);
     assert.match(app, /function selectCategoryTab[\s\S]*getDefaultSortForCategory\(category\?\.slug \|\| 'all'\)[\s\S]*syncNoticeSortChips/);
 });
 
-test('notice dates show a deadline or nothing, never a registration date', async () => {
+test('notice cards show when a notice is open, as a single day or a period', async () => {
     const app = await readFile('js/core.js', 'utf8');
     const source = readNamedFunction(app, 'getNoticeDatePresentation');
     const cards = readNamedFunction(app, 'renderNoticeCards');
     assert.match(source, /notice\.isAlwaysOpen[\s\S]*badgeText: '상시'/);
-    assert.match(source, /dateLabel: `마감/);
     assert.match(cards, /getNoticeDatePresentation\(notice\)/);
     assert.match(app, /diffDays === 0[\s\S]*오늘 마감/);
     assert.match(app, /return `\$\{y\}\.\$\{m\}\.\$\{d\}\(\$\{WEEKDAY_KO/);
 
-    // 등록일은 학생에게 의미가 없어 공개 화면에서 내보내지 않는다.
-    assert.doesNotMatch(source, /등록/);
     const present = new Function(`
         const WEEKDAY_KO = ['일','월','화','수','목','금','토'];
         ${readNamedFunction(app, 'formatDateWithWeekday')}
         ${readNamedFunction(app, 'getCalendarDayDifference')}
         ${readNamedFunction(app, 'calcDDay')}
+        ${readNamedFunction(app, 'noticeRegisteredOn')}
         function getCurrentDate() { return new Date('2026-07-29T00:00:00'); }
         ${source}
         return getNoticeDatePresentation;
     `)();
 
-    // 마감일이 있으면 그대로 보여준다.
-    assert.equal(present({ deadline: '2026-07-31', createdAt: '2026-07-29T04:31:00Z' }).dateLabel,
-        '마감 2026.07.31(금)');
+    // 시작일과 마감일이 모두 있으면 기간으로 잇는다.
+    assert.equal(
+        present({ startDate: '2026-07-20', deadline: '2026-09-15', createdAt: '2026-07-19T04:31:00Z' }).dateLabel,
+        '2026.07.20(월) ~ 2026.09.15(화)'
+    );
+    // 시작일이 없으면 등록일이 그 자리를 대신한다.
+    assert.equal(
+        present({ deadline: '2026-07-31', createdAt: '2026-07-25T04:31:00Z' }).dateLabel,
+        '2026.07.25(토) ~ 2026.07.31(금)'
+    );
+    // 원문 게시일이 있으면 그것을 등록일로 본다.
+    assert.equal(
+        present({ deadline: '2026-07-31', sourcePublishedAt: '2026-07-22', createdAt: '2026-07-25' }).dateLabel,
+        '2026.07.22(수) ~ 2026.07.31(금)'
+    );
+    // 마감이 없는 하루짜리 행사는 그 하루만 적는다.
+    assert.equal(
+        present({ startDate: '2026-07-31', createdAt: '2026-07-01T04:31:00Z' }).dateLabel,
+        '2026.07.31(금)'
+    );
+    // 시작이 마감과 같거나 뒤면 기간으로 잇지 않는다.
+    assert.equal(
+        present({ startDate: '2026-07-31', deadline: '2026-07-31', createdAt: '2026-07-01' }).dateLabel,
+        '2026.07.31(금)'
+    );
     // 상시 공지는 뱃지만 남고 날짜줄은 비운다.
     const always = present({ isAlwaysOpen: true, createdAt: '2026-07-29T04:31:00Z' });
     assert.equal(always.badgeText, '상시');
     assert.equal(always.dateLabel, '');
-    // 마감일이 없으면 아무것도 표시하지 않는다.
+    // 아무 날짜도 없으면 아무것도 표시하지 않는다.
     assert.equal(present({ createdAt: '2026-07-29T04:31:00Z' }).dateLabel, '');
+
+    // 상세 화면에서는 등록일도 함께 보여 오래된 공지인지 알 수 있게 한다.
+    const meta = readNamedFunction(app, 'formatDetailMeta');
+    assert.match(meta, /등록 \$\{escapeHtml\(formatDateWithWeekday\(registeredOn\)\)\}/);
 });
 
 test('the contact modal is an anonymous feedback box, not admin contact info', async () => {
@@ -603,12 +629,22 @@ test('the contact modal is an anonymous feedback box, not admin contact info', a
     assert.doesNotMatch(html, /data-feedback-category="banner"/);
     assert.match(html, /onclick="submitFeedback\(\)"/);
     assert.match(app, /function submitFeedback/);
-    assert.match(app, /JSON\.stringify\(\{ message, category: activeFeedbackCategory \}\)/);
+    assert.match(app, /message,\s*category: activeFeedbackCategory,\s*screenshots: feedbackShots/);
+
+    /* 오류 제보에 화면 사진을 붙일 수 있다. 원본을 그대로 보내면 저장소가
+       금세 차므로 긴 변을 줄여 JPEG으로 다시 그려 보낸다. 사진은 JSON이 아니라
+       파일로 따로 쌓고, 문의를 지우면 함께 지운다. */
+    assert.match(app, /FEEDBACK_MAX_SHOTS = 3/);
+    assert.match(app, /canvas\.toDataURL\('image\/jpeg'/);
+    assert.match(html, /id="feedback-shot-input"/);
+    assert.match(server, /const FEEDBACK_SHOT_MAX_BYTES/);
+    assert.match(server, /data:image.{0,4}jpeg;base64/);
+    assert.match(server, /screenshotFileNames\.push\(fileName\)/);
+    assert.match(server, /\.\.\.\(Array\.isArray\(removed\?\.screenshotFileNames\)/);
     assert.match(app, /\/api\/feedback/);
     // 서버는 신원을 저장하지 않고 메시지만 받는다.
     assert.match(server, /app\.post\('\/api\/feedback'/);
     assert.match(server, /app\.get\('\/api\/admin\/feedback'/);
-    assert.match(server, /id:\s*crypto\.randomUUID\(\),\s*category,/s);
     assert.match(adminHtml, /data-feedback-filter="general"/);
     assert.doesNotMatch(adminHtml, /data-feedback-filter="banner"/);
     assert.match(adminHtml, /id="banner-inquiry-admin-list"/);
@@ -617,6 +653,8 @@ test('the contact modal is an anonymous feedback box, not admin contact info', a
     // 익명성: 피드백 저장 객체에 IP·이름 등 식별자가 없어야 한다.
     const feedbackRoute = server.slice(server.indexOf("app.post('/api/feedback'"), server.indexOf("app.get('/api/admin/feedback'"));
     assert.doesNotMatch(feedbackRoute, /req\.ip|x-forwarded-for|headers\['user-agent'\]/i);
+    // 저장하는 항목은 문의 자체에 관한 것뿐이다. 사진을 붙여도 마찬가지다.
+    assert.match(feedbackRoute, /id,\s*category,\s*message,\s*screenshotFileNames,\s*createdAt/s);
 });
 
 test('AI summaries keep reporting support without a permanent mismatch prompt', async () => {
@@ -663,7 +701,9 @@ test('banner inquiries use a dedicated identified submission page and protected 
     assert.match(html, /id="inquiry-type"[^>]*required/);
     assert.match(html, /id="inquiry-desktop-image"[^>]*type="file"/);
     assert.match(html, /id="inquiry-mobile-image"[^>]*type="file"/);
-    assert.match(html, /4:5 세로형/);
+        // 레일은 240px 폭에 화면 높이 전체라 4:5로는 한참 짧다.
+    assert.match(html, /세로형 3 : 10/);
+    assert.match(html, /720×2400px/);
     assert.match(html, /16:9 가로형/);
     assert.match(html, /개인정보 수집 및 이용/);
     assert.match(html, /무료 학내 홍보 운영 규칙/);
@@ -715,16 +755,23 @@ test('the compose form leads with content/photo/target, then AI fills date/subje
     assert.doesNotMatch(html, /class="panel-help"/);
 });
 
-test('public category tabs keep the four canonical topic categories in order', async () => {
+test('public category tabs keep the four canonical topic categories in order and add the source-based related tab', async () => {
     const app = await readFile('js/core.js', 'utf8');
     const server = await readFile('server/server.js', 'utf8');
     const categoryConfig = await readFile('server/config/notice-categories.js', 'utf8');
     const orderSource = app.match(/const NOTICE_CATEGORY_ORDER = Object\.freeze\(\[[\s\S]*?\]\);/)?.[0] || '';
 
-    assert.match(orderSource, /'academic'[\s\S]*'opportunity'[\s\S]*'benefit'[\s\S]*'community'/);
-    assert.match(categoryConfig, /ACADEMIC[\s\S]*OPPORTUNITY[\s\S]*BENEFIT[\s\S]*COMMUNITY/);
+    assert.match(orderSource, /'academic'[\s\S]*'opportunity'[\s\S]*'survey'[\s\S]*'community'/);
+    assert.match(categoryConfig, /ACADEMIC[\s\S]*OPPORTUNITY[\s\S]*SURVEY[\s\S]*COMMUNITY/);
     assert.match(server, /canonicalSlugs[\s\S]*categories\.filter/);
     assert.match(app, /function orderedNoticeCategories/);
+
+    // '관련'은 주제가 아니라 출처로 묶은 칸이라 데이터베이스 카테고리가 아니다.
+    // 목록을 부를 때 출처 조건만 붙으므로 새로 긁어 온 공지가 저절로 들어온다.
+    assert.match(app, /const RELATED_TAB_SLUG = 'related';/);
+    assert.match(app, /source: relatedTabActive \? 'crawled' : '전체'/);
+    assert.match(server, /allowedSources = new Set\(\['전체', 'crawled', 'manual'\]\)/);
+    assert.match(server, /filters\.source === 'crawled' && !crawled/);
 });
 
 test('manual Gemini analysis saves canonical category ids with the notice', async () => {
@@ -732,7 +779,7 @@ test('manual Gemini analysis saves canonical category ids with the notice', asyn
     const server = await readFile('server/server.js', 'utf8');
     const schema = await readFile('server/sql/supabase-schema.sql', 'utf8');
 
-    assert.match(admin, /"categorySlugs":\["academic\|opportunity\|benefit\|community 중 핵심 하나"\]/);
+    assert.match(admin, /"categorySlugs":\["academic\|opportunity\|survey\|community 중 핵심 하나"\]/);
     assert.match(admin, /categorySlugs는 반드시 핵심 범주 하나만 선택/);
     assert.match(admin, /"hasReward":false/);
     assert.match(admin, /"requiresAction":false/);
@@ -1149,7 +1196,12 @@ test('right-rail banners start randomly, auto-rotate, overlay manual arrows, and
     assert.match(renderSource, /usable\[usable\.length - 1\][\s\S]*usable\[0\]/);
     // 손가락을 1:1로 따라가고, 놓으면 가까운 칸으로 붙는다.
     assert.match(readNamedFunction(app, 'moveBannerSwipe'), /dragOffset: deltaX/);
-    assert.match(readNamedFunction(app, 'finishBannerSwipe'), /width \* 0\.18/);
+    // 폰에서 한 번에 넘기기 쉽도록 문턱을 낮추고, 짧게 튕기는 손짓도 인정한다.
+    const finishSource = readNamedFunction(app, 'finishBannerSwipe');
+    assert.match(finishSource, /width \* 0\.12/);
+    assert.match(finishSource, /passedThreshold \|\| flicked/);
+    // 세로가 확실히 클 때만 가로 끌기를 놓아준다. 조금 흔들렸다고 포기하지 않는다.
+    assert.match(readNamedFunction(app, 'moveBannerSwipe'), /Math\.abs\(deltaX\) \* 1\.5/);
     // 복제 칸에 닿으면 전환이 끝난 뒤 진짜 칸으로 소리 없이 되돌린다.
     assert.match(readNamedFunction(app, 'stepRightRailBanner'), /landedOnClone[\s\S]*animate: false/);
 
@@ -1614,7 +1666,11 @@ test('image notices lazy-load a poster; imageless notices show a big title poste
     // 사진 없는 카드: 포스터 자리에 제목을 크게.
     assert.match(filterCardsSource, /card-poster is-text/);
     // 포스터 제목은 renderPosterTitle이 통째로 만든다(길이에 맞춘 크기 포함).
-    assert.match(filterCardsSource, /card-poster is-text">\$\{renderPosterTitle\(rawTitle\)\}/);
+    // 학생회 홍보물 결: 가로줄 - 제목 - 날짜 순으로 쌓는다.
+    assert.match(filterCardsSource, /card-poster is-text[\s\S]*?card-poster-rule[\s\S]*?renderPosterTitle\(rawTitle\)[\s\S]*?card-poster-date/);
+    // 공개 화면에서 등록일을 없앴으므로 마감일이 없으면 날짜 칸이 비어 있다.
+    // 빈 칸을 그리면 포스터 아래에 빈 줄만 남으므로 아예 넣지 않는다.
+    assert.match(filterCardsSource, /datePresentation\.dateLabel\s*\?\s*`<span class="card-poster-date"/);
     assert.match(readNamedFunction(app, 'renderPosterTitle'), /--poster-title-size:\$\{fit\.size\}px/);
     assert.match(filterCardsSource, /renderPosterTitle\(rawTitle\)/);
     // 줄 나누기는 글자 폭 계산에 기대므로 함께 넣어 준다.
@@ -2066,7 +2122,10 @@ test('banner slots show one at a time and the inbox toolbar acts on the selectio
     // .banner-item에 display를 명시했으므로 [hidden]의 기본값이 밀린다.
     // 눌러 주지 않으면 배너 1을 골라도 다섯 개가 전부 보인다.
     assert.match(adminCss, /\.banner-slides-list \.banner-item\[hidden\]\s*\{\s*display:\s*none !important/);
-    assert.match(readNamedFunction(admin, 'applyBannerSlotVisibility'), /item\.hidden = index !== activeBannerSlot/);
+    assert.match(readNamedFunction(admin, 'applyBannerSlotVisibility'), /item\.hidden = showStaging \|\| index !== activeBannerSlot/);
+    // 임시 배너 자리는 다섯 자리 아래에 따로 선다.
+    assert.match(adminHtml, /id="banner-staging-section"/);
+    assert.match(readNamedFunction(admin, 'promoteStagingBanner'), /\/promote/);
 
     // 배너 문의는 왼쪽 목록이 아니라 위 탭으로 옮겼다.
     assert.match(adminHtml, /data-tab="banner-inquiry"/);
@@ -2148,9 +2207,10 @@ test('no notice title can overflow the text poster box', async () => {
         `${readNamedFunction(app, 'posterTextWidth')}; ${readNamedFunction(app, 'posterTitleLines')}; return posterTitleLines;`
     )();
 
-    // 포스터 안쪽은 좁게 잡아 200px, 높이는 약 172px이다.
+    // 포스터 안쪽은 좁게 잡아 200px. 높이는 가로줄과 등록일이 자리를 쓰고
+    // 남는 약 143px이다.
     const INNER_WIDTH = 200;
-    const INNER_HEIGHT = 172;
+    const INNER_HEIGHT = 143;
     const renderedHeight = title => {
         const normalized = String(title || '제목 없음').replace(/\s+/g, ' ').trim();
         const chosen = fit(normalized.length);
@@ -2186,8 +2246,12 @@ test('no notice title can overflow the text poster box', async () => {
             `"${String(title).slice(0, 20)}…"가 포스터를 넘칩니다 (${Math.round(renderedHeight(title))}px)`);
     }
 
-    // 다 담지 못하면 잘렸다는 걸 말줄임으로 알린다.
-    assert.match(split('가'.repeat(300), 7, 12).at(-1), /…$/);
+    // 다 담지 못하면 잘렸다는 걸 말줄임으로 알린다. 말줄임표를 붙이고도
+    // 한 줄 한도를 넘지 않아야 그 줄이 다시 접히지 않는다.
+    const truncated = split('가'.repeat(300), 6, 12);
+    assert.match(truncated.at(-1), /…$/);
+    assert.ok(width(truncated.at(-1)) <= 12,
+        `말줄임표를 붙인 줄이 한 줄 한도를 넘습니다 (${width(truncated.at(-1))})`);
 });
 
 test('drop targets light up when the dragged card overlaps them, not only the cursor', async () => {
@@ -2252,8 +2316,103 @@ test('a sticky search row takes over once the real search box scrolls away', asy
 
     // 화면에 붙어 있어야 스크롤해도 사라지지 않는다.
     assert.match(mobileCss, /\.mobile-sticky-search\s*\{[^}]*position:\s*fixed;[^}]*top:\s*0/s);
-    // 왼쪽 위 메뉴 버튼과 겹치지 않게 자리를 비운다.
-    assert.match(mobileCss, /\.mobile-sticky-search\s*\{[^}]*padding:[^;]*58px/s);
+    // 떠 있는 메뉴 버튼이 검색 글자를 덮지 않게 왼쪽을 비워 둔다.
+    assert.match(mobileCss, /\.mobile-sticky-search\s*\{[^}]*padding:\s*8px 12px 10px 52px;/s);
+    // 검색 줄이 뜨면 손잡이가 그 줄에 맞춰 내려온다.
+    assert.match(mobileCss, /\.mobile-menu-btn\.is-with-search\s*\{[^}]*top:\s*12px/s);
+});
+
+test('first-time users get a guide, and slow notice loads show progress', async () => {
+    const html = await readFile('index.html', 'utf8');
+    const app = await readFile('js/core.js', 'utf8');
+    const css = await readFile('css/core.css', 'utf8');
+    const headers = await readFile('_headers', 'utf8');
+
+    // 돋보기는 검색 확인이 아니라 사용 설명서로 간다. 검색은 치는 대로 걸린다.
+    assert.match(html, /id="search-guide-btn"[\s\S]*?onclick="openUserGuide\(event\)"/);
+    assert.doesNotMatch(html, /class="search-submit"[^>]*onclick="filterCards\(\)"/);
+    assert.match(readNamedFunction(app, 'openUserGuide'), /guide\.html/);
+
+    // 처음 온 사람에게 한 번만 알리고, 본 뒤에는 기기에 기록이 남는다.
+    assert.match(html, /id="guide-hint"/);
+    assert.match(html, /SNU ECE 공지방이 처음이신가요\?/);
+    assert.match(readNamedFunction(app, 'dismissGuideHint'), /localStorage\.setItem\(GUIDE_HINT_KEY/);
+    assert.match(readNamedFunction(app, 'initializeGuideHint'), /localStorage\.getItem\(GUIDE_HINT_KEY\)/);
+
+    // 느린 회선에서 공지를 여는 동안 표시가 뜬다. 빠를 때 깜빡이지 않게 잠깐 미룬다.
+    assert.match(html, /id="notice-loading"/);
+    assert.match(readNamedFunction(app, 'showNoticeLoading'), /setTimeout/);
+    assert.match(readNamedFunction(app, 'openDetail'), /showNoticeLoading\(\)/);
+    assert.match(readNamedFunction(app, 'openDetail'), /finally\s*\{[\s\S]*?hideNoticeLoading\(\)/);
+    assert.match(css, /\.notice-loading\s*\{[^}]*position:\s*fixed/s);
+
+    // 폰 미리보기는 같은 사이트를 iframe으로 띄운다. DENY면 그 창이 통째로 막힌다.
+    assert.match(headers, /X-Frame-Options: SAMEORIGIN/);
+    assert.match(headers, /frame-ancestors 'self'/);
+    assert.doesNotMatch(headers, /frame-ancestors 'none'/);
+});
+
+test('mobile stacks notices, then the banner, then the footer', async () => {
+    const html = await readFile('index.html', 'utf8');
+    const mobileCss = await readFile('css/mobile.css', 'utf8');
+
+    // 모바일에서 오른쪽 레일은 흐름 안에 놓이므로 DOM 순서가 곧 보이는 순서다.
+    const board = html.indexOf('id="board-view"');
+    const banner = html.indexOf('id="right-ad-rail"');
+    const footer = html.indexOf('class="site-footer"');
+    assert.ok(board < banner, '배너가 공지보다 앞에 있습니다');
+    assert.ok(banner < footer, '배너가 푸터보다 뒤에 있습니다');
+
+    // 가로로 끄는 동안 페이지가 대신 스크롤되지 않게 한다.
+    assert.match(mobileCss, /\.rail-ad-stage\s*\{[^}]*touch-action:\s*pan-y/s);
+    // 손가락으로 누를 수 있는 크기의 화살표.
+    assert.match(mobileCss, /@media \(hover: none\)[\s\S]*?\.rail-ad-arrow\s*\{\s*width:\s*44px/);
+
+    // 푸터에 자주 묻는 질문과 사용 설명서가 있다.
+    assert.match(html, /href="\.\/faq\.html">자주 묻는 질문</);
+    // 사용 설명서는 푸터에 따로 걸지 않고 서비스 안내 안에서 연다.
+    assert.doesNotMatch(html, /href="\.\/guide\.html">사용 설명서</);
+    const serviceGuidePage = await readFile('service-guide.html', 'utf8');
+    assert.match(serviceGuidePage, /href="\.\/guide\.html"/);
+});
+
+test('closing a filter chip does not collapse the detail panel', async () => {
+    const html = await readFile('index.html', 'utf8');
+    const app = await readFile('js/core.js', 'utf8');
+    const css = await readFile('css/core.css', 'utf8');
+    const mobileCss = await readFile('css/mobile.css', 'utf8');
+
+    // 칩의 x는 상세 필터 바 안에 있다. 손가락이 빗나가면 바가 눌려 패널이 닫힌다.
+    assert.match(html, /id="filter-toggle-bar"[\s\S]*?onclick="toggleFilterPanel\(event\)"/);
+    assert.match(readNamedFunction(app, 'toggleFilterPanel'), /closest\?\.\('\.filter-active-chips'\)\) return/);
+    // 누를 수 있는 크기도 함께 키운다.
+    assert.match(css, /\.filter-chip button\s*\{[^}]*width:\s*20px;[^}]*height:\s*20px/s);
+    assert.match(mobileCss, /\.filter-chip button\s*\{[^}]*width:\s*28px;[^}]*height:\s*28px/s);
+
+    // 서랍 손잡이는 헤더 줄 안에서 배경에 묻히고 아이콘만 남는다.
+    const menuBlock = mobileCss.slice(mobileCss.indexOf('html[data-view="mobile"] .mobile-menu-btn {'));
+    const menuRule = menuBlock.slice(0, menuBlock.indexOf('}'));
+    // 흐름에서 빠져 떠 있어야 제목이 버튼 없는 것처럼 왼쪽 끝에 붙는다.
+    assert.match(menuRule, /position:\s*fixed/);
+    // 평소에는 숨어 있다가 목록을 내리면 나타나고, 두면 스스로 사라진다.
+    assert.match(menuRule, /opacity:\s*0/);
+    assert.match(menuRule, /pointer-events:\s*none/);
+    assert.match(mobileCss, /\.mobile-menu-btn\.is-visible\s*\{[^}]*opacity:\s*1/s);
+    assert.match(readNamedFunction(app, 'revealMobileMenuHandle'), /MENU_HANDLE_IDLE_MS/);
+    assert.match(readNamedFunction(app, 'revealMobileMenuHandle'), /isMobileDrawerOpen\(\)/);
+    // 푸터 2x2의 십자 구분선은 없앤다.
+    assert.doesNotMatch(mobileCss, /\.footer-column\s*\{[^}]*border-right/s);
+    // 헤더도 흰 카드가 아니라 배경 위에 그대로 얹힌다.
+    assert.match(mobileCss, /\.header\s*\{[^}]*background:\s*transparent;[^}]*box-shadow:\s*none/s);
+    // 모바일 배너 위아래로 레일 남색이 비치지 않는다.
+    assert.match(mobileCss, /\.rail-right\s*\{[^}]*background:\s*transparent/s);
+
+    // 안내를 닫은 뒤에도 서비스 안내에서 설명서로 돌아올 수 있다.
+    const serviceGuide = await readFile('service-guide.html', 'utf8');
+    assert.match(serviceGuide, /사용 설명서 다시 보기/);
+    assert.match(serviceGuide, /href="\.\/guide\.html"/);
+    // 첫 방문 안내를 다시 받게 되돌리는 것은 저장된 기록을 지우는 일이다.
+    assert.match(serviceGuide, /localStorage\.removeItem\('eceGuideHintSeen'\)/);
 });
 
 test('the operator page names who runs the site and the footer points at it', async () => {

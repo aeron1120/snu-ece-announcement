@@ -1,0 +1,222 @@
+/* 사용 설명서 튜토리얼.
+
+   설명하려는 버튼 하나만 남기고 화면 전체를 어둡게 덮는다. 어둡게 덮는 판은
+   구멍 뚫린 한 장이 아니라 위·아래·왼쪽·오른쪽 네 장이다. 한 장으로 만들면
+   구멍 자리도 그 판이 차지해 아래 버튼을 누를 수 없다. 네 장으로 나누면
+   구멍 자리에는 아무것도 없어, 사용자가 진짜 버튼을 그대로 눌러볼 수 있다. */
+
+.tutorial-layer {
+    position: fixed;
+    inset: 0;
+    z-index: 4000;
+    /* 층이 화면 전체를 덮고 클릭을 받아낸다. 안내 중에 서랍이 열리거나 공지
+       상세로 넘어가면 다음에 짚을 자리가 사라져 안내가 끊기기 때문이다.
+       스크롤은 막지 않으므로 설명하는 자리를 화면 가운데로 옮길 수 있다. */
+    pointer-events: auto;
+    font-family: inherit;
+}
+
+.tutorial-layer[hidden] { display: none; }
+
+.tutorial-shade {
+    position: fixed;
+    background: rgba(9, 13, 26, 0.82);
+    pointer-events: auto;
+    opacity: 0;
+    transition: opacity 0.22s ease;
+}
+
+.tutorial-layer.is-open .tutorial-shade { opacity: 1; }
+
+/* 구멍 테두리. 클릭을 가로채면 안 되므로 보이기만 한다. */
+.tutorial-ring {
+    position: fixed;
+    border-radius: 14px;
+    pointer-events: none;
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.92), 0 0 0 6px rgba(90, 140, 255, 0.35);
+    opacity: 0;
+    /* 자리도 진하기도 자바스크립트가 매 프레임 직접 그린다. 여기서 전환을
+       걸어 두면 프레임마다 새 전환이 시작돼 한 박자씩 늦게 따라온다. */
+}
+
+.tutorial-layer.is-open .tutorial-ring { opacity: 1; }
+
+/* 지금 짚고 있는 자리를 눈으로 찾기 쉽도록 테두리가 천천히 숨을 쉰다. */
+.tutorial-ring { animation: tutorial-pulse 2.4s ease-in-out infinite; }
+
+@keyframes tutorial-pulse {
+    0%, 100% { box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.92), 0 0 0 6px rgba(90, 140, 255, 0.32); }
+    50%      { box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.98), 0 0 0 13px rgba(90, 140, 255, 0.16); }
+}
+
+.tutorial-card {
+    position: fixed;
+    width: min(340px, calc(100vw - 32px));
+    padding: 18px 20px 16px;
+    border-radius: 16px;
+    background: #fff;
+    color: #10162b;
+    box-shadow: 0 24px 60px rgba(4, 10, 28, 0.45);
+    pointer-events: auto;
+    opacity: 0;
+    transform: translateY(6px);
+    transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.tutorial-layer.is-open .tutorial-card { opacity: 1; transform: translateY(0); }
+
+.tutorial-progress {
+    height: 3px;
+    border-radius: 999px;
+    background: #e3e8f4;
+    overflow: hidden;
+    margin-bottom: 13px;
+}
+
+.tutorial-progress-fill {
+    display: block;
+    height: 100%;
+    border-radius: 999px;
+    background: #1f3f8f;
+    transition: width 0.28s cubic-bezier(0.32, 0.72, 0.24, 1);
+}
+
+.tutorial-count {
+    margin: 0 0 5px;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.09em;
+    color: #7c88a6;
+}
+
+.tutorial-title {
+    margin: 0 0 7px;
+    font-size: 17px;
+    font-weight: 800;
+    line-height: 1.35;
+    letter-spacing: -0.01em;
+}
+
+.tutorial-body {
+    margin: 0;
+    font-size: 13.5px;
+    line-height: 1.65;
+    color: #414c66;
+    word-break: keep-all;
+}
+
+/* 카드 아래에 덧붙는 한 줄. 적어 둔 단계에서만 나온다. */
+.tutorial-hint {
+    display: none;
+    align-items: center;
+    gap: 7px;
+    margin: 11px 0 0;
+    padding: 8px 11px;
+    border-radius: 10px;
+    background: #eef3ff;
+    color: #1f3f8f;
+    font-size: 12.5px;
+    font-weight: 700;
+}
+
+.tutorial-layer[data-action="note"] .tutorial-hint { display: flex; }
+
+.tutorial-hint-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #1f3f8f;
+    flex-shrink: 0;
+    animation: tutorial-pulse-dot 1.4s ease-in-out infinite;
+}
+
+@keyframes tutorial-pulse-dot {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50%      { transform: scale(1.45); opacity: 0.5; }
+}
+
+.tutorial-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 15px;
+}
+
+.tutorial-actions button {
+    border: none;
+    border-radius: 9px;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    padding: 9px 14px;
+    transition: background 0.16s ease, color 0.16s ease, opacity 0.16s ease;
+}
+
+.tutorial-skip {
+    background: none;
+    color: #8792ad;
+    padding-left: 0 !important;
+}
+
+.tutorial-skip:hover { color: #414c66; }
+
+.tutorial-actions .tutorial-spacer { flex: 1 1 auto; }
+
+.tutorial-prev {
+    background: #eef1f7;
+    color: #3d4966;
+}
+
+.tutorial-prev:hover { background: #e2e7f1; }
+.tutorial-prev[disabled] { opacity: 0.35; cursor: default; }
+
+.tutorial-next {
+    background: #1f3f8f;
+    color: #fff;
+    box-shadow: 0 6px 14px rgba(31, 63, 143, 0.28);
+}
+
+.tutorial-next:hover { background: #1a3579; }
+
+/* 마지막 인사. 가리킬 버튼이 없어 화면 가운데에 홀로 선다.
+   자리는 다른 단계와 똑같이 자바스크립트가 잡는다. 여기서 위치까지 정하면
+   마지막으로 넘어갈 때만 움직임이 끊겨 툭 튄다. */
+.tutorial-card.is-centered {
+    width: min(380px, calc(100vw - 40px));
+    text-align: center;
+}
+
+.tutorial-card.is-centered .tutorial-actions { justify-content: center; }
+.tutorial-card.is-centered .tutorial-skip { display: none; }
+
+.tutorial-card.is-centered .tutorial-doc {
+    display: inline-block;
+    margin-top: 12px;
+    font-size: 12.5px;
+    font-weight: 700;
+    color: #1f3f8f;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+
+@media (max-width: 760px) {
+    .tutorial-card { width: calc(100vw - 24px); padding: 16px 17px 14px; }
+    .tutorial-title { font-size: 16px; }
+    .tutorial-body { font-size: 13px; }
+    /* 손가락이 닿는 크기로 키운다. */
+    .tutorial-actions button { padding: 11px 15px; min-height: 44px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .tutorial-shade, .tutorial-card, .tutorial-progress-fill { transition: none; }
+    .tutorial-ring { animation: none; }
+    .tutorial-hint-dot { animation: none; }
+}
+
+/* hidden은 표시 규칙보다 앞선다. 위에서 display를 명시한 요소가 있어
+   숨기라는 지시가 묻히는 일을 막는다. */
+.tutorial-layer [hidden] { display: none !important; }
+
+/* 안내 중에는 손으로 화면을 끌 수 없다. */
+.tutorial-layer { touch-action: none; }

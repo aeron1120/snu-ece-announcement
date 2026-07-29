@@ -54,7 +54,11 @@ test('Kakao category rules follow the four topic-only categories', () => {
         'opportunity'
     );
     assert.equal(classifyDraft('졸업 학점 안내', '필수 이수 학점을 확인하세요'), 'academic');
-    assert.equal(classifyDraft('학생 제휴 할인', '상점 할인 혜택'), 'benefit');
+    // 제휴·할인은 '혜택' 칸을 없애면서 캠퍼스 생활로 옮겼다.
+    assert.equal(classifyDraft('학생 제휴 할인', '상점 할인 쿠폰'), 'community');
+    // 선발이 없으면 설문, 있으면 기회로 갈린다.
+    assert.equal(classifyDraft('사용자 조사 참여자 모집', '30분 인터뷰, 사례비 지급'), 'survey');
+    assert.equal(classifyDraft('하계 인턴 모집', '서류 전형 후 면접'), 'opportunity');
     assert.equal(classifyDraft('정전 안내', '내일 캠퍼스 출입 통제'), 'community');
     assert.equal(classifyDraft('대의원 총회', '회칙 의결'), 'community');
     assert.equal(classifySender('서울대학교 공과대학 학생회'), '공과대학');

@@ -195,6 +195,6 @@ test('topic taxonomy stays fixed at four and keyword candidate screens are gone'
     const categories = (await categoriesResponse.json()).categories;
     assert.deepEqual(
         categories.map(category => category.slug),
-        ['academic', 'opportunity', 'benefit', 'community']
+        ['academic', 'opportunity', 'survey', 'community']
     );
 });

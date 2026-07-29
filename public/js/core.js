@@ -38,6 +38,8 @@ let bannerSwipePointerId = null;
 let bannerSwipeStartX = 0;
 let bannerSwipeStartY = 0;
 let bannerSwipeDeltaX = 0;
+// 튕기듯 짧게 넘기는 손짓을 알아보려고 시작 시각을 재 둔다.
+let bannerSwipeStartedAt = 0;
 let suppressBannerLinkUntil = 0;
 /* 트랙 캐러셀 상태.
    trackPosition은 앞뒤 복제 슬라이드를 포함한 트랙 위의 칸 번호다.
@@ -79,6 +81,7 @@ let bannerManageAuthToken = '';
 let activeCategories = [];
 let selectedCategoryFilters = new Set();
 let archiveTabActive = false;
+let relatedTabActive = false;   // '관련' 칸을 보고 있는지
 const quickNoticeFilters = {
     urgent: false,
     reward: false,
@@ -89,9 +92,16 @@ const quickNoticeFilters = {
 const NOTICE_CATEGORY_ORDER = Object.freeze([
     'academic',
     'opportunity',
-    'benefit',
+    'survey',
     'community'
 ]);
+
+/* '관련'은 주제가 아니라 출처로 묶은 칸이다.
+   학부 홈페이지에서 자동으로 모아 온 원문 공지를 한자리에서 보게 한다.
+   주제 카테고리와 축이 다르므로 데이터베이스의 카테고리로 두지 않고
+   목록을 불러올 때 출처 조건만 붙인다. 그래야 새로 긁어 온 공지가
+   따로 손대지 않아도 저절로 이 칸에 들어온다. */
+const RELATED_TAB_SLUG = 'related';
 
 function orderedNoticeCategories(categories = activeCategories) {
     const order = new Map(NOTICE_CATEGORY_ORDER.map((slug, index) => [slug, index]));
@@ -478,6 +488,7 @@ function getNoticeListFilters() {
         sort: filterState.sort,
         dateFrom: document.getElementById('filter-date-from')?.value || '',
         dateTo: document.getElementById('filter-date-to')?.value || '',
+        source: relatedTabActive ? 'crawled' : '전체',
         urgent: quickNoticeFilters.urgent,
         reward: quickNoticeFilters.reward,
         action: quickNoticeFilters.action,
@@ -747,6 +758,7 @@ function startBannerSwipe(event) {
     bannerSwipeStartX = event.clientX;
     bannerSwipeStartY = event.clientY;
     bannerSwipeDeltaX = 0;
+    bannerSwipeStartedAt = Date.now();
     // 복제 칸으로 되돌리는 예약이 남아 있으면 먼저 확정해 놓고 잡는다.
     if (bannerSettleTimer) {
         window.clearTimeout(bannerSettleTimer);
@@ -767,7 +779,9 @@ function moveBannerSwipe(event) {
     const deltaX = event.clientX - bannerSwipeStartX;
     const deltaY = event.clientY - bannerSwipeStartY;
     // 세로로 먼저 움직였으면 페이지 스크롤이므로 가로 끌기를 포기한다.
-    if (!bannerSwipeDeltaX && Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 10) {
+    // 손가락은 마우스보다 비스듬히 움직이므로 세로가 가로보다 확실히 클 때만
+    // 놓아준다. 조금만 흔들려도 포기하면 잘 안 넘어간다는 느낌을 준다.
+    if (!bannerSwipeDeltaX && Math.abs(deltaY) > Math.abs(deltaX) * 1.5 && Math.abs(deltaY) > 14) {
         bannerSwipePointerId = null;
         setBannerTrackPosition(bannerTrackPosition);
         event.currentTarget.classList.remove('is-swiping');
@@ -788,11 +802,16 @@ function finishBannerSwipe(event, cancelled = false) {
     const stage = event.currentTarget;
     const width = stage.getBoundingClientRect().width || 1;
     const deltaY = event.clientY - bannerSwipeStartY;
-    // 화면 폭의 18%를 넘겼거나 44px 이상 끌었으면 다음 장으로 넘어간 것으로 본다.
-    const passedThreshold = Math.abs(bannerSwipeDeltaX) >= Math.min(44, width * 0.18);
+    // 폭의 12%나 32px만 끌어도 넘어간다. 예전 값(18%·44px)은 폰에서 한 번에
+    // 넘기기 어려웠다.
+    const distance = Math.abs(bannerSwipeDeltaX);
+    const passedThreshold = distance >= Math.min(32, width * 0.12);
+    // 짧게 튕겨도 넘어가야 한다. 빠른 손짓은 거리가 짧아도 넘길 뜻이 분명하다.
+    const elapsed = Math.max(1, Date.now() - bannerSwipeStartedAt);
+    const flicked = distance >= 12 && distance / elapsed > 0.45;
     const shouldMove = !cancelled
-        && passedThreshold
-        && Math.abs(bannerSwipeDeltaX) > Math.abs(deltaY);
+        && (passedThreshold || flicked)
+        && distance > Math.abs(deltaY);
     try {
         if (stage.hasPointerCapture?.(event.pointerId)) {
             stage.releasePointerCapture(event.pointerId);
@@ -1067,37 +1086,63 @@ function calcDDay(deadlineStr) {
     return { text: `D-${diffDays}`, isUrgent: false, isD1: false, isExpired: false };
 }
 
-// 날짜가 없는 공지에서 구분자만 덩그러니 남지 않도록 조립한다.
-function formatDetailMeta(dateLabel, views) {
-    const count = `조회: ${Number(views) || 0}`;
-    return dateLabel
-        ? `${escapeHtml(dateLabel)} &nbsp;|&nbsp; ${count}`
-        : count;
+/* 상세 화면 윗줄. 날짜가 없는 공지에서 구분자만 덩그러니 남지 않도록 조립한다.
+   목록에는 열려 있는 기간만 적지만, 상세에서는 이 공지가 언제 올라온 것인지도
+   알 수 있어야 한다. 오래된 공지를 보고 있는지 판단하는 근거가 된다. */
+function formatDetailMeta(dateLabel, views, registeredOn = '') {
+    const parts = [];
+    if (dateLabel) parts.push(escapeHtml(dateLabel));
+    if (registeredOn) parts.push(`등록 ${escapeHtml(formatDateWithWeekday(registeredOn))}`);
+    parts.push(`조회: ${Number(views) || 0}`);
+    return parts.join(' &nbsp;|&nbsp; ');
 }
 
-// 학생에게 의미 있는 날짜는 마감일뿐이다. 공지가 언제 올라왔는지는 내부 정보라
-// 공개 화면에서는 내보내지 않는다(관리자 목록에는 그대로 남는다).
+/* 공지에 붙는 날짜.
+
+   학생이 알고 싶은 것은 '언제 열려 있는가'다. 그래서 마감일이 있으면
+   시작과 끝을 함께 적어 기간으로 보여준다. 시작일이 따로 없는 공지가 많은데,
+   그런 때는 공지가 올라온 날부터 열려 있었다고 보는 것이 사실에 가까우므로
+   등록일을 시작 자리에 세운다. 마감이 없고 날짜 하나만 있는 행사는 그 하루만
+   적는다.
+
+   시작과 끝이 같은 날이면 물결표로 잇지 않는다. 같은 날짜를 두 번 적는 셈이라
+   읽는 사람이 기간으로 오해한다. */
+function noticeRegisteredOn(notice) {
+    return String(notice.sourcePublishedAt || notice.createdAt || '').slice(0, 10);
+}
+
 function getNoticeDatePresentation(notice) {
-    if (notice.isAlwaysOpen) {
-        return {
-            badgeText: '상시',
-            badgeClass: '',
-            dateLabel: ''
-        };
-    }
     const deadline = String(notice.deadlineAt || notice.deadline || '').slice(0, 10);
+    const start = String(notice.startDate || '').slice(0, 10);
+    const registered = noticeRegisteredOn(notice);
+
+    if (notice.isAlwaysOpen) {
+        return { badgeText: '상시', badgeClass: '', dateLabel: '' };
+    }
+
     if (!deadline) {
+        // 마감이 없으면 행사가 열리는 날 하나만 알린다.
         return {
             badgeText: '',
             badgeClass: '',
-            dateLabel: ''
+            dateLabel: start ? formatDateWithWeekday(start) : ''
         };
     }
+
+    const from = start || registered;
     const dDay = calcDDay(deadline);
-    return {
+    const badge = {
         badgeText: dDay.text,
-        badgeClass: dDay.isExpired ? 'expired' : (dDay.isUrgent ? 'd-day' : ''),
-        dateLabel: `마감 ${formatDateWithWeekday(deadline)}`
+        badgeClass: dDay.isExpired ? 'expired' : (dDay.isUrgent ? 'd-day' : '')
+    };
+
+    // 시작이 마감보다 뒤면 잘못 들어온 값이다. 그럴 때는 마감만 적는다.
+    if (!from || from >= deadline) {
+        return { ...badge, dateLabel: formatDateWithWeekday(deadline) };
+    }
+    return {
+        ...badge,
+        dateLabel: `${formatDateWithWeekday(from)} ~ ${formatDateWithWeekday(deadline)}`
     };
 }
 
@@ -1169,12 +1214,14 @@ function escapeHtml(value) {
    넘지 않도록 잡은 것이다. */
 /* perLine은 한 줄에 들어가는 한글 글자 수다. 포스터 안쪽 폭을 좁게 잡아
    200px으로 보고 floor(200 / 글자크기)로 정했다. 이 값이 한 칸이라도
-   크면 줄이 브라우저에서 한 번 더 접혀 높이가 두 배가 된다. */
+   크면 줄이 브라우저에서 한 번 더 접혀 높이가 두 배가 된다.
+   maxLines는 가로줄과 등록일이 자리를 차지한 뒤 남는 높이(약 143px)에서
+   maxLines x 글자크기 x 1.34가 넘지 않도록 잡았다. */
 function posterTitleFit(length) {
     if (length <= 22) return { size: 25, maxLines: 4, perLine: 8 };
     if (length <= 36) return { size: 21, maxLines: 5, perLine: 9 };
-    if (length <= 52) return { size: 18, maxLines: 6, perLine: 11 };
-    return { size: 16, maxLines: 7, perLine: 12 };
+    if (length <= 52) return { size: 18, maxLines: 5, perLine: 11 };
+    return { size: 16, maxLines: 6, perLine: 12 };
 }
 
 /* 한 줄에 몇 글자가 들어가는지는 글자 폭에 달렸다. 한글·한자는 글자 크기와
@@ -1256,9 +1303,14 @@ function posterTitleLines(value, maxLines = 4, perLine = 0) {
     if (endingLine) lines.push(endingLine);
 
     if (lines.length <= maxLines) return lines;
-    // 다 담지 못했으면 잘렸다는 걸 말줄임으로 알린다.
+    // 다 담지 못했으면 잘렸다는 걸 말줄임으로 알린다. 이때 말줄임표도 폭을
+    // 차지하므로, 붙이고 나서 한 줄 한도를 넘지 않도록 뒤를 먼저 덜어낸다.
+    // 그냥 붙이면 그 줄이 한 번 더 접혀 포스터를 넘친다.
     const kept = lines.slice(0, maxLines);
-    kept[kept.length - 1] = `${kept.at(-1)}…`;
+    const budget = (perLine || 18) - posterTextWidth('…');
+    let last = kept.at(-1);
+    while (last.length > 1 && posterTextWidth(last) > budget) last = last.slice(0, -1);
+    kept[kept.length - 1] = `${last.trimEnd()}…`;
     return kept;
 }
 
@@ -1316,17 +1368,65 @@ function syncMobileStickySearch() {
         }
         // 검색창 아랫변이 화면 위로 넘어가면 그때부터 대신 선다.
         const shouldShow = field.getBoundingClientRect().bottom <= 4;
-        if (shouldShow === bar.classList.contains('visible')) return;
+        if (shouldShow === bar.classList.contains('visible')) {
+            syncMobileMenuHandlePosition();
+            return;
+        }
         if (shouldShow) {
             bar.hidden = false;
-            requestAnimationFrame(() => bar.classList.add('visible'));
+            requestAnimationFrame(() => {
+                bar.classList.add('visible');
+                syncMobileMenuHandlePosition();
+            });
         } else {
             bar.classList.remove('visible');
+            syncMobileMenuHandlePosition();
             window.setTimeout(() => {
                 if (!bar.classList.contains('visible')) bar.hidden = true;
             }, 180);
         }
     });
+}
+
+/* 사용 설명서.
+   돋보기는 검색을 확인하는 버튼이 아니다. 검색은 입력하는 대로 이미 걸리므로
+   그 자리를 설명서 입구로 쓴다. 처음 온 사람에게는 그 사실을 한 번만 알린다. */
+const GUIDE_HINT_KEY = 'eceGuideHintSeen';
+
+function openUserGuide(event) {
+    event?.preventDefault();
+    dismissGuideHint();
+    /* 문서로 보내는 대신 이 화면 위에서 바로 짚어준다. 읽고 나서 다시 돌아와
+       찾아야 하는 수고가 없어야 설명서가 실제로 쓰인다. 튜토리얼을 아직
+       못 불러온 상황에서만 글로 된 설명서로 넘긴다. */
+    if (typeof window.startTutorial === 'function') {
+        window.startTutorial();
+        return;
+    }
+    location.href = './guide.html';
+}
+
+function dismissGuideHint() {
+    const hint = document.getElementById('guide-hint');
+    if (hint) hint.hidden = true;
+    try {
+        localStorage.setItem(GUIDE_HINT_KEY, '1');
+    } catch {
+        // 저장이 막힌 브라우저에서는 다음에 다시 뜨더라도 동작에는 지장이 없다.
+    }
+}
+
+function initializeGuideHint() {
+    const hint = document.getElementById('guide-hint');
+    if (!hint) return;
+    let seen = false;
+    try {
+        seen = localStorage.getItem(GUIDE_HINT_KEY) === '1';
+    } catch {
+        // 저장소를 못 읽으면 안내를 띄우지 않는다. 반복해서 뜨는 것보다 낫다.
+        seen = true;
+    }
+    hint.hidden = seen;
 }
 
 function jumpToNoticeSearch() {
@@ -1338,10 +1438,47 @@ function jumpToNoticeSearch() {
     window.setTimeout(() => input.focus({ preventScroll: true }), 420);
 }
 
+/* 왼쪽 위 메뉴 손잡이.
+   늘 떠 있으면 제목과 본문을 가리므로 평소에는 숨겨 둔다. 목록을 조금이라도
+   내리면 나타나고, 손을 떼고 잠시 두면 스스로 사라진다. 검색 줄이 함께 떠
+   있을 때는 그 줄 왼쪽에 나란히 서도록 자리를 옮긴다. */
+const MENU_HANDLE_IDLE_MS = 2600;
+let menuHandleHideTimer = null;
+
+function revealMobileMenuHandle() {
+    const handle = document.querySelector('.mobile-menu-btn');
+    if (!handle || getLayoutMode() !== 'mobile') return;
+    handle.classList.add('is-visible');
+    window.clearTimeout(menuHandleHideTimer);
+    menuHandleHideTimer = window.setTimeout(() => {
+        // 서랍이 열려 있는 동안에는 손잡이를 거두지 않는다.
+        if (isMobileDrawerOpen()) return;
+        handle.classList.remove('is-visible');
+    }, MENU_HANDLE_IDLE_MS);
+}
+
+function syncMobileMenuHandlePosition() {
+    const handle = document.querySelector('.mobile-menu-btn');
+    const bar = document.getElementById('mobile-sticky-search');
+    if (!handle) return;
+    // 검색 줄이 떠 있으면 그 줄 안에 나란히 선 것처럼 맞춘다.
+    handle.classList.toggle('is-with-search', Boolean(bar && bar.classList.contains('visible')));
+}
+
 function watchMobileStickySearch() {
     if (!document.getElementById('mobile-sticky-search')) return;
-    window.addEventListener('scroll', syncMobileStickySearch, { passive: true });
+    const onScroll = () => {
+        syncMobileStickySearch();
+        revealMobileMenuHandle();
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
     window.addEventListener('resize', syncMobileStickySearch, { passive: true });
+    // 손잡이를 만지는 동안에는 사라지지 않게 시계를 다시 돌린다.
+    document.querySelector('.mobile-menu-btn')
+        ?.addEventListener('pointerenter', revealMobileMenuHandle);
+    // 맨 위에서는 스크롤이 없어 아무 신호도 오지 않는다. 처음 한 번 보여 줘
+    // 메뉴가 있다는 것만 알리고 곧 거둔다.
+    revealMobileMenuHandle();
     syncMobileStickySearch();
 }
 
@@ -1527,6 +1664,84 @@ function setFeedbackCategory(category) {
 }
 
 // 익명 피드백 전송. 서버는 메시지와 시각만 저장하고 신원은 남기지 않는다.
+/* 첨부할 화면 사진.
+
+   원본을 그대로 보내면 요즘 휴대폰 사진 한 장이 몇 MB라 익명 문의 하나가
+   서버 저장소를 크게 잡아먹는다. 긴 변을 1600px로 줄이고 JPEG으로 다시
+   그려 보낸다. 글씨를 읽을 수 있을 만큼은 남으면서 크기는 크게 준다. */
+const FEEDBACK_MAX_SHOTS = 3;
+const FEEDBACK_SHOT_MAX_EDGE = 1600;
+let feedbackShots = [];
+
+function readImageFile(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+            const image = new Image();
+            image.onload = () => resolve(image);
+            image.onerror = () => reject(new Error('이미지를 읽지 못했습니다.'));
+            image.src = reader.result;
+        };
+        reader.onerror = () => reject(new Error('파일을 읽지 못했습니다.'));
+        reader.readAsDataURL(file);
+    });
+}
+
+async function shrinkToJpeg(file) {
+    const image = await readImageFile(file);
+    const scale = Math.min(1, FEEDBACK_SHOT_MAX_EDGE / Math.max(image.width, image.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(image.width * scale));
+    canvas.height = Math.max(1, Math.round(image.height * scale));
+    const context = canvas.getContext('2d');
+    // 투명한 부분이 검게 나오지 않도록 흰 바탕을 먼저 깐다.
+    context.fillStyle = '#ffffff';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL('image/jpeg', 0.82);
+}
+
+async function addFeedbackScreenshots(input) {
+    const files = Array.from(input?.files || []);
+    input.value = '';
+    if (!files.length) return;
+
+    const status = document.getElementById('feedback-status');
+    const room = FEEDBACK_MAX_SHOTS - feedbackShots.length;
+    if (room <= 0) {
+        if (status) status.textContent = `사진은 ${FEEDBACK_MAX_SHOTS}장까지 붙일 수 있습니다.`;
+        return;
+    }
+    for (const file of files.slice(0, room)) {
+        if (!/^image\//.test(file.type)) continue;
+        try {
+            feedbackShots.push(await shrinkToJpeg(file));
+        } catch {
+            if (status) status.textContent = '읽지 못한 사진이 있어 건너뛰었습니다.';
+        }
+    }
+    renderFeedbackShots();
+}
+
+function removeFeedbackScreenshot(index) {
+    feedbackShots.splice(index, 1);
+    renderFeedbackShots();
+}
+
+function renderFeedbackShots() {
+    const list = document.getElementById('feedback-shot-list');
+    if (!list) return;
+    list.innerHTML = feedbackShots.map((dataUrl, index) => `
+        <figure class="feedback-shot">
+            <img src="${escapeHtml(dataUrl)}" alt="첨부한 화면 사진 ${index + 1}">
+            <button type="button" class="feedback-shot-remove" aria-label="${index + 1}번째 사진 빼기"
+                    onclick="removeFeedbackScreenshot(${index})">×</button>
+        </figure>
+    `).join('');
+    const add = document.getElementById('feedback-shot-input')?.closest('.feedback-shot-add');
+    if (add) add.classList.toggle('is-full', feedbackShots.length >= FEEDBACK_MAX_SHOTS);
+}
+
 async function submitFeedback() {
     const input = document.getElementById('feedback-message');
     const status = document.getElementById('feedback-status');
@@ -1550,9 +1765,15 @@ async function submitFeedback() {
     try {
         await apiRequest('/api/feedback', {
             method: 'POST',
-            body: JSON.stringify({ message, category: activeFeedbackCategory })
+            body: JSON.stringify({
+                message,
+                category: activeFeedbackCategory,
+                screenshots: feedbackShots
+            })
         });
         input.value = '';
+        feedbackShots = [];
+        renderFeedbackShots();
         setStatus('보내주셔서 감사합니다. 익명으로 전달되었습니다.');
     } catch (error) {
         setStatus(error.message || '전송에 실패했습니다. 잠시 후 다시 시도해주세요.', true);
@@ -1715,7 +1936,10 @@ function setFilterPanelOpen(open) {
     if (open) buildHostButtons();
 }
 
-function toggleFilterPanel() {
+function toggleFilterPanel(event) {
+    // 칩의 x는 바 안에 있다. 손가락이 조금만 빗나가도 바가 눌린 것으로 잡혀
+    // 패널이 닫혀 버리므로, 칩 영역에서 시작한 누름은 여닫기로 보지 않는다.
+    if (event?.target?.closest?.('.filter-active-chips')) return;
     const open = !document.getElementById('filter-panel')?.classList.contains('open');
     setFilterPanelOpen(open);
 }
@@ -1766,10 +1990,11 @@ async function loadCategories() {
 const LEGACY_CATEGORY_REDIRECTS = Object.freeze({
     application: 'opportunity',
     academics: 'academic',
-    'benefits-partnerships': 'benefit',
+    'benefits-partnerships': 'community',
     campus: 'community',
     governance: 'community',
-    survey: 'benefit',
+    // 옛 '혜택' 칸은 없앴다. 그 자리에 설문가 들어왔고, 제휴·할인은 행사로 갔다.
+    benefit: 'community',
     expired: 'all'
 });
 
@@ -1788,36 +2013,42 @@ function buildCategoryTabs() {
     const current = selectedCategoryFilters.size === 0
         ? 'all'
         : (selectedCategoryFilters.size === 1 ? [...selectedCategoryFilters][0] : 'multi');
-    let html = `<button type="button" class="category-tab ${current === 'all' ? 'active' : ''}" data-category="all" onclick="selectCategoryTab('all')">전체</button>`;
+    let html = `<button type="button" class="category-tab ${!relatedTabActive && current === 'all' ? 'active' : ''}" data-category="all" onclick="selectCategoryTab('all')">전체</button>`;
     html += orderedNoticeCategories().map(category => {
         const id = Number(category.id);
-        return `<button type="button" class="category-tab ${current === id ? 'active' : ''}" data-category="${escapeHtml(category.slug)}" onclick="selectCategoryTab('${escapeHtml(category.slug)}')">${escapeHtml(category.name)}</button>`;
+        const on = !relatedTabActive && current === id;
+        return `<button type="button" class="category-tab ${on ? 'active' : ''}" data-category="${escapeHtml(category.slug)}" onclick="selectCategoryTab('${escapeHtml(category.slug)}')">${escapeHtml(category.name)}</button>`;
     }).join('');
+    html += `<button type="button" class="category-tab ${relatedTabActive ? 'active' : ''}" data-category="${RELATED_TAB_SLUG}" title="학부 홈페이지에서 자동으로 모아 온 원문 공지" onclick="selectCategoryTab('${RELATED_TAB_SLUG}')">관련</button>`;
     inner.innerHTML = html;
 }
 
 function selectCategoryTab(value) {
-    const category = categoryFromTabValue(value);
+    relatedTabActive = value === RELATED_TAB_SLUG;
+    const category = relatedTabActive ? null : categoryFromTabValue(value);
     selectedCategoryFilters.clear();
     archiveTabActive = false;
     if (category) selectedCategoryFilters.add(Number(category.id));
+    const activeSlug = relatedTabActive ? RELATED_TAB_SLUG : (category ? category.slug : 'all');
     document.querySelectorAll('#category-tabs-inner .category-tab').forEach(tab => {
-        const selected = !category
-            ? tab.dataset.category === 'all'
-            : tab.dataset.category === category.slug;
+        const selected = tab.dataset.category === activeSlug;
         tab.classList.toggle('active', selected);
         tab.setAttribute('aria-current', selected ? 'true' : 'false');
     });
-    filterState.sort = getDefaultSortForCategory(category?.slug || 'all');
+    filterState.sort = getDefaultSortForCategory(activeSlug);
     syncNoticeSortChips();
     updateFilterChips();
     filterCards(true);
 }
 
+/* 기본 정렬.
+   마감이 있어야 뜻이 있는 칸만 마감임박순으로 연다. 기회와 설문가
+   그렇다. 학사·행사는 언제 올라왔는지가 중요하고, '관련'은 학부 홈페이지에
+   실린 차례 그대로 보는 편이 자연스러워 최신순으로 둔다. */
 function getDefaultSortForCategory(value = 'all') {
-    if (value === 'all') return '최신순';
+    if (value === 'all' || value === RELATED_TAB_SLUG) return '최신순';
     const category = categoryFromTabValue(value);
-    return ['opportunity', 'benefit'].includes(category?.slug)
+    return ['opportunity', 'survey'].includes(category?.slug)
         ? '마감임박순'
         : '최신순';
 }
@@ -2030,6 +2261,7 @@ function resetTargetFilter() {
 function clearCategoryFilters() {
     selectedCategoryFilters.clear();
     archiveTabActive = false;
+    relatedTabActive = false;
     buildCategoryTabs();
     filterState.sort = getDefaultSortForCategory('all');
     syncNoticeSortChips();
@@ -2145,7 +2377,13 @@ function renderNoticeCards(animate = false) {
             ? `<div class="card-poster">
                    <img class="card-img-preview" alt="" data-thumbnail-src="${escapeHtml(notice.thumbnailUrl || '/icons/default-notice-thumbnail.png')}">
                </div>`
-            : `<div class="card-poster is-text">${renderPosterTitle(rawTitle)}</div>`;
+            : `<div class="card-poster is-text">
+                   <span class="card-poster-rule" aria-hidden="true"></span>
+                   ${renderPosterTitle(rawTitle)}
+                   ${datePresentation.dateLabel
+                       ? `<span class="card-poster-date">${escapeHtml(datePresentation.dateLabel)}</span>`
+                       : ''}
+               </div>`;
 
         const cardClass = [
             'card',
@@ -2477,16 +2715,47 @@ async function copyCurrentViewerImage(event) {
     }
 }
 
+/* 공지를 여는 동안 띄우는 표시. 곧바로 띄우면 빠른 회선에서 깜빡이기만
+   하므로, 조금 걸릴 때에만 나타나게 잠깐 미룬다. */
+let noticeLoadingTimer = null;
+
+function showNoticeLoading() {
+    const overlay = document.getElementById('notice-loading');
+    if (!overlay) return;
+    window.clearTimeout(noticeLoadingTimer);
+    noticeLoadingTimer = window.setTimeout(() => {
+        overlay.hidden = false;
+        requestAnimationFrame(() => overlay.classList.add('visible'));
+    }, 220);
+}
+
+function hideNoticeLoading() {
+    const overlay = document.getElementById('notice-loading');
+    window.clearTimeout(noticeLoadingTimer);
+    noticeLoadingTimer = null;
+    if (!overlay) return;
+    overlay.classList.remove('visible');
+    window.setTimeout(() => {
+        if (!overlay.classList.contains('visible')) overlay.hidden = true;
+    }, 160);
+}
+
 async function openDetail(idStr) {
     cancelNoticeHoverPreview();
     currentViewId = String(idStr);
     let notice;
+    // 느린 회선에서는 상세가 오기까지 몇 초씩 걸린다. 그동안 아무 반응이
+    // 없으면 눌리지 않은 줄 알고 다시 누르게 되므로 불러오는 중임을 알린다.
+    showNoticeLoading();
     try {
         notice = await getNoticeDetail(currentViewId);
     } catch (error) {
         console.error('공지 상세 불러오기 실패:', error);
+        hideNoticeLoading();
         alert('공지 상세를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.');
         return;
+    } finally {
+        hideNoticeLoading();
     }
 
     notice.views = (notice.views || 0) + 1;
@@ -2500,8 +2769,11 @@ async function openDetail(idStr) {
             if (freshIdx !== -1) {
                 notices[freshIdx].views = result.notice.views;
                 if (String(currentViewId) === String(result.notice.id)) {
-                    document.getElementById('detail-meta').innerHTML =
-                        formatDetailMeta(datePresentation.dateLabel, result.notice.views);
+                    document.getElementById('detail-meta').innerHTML = formatDetailMeta(
+                        datePresentation.dateLabel,
+                        result.notice.views,
+                        noticeRegisteredOn(result.notice)
+                    );
                 }
                 renderNoticeCards();
             }
@@ -2519,8 +2791,11 @@ async function openDetail(idStr) {
         ${notice.host ? `<span class="tag">${escapeHtml(notice.host)}</span>` : ''}
     `;
     document.getElementById('detail-title').innerText = notice.title || "";
-    document.getElementById('detail-meta').innerHTML =
-        formatDetailMeta(datePresentation.dateLabel, notice.views);
+    document.getElementById('detail-meta').innerHTML = formatDetailMeta(
+        datePresentation.dateLabel,
+        notice.views,
+        noticeRegisteredOn(notice)
+    );
     document.getElementById('detail-summary').innerHTML = (notice.aiSummary || []).map(item => `<li>${escapeHtml(item)}</li>`).join('');
     document.getElementById('detail-content').innerHTML = linkify(notice.content || "");
 
@@ -2791,23 +3066,34 @@ function onNoticeHandlePointerMove(event) {
    조금이라도 겹치면 그 표적을 켠다. 겹치는 표적이 여럿이면 더 많이
    겹친 쪽을 고른다. 커서를 정확히 올려야만 반응하면 큰 카드를 들고
    작은 버튼을 맞추기가 어렵다. */
+/* 표적을 고르는 규칙은 하는 일에 따라 다르다.
+
+   놓기(왼쪽·오른쪽)는 커서가 표적 위에 있어야 한다. 카드 전체로 판정하면
+   목록 위를 지나가기만 해도 표적이 켜져, 어디에 놓이는지 종잡을 수 없다.
+
+   버리기는 카드가 겹치기만 해도 켜진다. 화면 아래 구석까지 커서를 정확히
+   끌고 가는 것보다, 카드를 그쪽으로 던지는 편이 자연스럽다. */
 function findDropZoneUnderDrag(clientX, clientY, ghostElement = noticeSplitDragOverlay) {
     const zones = Array.from(document.querySelectorAll('.split-drop-zone, .compare-empty-slot'))
         .filter(zone => zone.offsetParent !== null || zone.getClientRects().length);
     if (!zones.length) return null;
 
-    const ghost = ghostElement?.getBoundingClientRect();
-    // 분신이 아직 없으면 커서를 아주 작은 사각형으로 본다.
-    const dragRect = ghost && ghost.width
-        ? ghost
-        : { left: clientX, right: clientX + 1, top: clientY, bottom: clientY + 1 };
+    // 놓기 표적은 커서가 직접 올라가 있을 때만 잡는다.
+    const pointed = document.elementFromPoint?.(clientX, clientY)
+        ?.closest?.('.split-drop-zone, .compare-empty-slot');
+    if (pointed) return pointed;
 
+    const ghost = ghostElement?.getBoundingClientRect();
+    if (!ghost || !ghost.width) return null;
+
+    // 남은 것은 버리기뿐이다. 카드가 겹친 넓이가 가장 큰 것을 고른다.
     let best = null;
     let bestArea = 0;
     for (const zone of zones) {
+        if (zone.dataset?.splitSide !== 'trash') continue;
         const rect = zone.getBoundingClientRect();
-        const overlapX = Math.min(dragRect.right, rect.right) - Math.max(dragRect.left, rect.left);
-        const overlapY = Math.min(dragRect.bottom, rect.bottom) - Math.max(dragRect.top, rect.top);
+        const overlapX = Math.min(ghost.right, rect.right) - Math.max(ghost.left, rect.left);
+        const overlapY = Math.min(ghost.bottom, rect.bottom) - Math.max(ghost.top, rect.top);
         if (overlapX <= 0 || overlapY <= 0) continue;
         const area = overlapX * overlapY;
         if (area > bestArea) {
@@ -2815,11 +3101,7 @@ function findDropZoneUnderDrag(clientX, clientY, ghostElement = noticeSplitDragO
             best = zone;
         }
     }
-    // 겹치는 게 없으면 커서가 직접 올라가 있는지 마지막으로 확인한다.
-    return best
-        || document.elementFromPoint?.(clientX, clientY)
-            ?.closest?.('.split-drop-zone, .compare-empty-slot')
-        || null;
+    return best;
 }
 
 function onNoticeHandlePointerEnd(event) {
@@ -3251,14 +3533,67 @@ function clearCompareBlock() {
     renderCompareChange();
 }
 
+/* 더보기·접기.
+   예전에는 누를 때마다 비교 공간을 통째로 다시 그렸다. 글이 길면 그리는 데
+   시간이 걸려 툭 끊긴 느낌이 났고 스크롤 위치도 튀었다. 지금은 다시 그리지
+   않고 해당 블록의 높이만 옮긴다. 높이는 한 번만 재고 나머지는 CSS가 맡는다. */
+const COMPARE_BODY_COLLAPSED_HEIGHT = 440;
+
 function toggleCompareBlockExpansion(idStr) {
     const id = String(idStr);
-    if (expandedCompareBlocks.has(id)) {
-        expandedCompareBlocks.delete(id);
-    } else {
-        expandedCompareBlocks.add(id);
+    const expanding = !expandedCompareBlocks.has(id);
+    if (expanding) expandedCompareBlocks.add(id);
+    else expandedCompareBlocks.delete(id);
+
+    const block = document.querySelector(`.compare-col[data-compare-id="${CSS.escape(id)}"]`);
+    const body = block?.querySelector('.compare-col-body');
+    if (!block || !body) {
+        // 화면에 없으면 예전처럼 다시 그린다.
+        renderCompareSpace(compareBlocks);
+        return;
     }
-    renderCompareSpace(compareBlocks);
+
+    const button = block.querySelector('.compare-col-more');
+    if (button) {
+        button.textContent = expanding ? '접기' : '더보기';
+        button.setAttribute('aria-expanded', expanding ? 'true' : 'false');
+    }
+    animateCompareBodyHeight(block, body, expanding);
+}
+
+function animateCompareBodyHeight(block, body, expanding) {
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+        block.classList.toggle('is-expanded', expanding);
+        body.style.removeProperty('max-height');
+        return;
+    }
+
+    const startHeight = body.getBoundingClientRect().height;
+    // 펼쳤을 때의 실제 높이를 재려면 잠시 제한을 풀어야 한다. 재는 동안에는
+    // 전환을 꺼 두어 중간 상태가 화면에 비치지 않게 한다.
+    body.style.transition = 'none';
+    body.style.maxHeight = 'none';
+    block.classList.toggle('is-expanded', expanding);
+    const endHeight = expanding ? body.scrollHeight : COMPARE_BODY_COLLAPSED_HEIGHT;
+
+    body.style.maxHeight = `${startHeight}px`;
+    body.style.overflow = 'hidden';
+    // 강제로 한 번 읽어 위 값이 시작점으로 굳게 만든다.
+    void body.offsetHeight;
+    body.style.removeProperty('transition');
+
+    requestAnimationFrame(() => {
+        body.style.maxHeight = `${endHeight}px`;
+    });
+
+    const settle = event => {
+        if (event.propertyName !== 'max-height') return;
+        body.removeEventListener('transitionend', settle);
+        // 펼친 뒤에는 제한을 아예 풀어야 내용이 더 늘어나도 잘리지 않는다.
+        body.style.removeProperty('max-height');
+        body.style.removeProperty('overflow');
+    };
+    body.addEventListener('transitionend', settle);
 }
 
 function renderCompareSpace(blockIds = compareBlocks) {
@@ -3590,6 +3925,7 @@ document.addEventListener('DOMContentLoaded', async function () {
     watchNoticeSortThumb();
     watchNoticeHoverPreviewScroll();
     watchMobileStickySearch();
+    initializeGuideHint();
 
     await Promise.all([loadData(), loadCategories()]);
     const initialNoticePage = restoreNoticeListStateFromUrl();

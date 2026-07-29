@@ -1,17 +1,25 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 900" role="img" aria-labelledby="title desc">
-  <title id="title">학생 모집 임시 배너</title>
-  <desc id="desc">밝은 배경 위에 학생 모집 안내가 적힌 임시 세로 배너</desc>
-  <rect width="720" height="900" fill="#eef3fb"/>
-  <rect x="50" y="50" width="620" height="800" fill="#fff" stroke="#1f3f8f" stroke-width="4"/>
-  <text x="92" y="140" fill="#1f3f8f" font-family="Arial, sans-serif" font-size="20" font-weight="700">SNU ECE</text>
-  <text x="92" y="260" fill="#17337a" font-family="Arial, sans-serif" font-size="70" font-weight="800">STUDENT</text>
-  <text x="92" y="338" fill="#17337a" font-family="Arial, sans-serif" font-size="70" font-weight="800">RECRUIT</text>
-  <rect x="92" y="385" width="536" height="92" fill="#1f3f8f"/>
-  <text x="360" y="444" fill="#fff" font-family="Arial, sans-serif" font-size="30" font-weight="700" text-anchor="middle">학생 모집 안내</text>
-  <g fill="none" stroke="#1f3f8f" stroke-width="12">
-    <circle cx="234" cy="610" r="52"/>
-    <circle cx="486" cy="610" r="52"/>
-    <path d="M132 744c12-72 48-108 102-108s90 36 102 108M384 744c12-72 48-108 102-108s90 36 102 108"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 2400" role="img" aria-labelledby="t d">
+  <title id="t">SNU ECE 학생 모집 임시 배너</title>
+  <desc id="d">흰 바탕에 학생 모집 안내가 적힌 세로 3대 10 임시 배너</desc>
+  <rect width="720" height="2400" fill="#eef2f9"/>
+  <rect x="40" y="40" width="640" height="2320" fill="#ffffff"/>
+
+  <rect x="96" y="150" width="150" height="46" fill="#17337a"/>
+  <text x="171" y="182" fill="#ffffff" font-family="Arial, sans-serif" font-size="22" font-weight="700" text-anchor="middle">RECRUIT</text>
+
+  <text x="96" y="360" fill="#17337a" font-family="Arial, sans-serif" font-size="96" font-weight="800">JOIN</text>
+  <text x="96" y="470" fill="#17337a" font-family="Arial, sans-serif" font-size="96" font-weight="800">US</text>
+  <rect x="96" y="530" width="260" height="8" fill="#17337a"/>
+
+  <text x="96" y="640" fill="#4a5a80" font-family="Arial, sans-serif" font-size="36">SNU ECE 공지방</text>
+  <text x="96" y="700" fill="#4a5a80" font-family="Arial, sans-serif" font-size="30">함께할 사람을 찾고 있습니다.</text>
+
+  <g transform="translate(360 1350)">
+    <circle cx="0" cy="0" r="230" fill="#17337a" opacity=".10"/>
+    <g fill="none" stroke="#17337a" stroke-width="26" stroke-linecap="round"><circle cx="-95" cy="-70" r="58"/><path d="M-190 110c0-52 43-95 95-95s95 43 95 95"/><circle cx="105" cy="-30" r="46"/><path d="M25 130c0-44 36-80 80-80s80 36 80 80"/></g>
   </g>
-  <text x="92" y="812" fill="#65759b" font-family="Arial, sans-serif" font-size="20">TEMPORARY BANNER 02</text>
+
+  <rect x="96" y="2180" width="528" height="2" fill="#17337a" opacity=".5"/>
+  <text x="96" y="2250" fill="#4a5a80" font-family="Arial, sans-serif" font-size="26">TEMPORARY BANNER 02</text>
+  <text x="624" y="2250" fill="#4a5a80" font-family="Arial, sans-serif" font-size="26" text-anchor="end">720 × 2400</text>
 </svg>

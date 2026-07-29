@@ -139,7 +139,7 @@ const initialNoticeAdminToken = NOTICE_ADMIN_TOKEN;
 const defaultNotices = [];
 
 const MAX_RIGHT_RAIL_BANNERS = 5;
-const PROMO_TYPES = new Set(['club', 'project', 'council']);
+const PROMO_TYPES = new Set(['club', 'project', 'council', 'survey', 'etc']);
 const PROMO_STATUSES = new Set(['pending', 'approved', 'rejected']);
 const ADMIN_SESSION_COOKIE = 'ece_admin_session';
 const ADMIN_SESSION_TTL_MS = 8 * 60 * 60 * 1000;
@@ -679,8 +679,8 @@ function normalizeBannerPayload(body = {}) {
     const placement = Object.hasOwn(body, 'placement')
         ? String(body.placement).trim()
         : 'header';
-    if (!['header', 'right_rail'].includes(placement)) {
-        throw new TypeError('배너 표시 위치는 header 또는 right_rail이어야 합니다.');
+    if (!['header', 'right_rail', 'staging'].includes(placement)) {
+        throw new TypeError('배너 표시 위치는 header, right_rail, staging 중 하나여야 합니다.');
     }
 
     const linkUrl = String(body.linkUrl || '').trim();
@@ -716,7 +716,7 @@ function normalizeBannerPayload(body = {}) {
     };
 
     if (!PROMO_TYPES.has(payload.type)) {
-        throw new TypeError('학내 홍보 유형은 동아리, 프로젝트, 학생회 중 하나여야 합니다.');
+        throw new TypeError('학내 홍보 유형은 동아리, 프로젝트, 학생회, 설문, 기타 중 하나여야 합니다.');
     }
     if (!PROMO_STATUSES.has(payload.status)) {
         throw new TypeError('학내 홍보 상태는 승인 대기, 승인, 반려 중 하나여야 합니다.');
@@ -777,6 +777,9 @@ function normalizeNoticeInput(body = {}) {
     const target = String(body.target || '전체').trim() || '전체';
     const host = String(body.host || '기타').trim() || '기타';
     const deadlineAt = normalizeDeadlineAt(body.deadlineAt || body.deadline || null);
+    // 행사가 열리는 날 또는 신청을 받기 시작하는 날. 마감일과 짝을 이뤄
+    // 기간으로 보여준다. 없으면 등록일이 그 자리를 대신한다.
+    const startDate = normalizeDateOnly(body.startDate || body.startAt || null);
     const isAlwaysOpen = body.isAlwaysOpen === true || body.isAlwaysOpen === 'true';
     const isPinned = body.isPinned === true || body.isPinned === 'true';
     const isHidden = body.isHidden === true || body.isHidden === 'true';
@@ -806,6 +809,7 @@ function normalizeNoticeInput(body = {}) {
         host,
         deadline: deadlineAt ? deadlineAt.slice(0, 10) : '',
         deadlineAt,
+        startDate,
         isAlwaysOpen,
         isPinned,
         isHidden,
@@ -845,6 +849,12 @@ function normalizeDeadline(deadline) {
     return value ? value : null;
 }
 
+// 시작일은 시각까지 따질 일이 없어 날짜만 받는다.
+function normalizeDateOnly(value) {
+    const text = String(value || '').trim().slice(0, 10);
+    return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : null;
+}
+
 function toClientNotice(row) {
     if (!row) return null;
     const categoryIds = Array.isArray(row.categoryIds)
@@ -859,6 +869,7 @@ function toClientNotice(row) {
         host: row.host || '기타',
         deadline: row.deadline || (row.deadlineAt || row.deadline_at || '').slice(0, 10),
         deadlineAt: row.deadlineAt || row.deadline_at || null,
+        startDate: String(row.startDate || row.start_date || '').slice(0, 10) || null,
         expiresAt: row.expiresAt || row.expires_at || null,
         isAlwaysOpen: row.isAlwaysOpen === true || row.is_always_open === true,
         isPinned: row.isPinned === true || row.is_pinned === true,
@@ -901,6 +912,7 @@ function toNoticeSummary(row) {
         host: notice.host,
         deadline: notice.deadline,
         deadlineAt: notice.deadlineAt,
+        startDate: notice.startDate,
         expiresAt: notice.expiresAt,
         isAlwaysOpen: notice.isAlwaysOpen,
         isPinned: notice.isPinned,
@@ -1326,6 +1338,8 @@ function normalizeNoticeListFilters(input = {}) {
     const allowedDeadlineStates = new Set(['전체', '진행중', '마감임박', '상시', '마감됨']);
     const allowedImageStates = new Set(['전체', '있음', '없음']);
     const allowedViewStates = new Set(['전체', '100이상', '50이상', '10미만']);
+    // 출처: 학부 홈페이지에서 자동으로 모아 온 것과 손으로 올린 것을 가른다.
+    const allowedSources = new Set(['전체', 'crawled', 'manual']);
     const allowedSorts = new Set(['최신순', '마감임박순', '조회순', '조회수순', '조회수낮은순']);
     const cleanDate = value => {
         const normalized = String(value || '').trim();
@@ -1335,6 +1349,7 @@ function normalizeNoticeListFilters(input = {}) {
     const hasImage = String(input.hasImage || '전체').trim();
     const views = String(input.views || '전체').trim();
     const sort = String(input.sort || '최신순').trim();
+    const source = String(input.source || '전체').trim();
 
     const archiveMode = input.archive === 'expired' ? 'expired' : '';
     const archive = input.archive === 'true' || input.archive === true || archiveMode === 'expired';
@@ -1347,6 +1362,7 @@ function normalizeNoticeListFilters(input = {}) {
         host: String(input.host || '전체').trim().slice(0, 100) || '전체',
         hasImage: allowedImageStates.has(hasImage) ? hasImage : '전체',
         views: allowedViewStates.has(views) ? views : '전체',
+        source: allowedSources.has(source) ? source : '전체',
         sort: allowedSorts.has(sort) ? sort : '최신순',
         dateFrom: cleanDate(input.dateFrom),
         dateTo: cleanDate(input.dateTo),
@@ -1404,6 +1420,14 @@ function applyNoticeListFilters(rows, filters, { now = new Date() } = {}) {
         if (filters.actionOnly && !notice.requiresAction) return false;
 
         if (filters.host !== '전체' && notice.host !== filters.host) return false;
+        /* 출처. 손으로 올린 것은 sourceType이 manual이고, 학부 홈페이지에서
+           긁어 온 것은 그 출처 이름이 붙는다. 값이 비어 있으면 손으로 올린
+           옛 공지로 본다. */
+        if (filters.source !== '전체') {
+            const crawled = String(row.sourceType || row.source_type || 'manual') !== 'manual';
+            if (filters.source === 'crawled' && !crawled) return false;
+            if (filters.source === 'manual' && crawled) return false;
+        }
         if (filters.categoryIds.length > 0
             && !filters.categoryIds.some(id => notice.categoryIds.includes(id))) return false;
 
@@ -1518,10 +1542,10 @@ async function listNoticeFilterRows() {
         const { data, error } = await supabase
             .from(SUPABASE_NOTICES_TABLE)
             .select(`
-                id,title,content,target,targets,host,deadline,deadline_at,expires_at,is_always_open,is_pinned,is_hidden,
+                id,title,content,target,targets,host,deadline,deadline_at,start_date,expires_at,is_always_open,is_pinned,is_hidden,
                 category,has_reward,reward_note,requires_action,survey_reward,
                 ai_summary,keywords,ocr_text,views,
-                source_published_at,created_at,updated_at,last_crawled_at,has_images,notice_categories(category_id)
+                source_type,source_published_at,created_at,updated_at,last_crawled_at,has_images,notice_categories(category_id)
             `)
             .eq('is_deleted', false)
             .eq('status', 'published')
@@ -2506,6 +2530,33 @@ async function writeFeedback(items) {
     await fs.writeFile(feedbackFilePath, JSON.stringify(items, null, 2), 'utf-8');
 }
 
+/* 첨부 사진.
+   글로만 적으면 어느 화면의 무엇이 잘못됐는지 알기 어렵다. 화면을 찍어
+   보내면 고치는 쪽에서 훨씬 빨리 알아본다. 사진은 JSON에 담지 않고 파일로
+   따로 두는데, 문의 목록을 읽을 때마다 사진까지 통째로 읽으면 무거워지기
+   때문이다. 배너 신청 이미지와 같은 자리에 같은 방식으로 쌓는다. */
+const FEEDBACK_MAX_SHOTS = 3;
+const FEEDBACK_SHOT_MAX_BYTES = 1_400_000;
+
+function readFeedbackShots(input) {
+    const list = Array.isArray(input) ? input.slice(0, FEEDBACK_MAX_SHOTS) : [];
+    const buffers = [];
+    for (const dataUrl of list) {
+        const value = String(dataUrl || '');
+        if (!/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(value) || value.length > 1_900_000) {
+            throw new TypeError('첨부한 사진을 다시 선택해주세요.');
+        }
+        const buffer = Buffer.from(value.slice(value.indexOf(',') + 1), 'base64');
+        // JPEG는 늘 FF D8 FF로 시작한다. 확장자만 바꾼 파일을 걸러낸다.
+        if (buffer.length === 0 || buffer.length > FEEDBACK_SHOT_MAX_BYTES
+            || buffer[0] !== 0xff || buffer[1] !== 0xd8 || buffer[2] !== 0xff) {
+            throw new TypeError('첨부한 사진 형식을 확인해주세요.');
+        }
+        buffers.push(buffer);
+    }
+    return buffers;
+}
+
 app.post('/api/feedback', async (req, res) => {
     try {
         const message = String(req.body?.message || '').trim();
@@ -2517,12 +2568,31 @@ app.post('/api/feedback', async (req, res) => {
             return res.status(400).json({ error: '피드백은 2000자 이내로 입력해주세요.' });
         }
 
+        let shots;
+        try {
+            shots = readFeedbackShots(req.body?.screenshots);
+        } catch (error) {
+            return res.status(400).json({ error: error.message });
+        }
+
+        const id = crypto.randomUUID();
+        const screenshotFileNames = [];
+        if (shots.length) {
+            await fs.mkdir(bannerInquiryImageDir, { recursive: true });
+            for (const [index, buffer] of shots.entries()) {
+                const fileName = `${id}-shot${index}.jpg`;
+                await fs.writeFile(path.join(bannerInquiryImageDir, fileName), buffer);
+                screenshotFileNames.push(fileName);
+            }
+        }
+
         const items = await readFeedback();
         // 익명성 유지: 작성자를 특정할 수 있는 정보는 어떤 것도 저장하지 않는다.
         items.unshift({
-            id: crypto.randomUUID(),
+            id,
             category,
             message,
+            screenshotFileNames,
             createdAt: new Date().toISOString()
         });
         await writeFeedback(items.slice(0, 1000));
@@ -2698,7 +2768,8 @@ app.get('/api/admin/feedback', requireAnyAdmin, async (req, res) => {
                     || imageDataUrl
                 ),
                 hasDesktopImage: Boolean(item.desktopImageFileName || item.imageFileName || imageDataUrl),
-                hasMobileImage: Boolean(item.mobileImageFileName)
+                hasMobileImage: Boolean(item.mobileImageFileName),
+                screenshotCount: Array.isArray(item.screenshotFileNames) ? item.screenshotFileNames.length : 0
             }))
         });
     } catch (error) {
@@ -2714,10 +2785,15 @@ app.get('/api/admin/feedback/:id/image', requireAnyAdmin, async (req, res) => {
             const legacyBuffer = Buffer.from(item.imageDataUrl.slice(item.imageDataUrl.indexOf(',') + 1), 'base64');
             return res.type('jpeg').send(legacyBuffer);
         }
+        // 문의에 붙은 첨부 사진은 순번으로 고른다.
+        const shotIndex = Number.parseInt(req.query?.shot, 10);
+        const shots = Array.isArray(item?.screenshotFileNames) ? item.screenshotFileNames : [];
         const variant = req.query?.variant === 'mobile' ? 'mobile' : 'desktop';
-        const imageFileName = variant === 'mobile'
-            ? item?.mobileImageFileName
-            : (item?.desktopImageFileName || item?.imageFileName);
+        const imageFileName = Number.isInteger(shotIndex)
+            ? shots[shotIndex]
+            : (variant === 'mobile'
+                ? item?.mobileImageFileName
+                : (item?.desktopImageFileName || item?.imageFileName));
         if (!imageFileName || path.basename(imageFileName) !== imageFileName) {
             return res.status(404).json({ error: '배너 이미지를 찾을 수 없습니다.' });
         }
@@ -2747,7 +2823,10 @@ app.delete('/api/admin/feedback/:id', requireAnyAdmin, async (req, res) => {
         const removableImages = [
             removed?.imageFileName,
             removed?.desktopImageFileName,
-            removed?.mobileImageFileName
+            removed?.mobileImageFileName,
+            // 문의를 지우면 붙어 있던 화면 사진도 함께 지운다. 남겨 두면
+            // 아무도 볼 수 없는 파일이 저장소에 계속 쌓인다.
+            ...(Array.isArray(removed?.screenshotFileNames) ? removed.screenshotFileNames : [])
         ].filter(fileName => fileName && path.basename(fileName) === fileName);
         await Promise.all(removableImages.map(fileName =>
             fs.rm(path.join(bannerInquiryImageDir, fileName), { force: true }).catch(() => {})
@@ -3203,7 +3282,9 @@ app.post('/api/summary', requireNoticeAdmin, async (req, res) => {
 
 app.get('/api/banner-slides', async (req, res) => {
     try {
-        const slides = await listBannerSlides();
+        // 임시 배너는 아직 자리를 못 정한 대기 항목이라 공개 화면에 내보내지 않는다.
+        const slides = (await listBannerSlides())
+            .filter(slide => slide.placement !== 'staging');
         res.json({ slides });
     } catch (error) {
         res.status(500).json({ error: error.message || '배너 조회 실패' });
@@ -3290,6 +3371,68 @@ app.put('/api/banner-slides/:id', requireBannerAdmin, async (req, res) => {
     }
 });
 
+/* 임시 배너를 실제 노출 자리로 올린다.
+   승인만으로는 공개되지 않고, 다섯 자리 중 어디를 바꿀지 관리자가 고른 뒤에야
+   레일에 오른다. 자리를 비워 두고 싶으면 targetId 없이 빈 자리를 고르면 된다.
+   바뀌어 내려가는 배너는 지우지 않고 임시 자리로 물러나 되돌릴 수 있게 둔다. */
+app.post('/api/banner-slides/:id/promote', requireBannerAdmin, async (req, res) => {
+    try {
+        const id = Number(req.params.id);
+        const targetOrder = Number(req.body?.order);
+        if (!Number.isFinite(id)) {
+            return res.status(400).json({ error: '유효하지 않은 id입니다.' });
+        }
+        if (!Number.isInteger(targetOrder) || targetOrder < 0 || targetOrder >= MAX_RIGHT_RAIL_BANNERS) {
+            return res.status(400).json({
+                error: `바꿀 자리는 1번부터 ${MAX_RIGHT_RAIL_BANNERS}번 사이여야 합니다.`
+            });
+        }
+
+        const all = await listBannerSlides(Date.now(), { includeUnpublished: true });
+        const staged = all.find(slide => Number(slide.id) === id);
+        if (!staged) {
+            return res.status(404).json({ error: '임시 배너를 찾을 수 없습니다.' });
+        }
+        if (staged.placement !== 'staging') {
+            return res.status(400).json({ error: '임시 배너만 자리에 올릴 수 있습니다.' });
+        }
+        if (!staged.src || !staged.mobileSrc) {
+            return res.status(400).json({
+                error: '데스크탑과 모바일 이미지가 모두 있어야 자리에 올릴 수 있습니다.'
+            });
+        }
+
+        // 그 자리에 있던 배너는 임시 자리로 물러난다. 실수로 바꿔도 되돌릴 수 있다.
+        const replaced = all.find(slide =>
+            slide.placement === 'right_rail'
+            && slide.status === 'approved'
+            && Number(slide.order) === targetOrder);
+        if (replaced) {
+            await updateBannerSlide(Number(replaced.id), {
+                ...replaced,
+                placement: 'staging',
+                status: 'approved',
+                order: 0
+            });
+        }
+
+        const promoted = await updateBannerSlide(id, {
+            ...staged,
+            placement: 'right_rail',
+            status: 'approved',
+            order: targetOrder
+        });
+
+        res.json({
+            ok: true,
+            slide: promoted,
+            replacedId: replaced ? Number(replaced.id) : null
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message || '임시 배너 반영 실패' });
+    }
+});
+
 app.delete('/api/banner-slides/:id', requireBannerAdmin, async (req, res) => {
     try {
         const id = Number(req.params.id);
@@ -3308,10 +3451,14 @@ app.delete('/api/banner-slides/:id', requireBannerAdmin, async (req, res) => {
     }
 });
 
-// 테스트가 잠금 상태를 되돌릴 수 있게 열어 둔다. 같은 IP를 여러 테스트가
-// 공유하므로, 잠근 채로 두면 뒤따르는 테스트가 로그인하지 못한다.
+/* 테스트가 로그인 제한을 되돌릴 수 있게 열어 둔다. 같은 IP를 여러 테스트가
+   공유하므로, 실패 기록이나 요청 수 제한이 남아 있으면 뒤따르는 테스트가
+   로그인하지 못한다. 둘 다 여기서 함께 비운다. */
 function resetAdminLoginAttempts() {
     adminLoginAttempts.clear();
+    authenticationLimiter.resetKey?.('::ffff:127.0.0.1');
+    authenticationLimiter.resetKey?.('127.0.0.1');
+    authenticationLimiter.store?.resetAll?.();
 }
 
 export {

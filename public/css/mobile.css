@@ -5,7 +5,7 @@
    햄버거로 여는 서랍이 되고, 오른쪽 학내 홍보 레일은 목록 아래로 내려온다.
    ============================================================ */
 
-html[data-view="mobile"] body { background: #f2f5fb; }
+html[data-view="mobile"] body { background: #fff; }
 html[data-view="mobile"] .page-shell { padding: 0; min-width: 0; }
 html[data-view="mobile"] .page-main { padding: 12px; max-width: 100%; }
 html[data-view="mobile"][data-preview="1"] .page-main { padding-top: 40px; }
@@ -59,16 +59,18 @@ html[data-view="mobile"] .drawer-scrim.drawer-open { display: block; }
 
 /* 제목 줄에서 빠져나와 화면 왼쪽 위 구석에 떠 있는 버튼.
    본문을 가리지 않도록 흐린 회색 반투명으로 조용히 둔다. */
-/* 공통 생김새. 폭 좁은 데스크탑에서도 같은 버튼을 서랍 손잡이로 쓴다. */
+/* 공통 생김새. 폭 좁은 데스크탑에서도 같은 버튼을 서랍 손잡이로 쓴다.
+   줄은 흰색, 바탕은 옅은 회색 반투명이다. 흰 바탕 위에 흰 버튼을 얹으면
+   경계가 사라져 버튼이 있는지조차 보이지 않는다. */
 .mobile-menu-btn {
     display: none;
     width: 40px;
     height: 40px;
     padding: 0;
     place-items: center;
-    color: rgba(31, 63, 143, 0.62);
-    background: rgba(255, 255, 255, 0.55);
-    border: 1px solid rgba(31, 63, 143, 0.12);
+    color: #fff;
+    background: rgba(96, 106, 124, 0.42);
+    border: 1px solid rgba(255, 255, 255, 0.28);
     border-radius: 12px;
     cursor: pointer;
     flex-shrink: 0;
@@ -79,22 +81,59 @@ html[data-view="mobile"] .drawer-scrim.drawer-open { display: block; }
 .mobile-menu-btn svg { width: 21px; height: 21px; }
 .mobile-menu-btn:hover,
 .mobile-menu-btn:focus-visible {
-    color: var(--primary-deep);
-    background: rgba(255, 255, 255, 0.86);
-    border-color: rgba(31, 63, 143, 0.28);
+    color: #fff;
+    background: rgba(72, 82, 100, 0.62);
+    border-color: rgba(255, 255, 255, 0.42);
 }
+/* 화면 왼쪽 위에 떠 있는 버튼. 흐름에서 빠져 있어 제목은 이 버튼이 없는
+   것처럼 왼쪽 끝에 붙는다. 평소에는 숨어 있다가 목록을 조금이라도 내리면
+   나타나고, 손을 떼고 잠시 두면 스스로 사라진다. */
 html[data-view="mobile"] .mobile-menu-btn {
     display: grid;
     position: fixed;
     top: 10px;
     left: 10px;
-    z-index: 1050;
+    z-index: 1060;
+    width: 34px;
+    height: 34px;
+    color: #7c8698;
+    background: rgba(255, 255, 255, 0.82);
+    border-color: rgba(31, 63, 143, 0.1);
+    border-radius: 10px;
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(-6px);
+    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: blur(6px);
+    transition: opacity .2s ease, transform .2s ease, top .2s ease, color .15s ease;
 }
-/* 서랍이 열려 있는 동안에는 서랍 뒤에 가려 두고 손도 닿지 않게 한다. */
+html[data-view="mobile"] .mobile-menu-btn.is-visible {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateY(0);
+}
+/* 검색 줄이 함께 떠 있으면 그 줄 안에 나란히 선 것처럼 높이를 맞춘다.
+   검색칸은 위 여백 8px에 42px 높이라 가운데가 29px, 손잡이는 34px이므로 12px. */
+html[data-view="mobile"] .mobile-menu-btn.is-with-search {
+    top: 12px;
+    background: transparent;
+    border-color: transparent;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+}
+html[data-view="mobile"] .mobile-menu-btn:hover,
+html[data-view="mobile"] .mobile-menu-btn:focus-visible {
+    color: var(--primary);
+    background: transparent;
+    border-color: transparent;
+}
+/* 서랍이 열리면 그 위에 남지 않게 비킨다. */
 html[data-view="mobile"] .rail-left.drawer-open ~ .page-main .mobile-menu-btn {
     opacity: 0;
     pointer-events: none;
 }
+/* 서랍이 열려 있는 동안에는 서랍 뒤에 가려 두고 손도 닿지 않게 한다. */
+
 
 .drawer-close-btn {
     display: inline-flex;
@@ -120,7 +159,10 @@ html[data-view="mobile"] .rail-right {
     display: flex;
     position: static;
     width: 100%;
-    padding: 24px 0 32px;
+    padding: 20px 0 24px;
+    /* 레일 남색이 배너 위아래로 비쳐 띠처럼 보였다. 모바일에서는 배너가
+       제 배경을 들고 있으므로 레일 바탕을 지운다. */
+    background: transparent;
 }
 html[data-view="mobile"] #right-rail-ad-content { height: auto; min-height: 0; }
 html[data-view="mobile"] .rail-ad-viewport {
@@ -134,27 +176,55 @@ html[data-view="mobile"] .rail-ad-stage {
     height: auto;
     aspect-ratio: 16 / 9;
     flex: 0 0 auto;
+    /* 가로로 끄는 동안 브라우저가 페이지를 대신 스크롤해 버리지 않게 한다.
+       세로 스크롤은 pan-y로 그대로 열어 둔다. */
+    touch-action: pan-y;
+}
+/* 화살표는 손가락으로 누르기에 너무 작다. 터치 기기에서만 키운다. */
+@media (hover: none) {
+    html[data-view="mobile"] .rail-ad-arrow { width: 44px; height: 44px; }
+    html[data-view="mobile"] .rail-ad-arrow svg { width: 20px; height: 20px; }
+    html[data-view="mobile"] .rail-ad-dot { width: 9px; height: 9px; }
+    html[data-view="mobile"] .rail-ad-dot.is-active { width: 22px; }
+    html[data-view="mobile"] .rail-ad-dots { padding: 7px 11px; gap: 7px; }
 }
 html[data-view="mobile"] .rail-ad-image { object-fit: cover; }
 /* 비율이 정확히 맞아 여백이 없으므로 흐린 배경 층은 필요 없다. */
 html[data-view="mobile"] .rail-ad-backdrop { display: none; }
 
 /* ---------- 헤더 ---------- */
+/* 데스크탑처럼 배경 위에 그대로 얹는다. 흰 바탕에 흰 카드를 올리면 그림자만
+   남아 지저분하므로 카드와 그림자를 걷어냈다. */
 html[data-view="mobile"] .header {
     row-gap: 10px;
     align-items: center;
-    margin-bottom: 12px;
-    /* 왼쪽 위에 뜬 메뉴 버튼이 로고를 덮지 않도록 그만큼 비워 둔다. */
-    padding: 12px 12px 12px 54px;
-    background: #fff;
+    gap: 8px;
+    /* 손잡이는 평소 숨어 있으므로 위를 비워 둘 필요가 없다. */
+    margin: 0 0 10px;
+    padding: 2px 0 8px;
+    background: transparent;
     border: 0;
-    border-radius: 20px;
-    box-shadow: 0 5px 18px rgba(27, 52, 104, 0.07);
+    border-radius: 0;
+    box-shadow: none;
 }
 html[data-view="mobile"] .header-title-area { width: auto; flex: 1; }
 html[data-view="mobile"] .header h1,
 html[data-view="mobile"] .site-title { font-size: 22px; white-space: normal; }
-html[data-view="mobile"] .site-title-mark { height: 32px; }
+/* 상징과 글씨를 한 줄에 나란히 세운다. 글씨는 상징이 차지한 만큼만
+   오른쪽으로 밀리고, 그 왼쪽 끝은 예전처럼 밑줄과 살짝 어긋난 자리에 선다. */
+html[data-view="mobile"] .site-title {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+}
+html[data-view="mobile"] .site-title-emblem {
+    display: block;
+    width: auto;
+    height: 30px;
+    margin-left: 6px;
+    flex: 0 0 auto;
+}
+html[data-view="mobile"] .site-title-mark { height: 32px; margin-left: 0; }
 html[data-view="mobile"] .header-actions {
     width: auto;
     margin-left: 0;
@@ -317,7 +387,10 @@ html[data-view="mobile"] .card-poster {
     padding: 0;
     border-radius: 0;
 }
-html[data-view="mobile"] .card-poster.is-text { padding: 10px; }
+html[data-view="mobile"] .card-poster.is-text { padding: 9px 10px; gap: 6px; }
+/* 좁은 포스터라 등록일까지 넣으면 제목 자리가 남지 않는다.
+   날짜는 카드 본문에도 있으므로 여기서는 뺀다. */
+html[data-view="mobile"] .card-poster-date { display: none; }
 html[data-view="mobile"] .card-img-preview {
     object-fit: cover;
     object-position: top center;
@@ -325,7 +398,7 @@ html[data-view="mobile"] .card-img-preview {
 }
 /* 모바일 포스터는 데스크톱의 절반 남짓이라 같은 비율로 줄인다.
    크기 자체는 제목 길이에 맞춰 정해진 값을 그대로 물려받는다. */
-html[data-view="mobile"] .card-poster-title { --poster-title-scale: 0.62; line-height: 1.3; }
+html[data-view="mobile"] .card-poster-title { --poster-title-scale: 0.5; line-height: 1.3; }
 html[data-view="mobile"] .card-body { gap: 5px; padding: 8px; }
 html[data-view="mobile"] .card .tags {
     max-height: 36px;
@@ -519,18 +592,18 @@ html[data-view="mobile"] .notice-hover-preview { display: none !important; }
    맨 위 배지로 올린다. 순서 변경은 grid 영역 재배치로만 처리한다. */
 html[data-view="mobile"] .site-footer {
     grid-template-areas: "sync" "links" "legal";
-    margin-top: 44px;
-    padding: 24px 4px 0;
+    margin-top: 26px;
+    padding: 14px 4px 0;
 }
 
 /* 동기화 배지 — 상태에 따라 색·문구·아이콘이 함께 바뀐다. */
 html[data-view="mobile"] .site-footer-sync {
     flex-direction: column;
     align-items: flex-start;
-    gap: 2px;
+    gap: 1px;
     margin-top: 0;
-    margin-bottom: 20px;
-    padding: 12px 14px;
+    margin-bottom: 12px;
+    padding: 9px 12px;
     border: 1px solid transparent;
     border-radius: 12px;
     color: var(--ok);
@@ -538,11 +611,11 @@ html[data-view="mobile"] .site-footer-sync {
     border-color: rgba(47, 107, 72, 0.22);
 }
 html[data-view="mobile"] .footer-sync-icon {
-    width: 16px;
-    height: 16px;
-    margin-bottom: 2px;
+    width: 14px;
+    height: 14px;
+    margin-bottom: 1px;
 }
-html[data-view="mobile"] .footer-sync-label { font-size: 13px; font-weight: 800; }
+html[data-view="mobile"] .footer-sync-label { font-size: 12.5px; font-weight: 800; }
 html[data-view="mobile"] .footer-sync-detail { font-size: 11.5px; opacity: 0.85; }
 html[data-view="mobile"] .site-footer-sync[data-state="stale"] {
     color: #8a6d1f;
@@ -569,29 +642,25 @@ html[data-view="mobile"] .site-footer-sync[data-state="failed"] .footer-sync-lab
 /* 2열 × 2행. 각 칸 오른쪽·아래에 1px 선을 두되 마지막 열과 행은 뺀다. */
 html[data-view="mobile"] .site-footer-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    align-items: stretch;
-    gap: 0;
+    align-items: start;
+    gap: 4px 16px;
 }
-html[data-view="mobile"] .footer-column {
-    padding: 14px 12px;
-    border-right: 1px solid var(--border-soft);
-    border-bottom: 1px solid var(--border-soft);
-}
-html[data-view="mobile"] .footer-column:nth-child(2n) { border-right: 0; padding-right: 2px; }
-html[data-view="mobile"] .footer-column:nth-child(2n+1) { padding-left: 2px; }
-html[data-view="mobile"] .footer-column:nth-last-child(-n+2) { border-bottom: 0; }
+/* 십자 구분선을 걷어내고 칸 사이 여백만으로 가른다. */
+html[data-view="mobile"] .footer-column { padding: 4px 2px 10px; }
 html[data-view="mobile"] .footer-column-title {
-    margin-bottom: 8px;
+    margin-bottom: 4px;
     color: var(--text-sub);
     font-size: 12px;
     font-weight: 700;
 }
-/* 터치 타겟은 글자 크기가 아니라 여백으로 44px를 확보한다. */
+/* 줄마다 44px을 잡으면 링크 열두 개가 화면 하나를 통째로 먹는다.
+   배너와 함께 한 화면에 들어오도록 36px로 줄였다. 손가락으로 누르기에는
+   여전히 충분하다. */
 html[data-view="mobile"] .footer-link-list a,
 html[data-view="mobile"] .footer-link-list button,
 html[data-view="mobile"] .footer-link-list .footer-link-muted {
-    min-height: 44px;
-    padding: 12px 0;
+    min-height: 36px;
+    padding: 7px 0;
     color: var(--text-main);
     font-size: 14px;
     font-weight: 600;
@@ -603,10 +672,11 @@ html[data-view="mobile"] .footer-external-icon { width: 12px; height: 12px; }
 html[data-view="mobile"] .site-footer-legal {
     flex-direction: column;
     align-items: flex-start;
-    margin-top: 18px;
-    padding: 14px 0 22px;
+    gap: 4px;
+    margin-top: 10px;
+    padding: 10px 0 16px;
 }
-html[data-view="mobile"] .site-footer p { font-size: 11px; }
+html[data-view="mobile"] .site-footer p { font-size: 10.5px; line-height: 1.55; }
 
 @media (prefers-reduced-motion: reduce) {
     html[data-view="mobile"] button,
@@ -629,8 +699,8 @@ html[data-view="mobile"] .mobile-sticky-search {
     left: 0;
     z-index: 1040;
     width: 100%;
-    padding: 8px 12px 10px 58px;
-    background: rgba(242, 245, 251, 0.92);
+    padding: 8px 12px 10px 52px;
+    background: rgba(255, 255, 255, 0.94);
     border: 0;
     border-bottom: 1px solid rgba(31, 63, 143, 0.1);
     cursor: pointer;
@@ -672,3 +742,27 @@ html[data-view="mobile"] .mobile-sticky-search svg {
 @media (prefers-reduced-motion: reduce) {
     html[data-view="mobile"] .mobile-sticky-search { transition: none; }
 }
+
+/* 안내 줄은 좁은 화면에서 위아래로 편다. */
+html[data-view="mobile"] .guide-hint {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    margin-bottom: 10px;
+    padding: 12px;
+}
+html[data-view="mobile"] .guide-hint-actions { justify-content: space-between; }
+html[data-view="mobile"] .guide-hint-actions .btn { flex: 1; min-height: 40px; }
+
+/* 폰에서는 칩의 x를 더 키운다. 빗나가면 뒤에 있는 상세 필터 바가 눌린다. */
+html[data-view="mobile"] .filter-chip { padding: 4px 4px 4px 10px; }
+html[data-view="mobile"] .filter-chip button {
+    width: 28px;
+    height: 28px;
+    margin: -4px 0;
+    font-size: 15px;
+}
+
+/* 모바일 제목 줄에서도 종이 로고에 밀리지 않게 크기를 지킨다. */
+html[data-view="mobile"] .bell-toggle { width: 38px; height: 38px; }
+html[data-view="mobile"] .bell-toggle svg { width: 25px; height: 25px; }

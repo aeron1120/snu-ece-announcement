@@ -502,6 +502,7 @@ function resetComposeForm() {
     titleBox.classList.remove('is-editable');
     document.getElementById('post-target').value = '전체';
     document.getElementById('post-deadline').value = '';
+    document.getElementById('post-start-date').value = '';
     document.getElementById('post-always-open').checked = false;
     document.getElementById('post-pinned').checked = false;
     toggleAlwaysOpenState();
@@ -658,7 +659,7 @@ function parseAnalysisJson(text) {
 }
 
 const NOTICE_ANALYSIS_CATEGORY_SLUGS = new Set([
-    'academic', 'opportunity', 'benefit', 'community'
+    'academic', 'opportunity', 'survey', 'community'
 ]);
 
 function normalizeNoticeAnalysisResult(parsed = {}) {
@@ -669,6 +670,7 @@ function normalizeNoticeAnalysisResult(parsed = {}) {
         : [];
     return {
         deadline: (parsed.deadline && /^\d{4}-\d{2}-\d{2}$/.test(parsed.deadline)) ? parsed.deadline : '',
+        startDate: (parsed.startDate && /^\d{4}-\d{2}-\d{2}$/.test(parsed.startDate)) ? parsed.startDate : '',
         subject: parsed.subject ? String(parsed.subject).trim().slice(0, 60) : '',
         type: (parsed.type && TITLE_KINDS.includes(parsed.type)) ? parsed.type : '',
         summary: Array.isArray(parsed.summary)
@@ -741,15 +743,19 @@ function restoreAiModeChoice() {
 // 폼에 입력란이 없는 항목만 요구하는 짧은 프롬프트. 핵심내용·유형·마감일은 묻지 않는다.
 function buildSummaryOnlyPrompt(content) {
     return `다음 공지 원문을 읽고 JSON만 출력해. 코드블록·설명 없이 JSON 객체 하나만.
-형식: {"summary":["요약1","요약2","요약3"],"categorySlugs":["academic|opportunity|benefit|community 중 핵심 하나"],"hasReward":false,"rewardNote":null,"requiresAction":false}
+형식: {"summary":["요약1","요약2","요약3"],"categorySlugs":["academic|opportunity|survey|community 중 핵심 하나"],"hasReward":false,"rewardNote":null,"requiresAction":false}
 - summary는 각 줄 명사형 종결의 3줄 요약.
+- deadline은 신청·제출이 끝나는 날. startDate는 행사가 열리는 날 또는 접수를 받기
+  시작하는 날. 원문에 "7월 20일 ~ 9월 15일"처럼 기간이 있으면 앞이 startDate,
+  뒤가 deadline. 하루짜리 행사는 startDate만 채우고 deadline은 비움.
+  근거가 없으면 지어내지 말고 빈 문자열.
 - 사진 없는 카드에서 2~3줄로 자연스럽게 나뉘도록, 긴 한 덩어리 대신 의미가 분명한 짧은 어절 묶음으로 작성.
 - 격식적인 보도자료 문체보다 학생이 빠르게 읽는 자연스럽고 캐주얼한 표현을 사용.
 - 물음표 반복, 깨진 문자, 불완전한 조사, 같은 단어 반복을 절대 포함하지 말 것. 원문 글자가 깨졌다면 문맥상 확실한 내용만 한국어로 복원.
 - academic: 수강·학점·졸업·성적·전공진입에 직접 영향.
-- opportunity: 인턴·연구실·모집·공모전·대회·장학·교환 등 참여 기회.
-- benefit: 할인·지원·물품·제휴처럼 놓쳐도 학사상 불이익이 없는 혜택.
-- community: 학생 자치, 학내 행사, 시설·출입·교통 등 공동체와 캠퍼스 생활.
+- opportunity: 인턴·연구실·공모전·대회·장학·교환처럼 선발을 거쳐 자리나 자격을 얻는 것.
+- survey: 설문·인터뷰·실험 피험자·사용자 조사처럼 선발 없이 참여해 응답하면 끝나는 모집. 사례비나 기프티콘이 걸려 있어도 참여가 목적이면 여기다.
+- community: 학생 자치, 학내 행사, 시설·출입·교통, 제휴·할인 등 캠퍼스 생활.
 - categorySlugs는 반드시 핵심 범주 하나만 선택.
 - 신청·제출·응답이 필요하면 requiresAction=true.
 - 상품·기프티콘·사례비·지원금·할인이 확인되면 hasReward=true와 rewardNote를 채움.
@@ -765,7 +771,7 @@ async function runNoticeAnalysis(content, onVerificationStart = null) {
     const mode = currentAiMode();
     const today = new Date().toISOString().slice(0, 10);
     const prompt = `다음 공지 원문을 분석해서 JSON만 출력해. 코드블록·설명 없이 JSON 객체 하나만.
-형식: {"deadline":"YYYY-MM-DD 또는 빈문자열","subject":"포스터용 핵심 문구 10~28자","type":"${TITLE_KINDS.join('|')} 중 하나","summary":["요약1","요약2","요약3"],"categorySlugs":["academic|opportunity|benefit|community 중 핵심 하나"],"hasReward":false,"rewardNote":null,"requiresAction":false}
+형식: {"deadline":"YYYY-MM-DD 또는 빈문자열","startDate":"YYYY-MM-DD 또는 빈문자열","subject":"포스터용 핵심 문구 10~28자","type":"${TITLE_KINDS.join('|')} 중 하나","summary":["요약1","요약2","요약3"],"categorySlugs":["academic|opportunity|survey|community 중 핵심 하나"],"hasReward":false,"rewardNote":null,"requiresAction":false}
 - 오늘 날짜는 ${today}. 마감일이 원문에 없거나 불명확하면 deadline은 빈문자열.
 - type은 반드시 제시한 보기 중 하나.
 - subject에는 유형 단어(${TITLE_KINDS.join(', ')})를 넣지 말고 핵심 명사구만. 예: "개강총회 참가자".
@@ -774,9 +780,9 @@ async function runNoticeAnalysis(content, onVerificationStart = null) {
 - 물음표 반복, 깨진 문자, 불완전한 조사, 같은 단어 반복을 절대 포함하지 말 것. 원문 글자가 깨졌다면 문맥상 확실한 내용만 한국어로 복원.
 - summary는 각 줄 명사형 종결의 3줄 요약.
 - academic: 수강·학점·졸업·성적·전공진입에 직접 영향.
-- opportunity: 인턴·연구실·모집·공모전·대회·장학·교환 등 참여 기회.
-- benefit: 할인·지원·물품·제휴처럼 놓쳐도 학사상 불이익이 없는 혜택.
-- community: 학생 자치, 학내 행사, 시설·출입·교통 등 공동체와 캠퍼스 생활.
+- opportunity: 인턴·연구실·공모전·대회·장학·교환처럼 선발을 거쳐 자리나 자격을 얻는 것.
+- survey: 설문·인터뷰·실험 피험자·사용자 조사처럼 선발 없이 참여해 응답하면 끝나는 모집. 사례비나 기프티콘이 걸려 있어도 참여가 목적이면 여기다.
+- community: 학생 자치, 학내 행사, 시설·출입·교통, 제휴·할인 등 캠퍼스 생활.
 - categorySlugs는 반드시 핵심 범주 하나만 선택.
 - 신청·제출·응답이 필요하면 requiresAction=true.
 - 상품·기프티콘·사례비·지원금·할인이 확인되면 hasReward=true와 rewardNote를 채움.
@@ -805,7 +811,9 @@ ${content}`;
 1. 날짜, 시각, 금액, 인원, 학점, 학기, 기간, 횟수, 비율, 연락처 등 주요 수치를 원문 그대로 대조합니다.
 2. 원문에 없는 수치나 조건이 summary에 추가됐으면 삭제하거나 바로잡습니다.
 3. deadline은 실제 신청/제출 마감일일 때만 YYYY-MM-DD로 적고 불명확하면 빈 문자열입니다.
-4. categorySlugs는 academic/opportunity/benefit/community 중 핵심 하나만 고릅니다.
+4. categorySlugs는 academic/opportunity/survey/community 중 핵심 하나만 고릅니다.
+   기회와 설문는 선발이 있느냐로 가릅니다. 붙고 떨어지는 일이 있으면 기회,
+   조건만 맞으면 참여로 끝나면 설문입니다.
 5. 신청·제출·응답은 requiresAction, 상품·지원·할인은 hasReward와 rewardNote로 다시 검증합니다.
 
 출력 형식:
@@ -995,6 +1003,14 @@ function renderAdminFeedback() {
                         : '일반 문의'}</span>
                     ${isSummaryMismatch ? `<p class="admin-feedback-notice"><strong>${escapeHtml(item.noticeTitle || '제목 없음')}</strong><br><span>공지 ID ${escapeHtml(item.noticeId || '')}</span></p>` : ''}
                     <p class="admin-feedback-msg">${escapeHtml(item.message)}</p>
+                    ${Number(item.screenshotCount) > 0 ? `
+                        <div class="admin-feedback-shots">
+                            ${Array.from({ length: Number(item.screenshotCount) }, (unused, index) => `
+                                <button class="btn btn-outline btn-small" type="button"
+                                        onclick="openFeedbackScreenshot('${escapeHtml(item.id)}', ${index})">첨부 사진 ${index + 1}</button>
+                            `).join('')}
+                        </div>
+                    ` : ''}
                     ${inquiry ? `
                         <dl class="banner-inquiry-details">
                             <div><dt>신청자</dt><dd>${escapeHtml(inquiry.name)} · ${escapeHtml(inquiry.organization)}</dd></div>
@@ -1241,11 +1257,26 @@ function focusBannerSlide(id) {
     window.setTimeout(() => element.classList.remove('is-highlighted'), 1400);
 }
 
+/* 문의에 붙은 화면 사진 열기. 배너 이미지와 같은 창을 쓰되 주소만 다르다. */
+function openFeedbackScreenshot(id, index) {
+    return openInquiryImageWindow(
+        `/api/admin/feedback/${encodeURIComponent(id)}/image?shot=${encodeURIComponent(index)}`,
+        `첨부 사진 ${Number(index) + 1}`
+    );
+}
+
 async function openBannerInquiryImage(id, variant = 'desktop') {
+    return openInquiryImageWindow(
+        `/api/admin/feedback/${encodeURIComponent(id)}/image?variant=${encodeURIComponent(variant)}`,
+        variant === 'mobile' ? '모바일 배너 이미지' : '데스크탑 배너 이미지'
+    );
+}
+
+async function openInquiryImageWindow(apiPath, title) {
     const previewWindow = window.open('', '_blank');
     if (previewWindow) previewWindow.opener = null;
     try {
-        const response = await fetch(buildApiUrl(`/api/admin/feedback/${encodeURIComponent(id)}/image?variant=${encodeURIComponent(variant)}`), {
+        const response = await fetch(buildApiUrl(apiPath), {
             method: 'GET',
             headers: getNoticeAdminHeaders()
         });
@@ -1255,11 +1286,11 @@ async function openBannerInquiryImage(id, variant = 'desktop') {
         }
         const imageUrl = URL.createObjectURL(await response.blob());
         if (previewWindow) {
-            previewWindow.document.title = variant === 'mobile' ? '모바일 배너 이미지' : '데스크탑 배너 이미지';
+            previewWindow.document.title = title;
             previewWindow.document.body.style.cssText = 'margin:0;display:grid;min-height:100vh;place-items:center;background:#111827';
             const image = previewWindow.document.createElement('img');
             image.src = imageUrl;
-            image.alt = variant === 'mobile' ? '제출된 모바일 배너 이미지' : '제출된 데스크탑 배너 이미지';
+            image.alt = `제출된 ${title}`;
             image.style.cssText = 'display:block;max-width:96vw;max-height:96vh;object-fit:contain';
             previewWindow.addEventListener('beforeunload', () => URL.revokeObjectURL(imageUrl), { once: true });
             previewWindow.document.body.appendChild(image);
@@ -1296,6 +1327,7 @@ async function generateAIAndSave() {
     // 주관 기관은 제목 양식에서 고른 값을 그대로 쓴다. 따로 입력받지 않는다.
     const host = (isTitleManual() ? '' : getSelectedTitleHost()) || '기타';
     const deadline = document.getElementById('post-deadline').value;
+    const startDate = document.getElementById('post-start-date').value;
     const isAlwaysOpen = document.getElementById('post-always-open').checked;
     const isPinned = document.getElementById('post-pinned').checked;
     const content = document.getElementById('post-content').value.trim();
@@ -1391,6 +1423,7 @@ async function generateAIAndSave() {
             target,
             deadline,
             deadlineAt: deadline || null,
+            startDate: startDate || null,
             isAlwaysOpen,
             isPinned,
             isHidden: existing?.isHidden === true,
@@ -1598,6 +1631,7 @@ async function editAdminNotice(id) {
     applyTitleToBuilder(notice.title);
     document.getElementById('post-target').value = notice.target || '전체';
     document.getElementById('post-deadline').value = notice.deadline || '';
+    document.getElementById('post-start-date').value = notice.startDate || '';
     document.getElementById('post-always-open').checked = notice.isAlwaysOpen === true;
     document.getElementById('post-pinned').checked = notice.isPinned === true;
     toggleAlwaysOpenState();
@@ -1781,6 +1815,8 @@ function renderReviewEditor(notice) {
                 <input id="review-host" type="text" value="${escapeHtml(notice.host || '')}">
             </div>
             <div class="form-group">
+                <label for="review-start-date">시작일 <span class="review-field-hint">(비우면 등록일)</span></label>
+                <input id="review-start-date" type="date" value="${escapeHtml(notice.startDate || '')}">
                 <label for="review-deadline">마감일</label>
                 <input id="review-deadline" type="date" value="${escapeHtml(notice.deadline || '')}">
                 <label class="title-manual-row">
@@ -1914,6 +1950,7 @@ function collectReviewEdits() {
         host: document.getElementById('review-host').value.trim(),
         deadline: document.getElementById('review-deadline').value || null,
         deadlineAt: document.getElementById('review-deadline').value || null,
+        startDate: document.getElementById('review-start-date').value || null,
         isAlwaysOpen: document.getElementById('review-always-open').checked,
         isPinned: document.getElementById('review-pinned').checked,
         targets: splitReviewValues(document.getElementById('review-targets').value),
@@ -2125,12 +2162,99 @@ function renderBannerSubnav() {
             </button>`;
     }).join('');
 
-    // 배너 문의는 위 탭으로 옮겼으므로 여기에는 배너 자리만 남는다.
+    // 승인만 하고 아직 자리를 못 정한 배너들. 다섯 자리 아래에 모아 둔다.
+    const staged = getBannerSlidesByPlacement('staging');
+    const stagingActive = activeBannerSlot === 'staging';
+    const stagingItem = `
+        <p class="banner-subnav-heading">대기</p>
+        <button type="button" class="banner-subnav-item${stagingActive ? ' is-active' : ''}${staged.length ? '' : ' is-empty'}"
+                aria-current="${stagingActive ? 'true' : 'false'}"
+                onclick="selectBannerSlot('staging')">
+            <span class="banner-subnav-label">임시 배너</span>
+            <span class="banner-subnav-sub">${staged.length ? `${staged.length}개 대기 중` : '없음'}</span>
+        </button>`;
+
+    // 배너 문의는 위 탭으로 옮겼으므로 여기에는 배너 자리와 대기함만 남는다.
     nav.innerHTML = `
         <p class="banner-subnav-heading">배너 자리</p>
-        ${slotItems}`;
+        ${slotItems}
+        ${stagingItem}`;
 
     applyBannerSlotVisibility();
+    renderStagingBanners();
+}
+
+/* 임시 배너 목록. 여기서 "이 자리에 반영"을 누르면 고른 자리의 배너와 바뀐다.
+   내려간 배너는 지워지지 않고 이 목록으로 물러나므로 되돌릴 수 있다. */
+function renderStagingBanners() {
+    const list = document.getElementById('staging-banner-list');
+    if (!list) return;
+    const staged = getBannerSlidesByPlacement('staging');
+    const railSlides = getBannerSlidesByPlacement('right_rail');
+
+    if (!staged.length) {
+        list.innerHTML = `
+            <p class="banner-empty-slot-note">
+                대기 중인 배너가 없습니다. 배너 문의에서 신청을 승인하면 여기로 들어옵니다.
+            </p>`;
+        return;
+    }
+
+    const slotOptions = Array.from({ length: 5 }, (_, index) => {
+        const taken = railSlides[index];
+        const label = taken ? (taken.name || taken.text || '이름 없는 배너') : '비어 있음';
+        return `<option value="${index}">배너 ${index + 1} — ${escapeHtml(label)}</option>`;
+    }).join('');
+
+    list.innerHTML = staged.map(slide => {
+        const id = Number(slide.id);
+        const ready = Boolean(slide.src && slide.mobileSrc);
+        return `
+            <div class="banner-item staging-item">
+                <div class="banner-item-header">
+                    <span class="banner-item-text">${escapeHtml(slide.name || slide.text || '이름 없는 배너')}</span>
+                    <span class="staging-flag${ready ? '' : ' is-blocked'}">${ready ? '반영 가능' : '이미지 미비'}</span>
+                </div>
+                <div class="staging-preview">
+                    ${slide.src ? `<img src="${escapeHtml(slide.src)}" alt="">` : '<span>데스크탑 이미지 없음</span>'}
+                    ${slide.mobileSrc ? `<img src="${escapeHtml(slide.mobileSrc)}" alt="">` : '<span>모바일 이미지 없음</span>'}
+                </div>
+                ${slide.description ? `<p class="staging-desc">${escapeHtml(slide.description)}</p>` : ''}
+                <div class="staging-actions">
+                    <label for="staging-target-${id}">바꿀 자리</label>
+                    <select id="staging-target-${id}">${slotOptions}</select>
+                    <button class="btn btn-small" type="button" ${ready ? '' : 'disabled'}
+                            onclick="promoteStagingBanner(${id})">확정해서 반영</button>
+                    <button class="btn btn-danger btn-small" type="button"
+                            onclick="deleteBannerSlide(${id})">삭제</button>
+                </div>
+            </div>`;
+    }).join('');
+}
+
+async function promoteStagingBanner(id) {
+    const select = document.getElementById(`staging-target-${id}`);
+    const order = Number(select?.value);
+    if (!Number.isInteger(order)) return;
+    const slotLabel = select.options[select.selectedIndex]?.textContent || `배너 ${order + 1}`;
+    if (!window.confirm(`${slotLabel}
+
+이 자리에 반영할까요? 지금 그 자리에 있던 배너는 임시 배너로 물러납니다.`)) return;
+
+    try {
+        const result = await apiRequest(`/api/banner-slides/${encodeURIComponent(id)}/promote`, {
+            method: 'POST',
+            headers: getBannerManageHeaders(),
+            body: JSON.stringify({ order })
+        });
+        await loadBannerSlides(true);
+        renderBannerList();
+        setBannerSaveState(result?.replacedId
+            ? '배너를 바꿨습니다. 물러난 배너는 임시 배너에 있습니다.'
+            : '빈 자리에 배너를 올렸습니다.');
+    } catch (error) {
+        setBannerSaveState(`반영 실패: ${error.message}`, true);
+    }
 }
 
 function selectBannerSlot(slot) {
@@ -2141,17 +2265,48 @@ function selectBannerSlot(slot) {
 // 고른 항목만 남기고 나머지는 접는다. 편집 중 입력값이 날아가지 않도록
 // 지우지 않고 감추기만 한다.
 function applyBannerSlotVisibility() {
+    const showStaging = activeBannerSlot === 'staging';
+    const slotsSection = document.getElementById('banner-slots-section');
+    const stagingSection = document.getElementById('banner-staging-section');
+    if (slotsSection) slotsSection.hidden = showStaging;
+    if (stagingSection) stagingSection.hidden = !showStaging;
+
     // 고른 자리 하나만 남기고 접는다. 편집 중 입력값이 날아가지 않도록
     // 지우지 않고 감추기만 한다.
     document.querySelectorAll('#right-rail-slides-list .banner-item')
         .forEach((item, index) => {
-            item.hidden = index !== activeBannerSlot;
+            item.hidden = showStaging || index !== activeBannerSlot;
         });
 
     // 아직 등록되지 않은 자리를 고르면 새로 만들라고 안내한다.
     const emptyNote = document.getElementById('banner-empty-slot-note');
     const slideCount = getBannerSlidesByPlacement('right_rail').length;
-    if (emptyNote) emptyNote.hidden = activeBannerSlot < slideCount;
+    if (emptyNote) emptyNote.hidden = showStaging || activeBannerSlot < slideCount;
+}
+
+/* 저장 상태 표시.
+   배너 편집은 칸이 많아 어디까지 반영됐는지 알기 어렵다. 값을 건드리면
+   "저장 안 됨"으로, 저장이 끝나면 시각과 함께 "저장됨"으로 바꾼다. */
+function setBannerSaveState(message, isError = false) {
+    const box = document.getElementById('banner-save-state');
+    if (!box) return;
+    box.hidden = false;
+    box.dataset.state = isError ? 'error' : 'saved';
+    box.textContent = message;
+}
+
+function markBannerDirty() {
+    const box = document.getElementById('banner-save-state');
+    if (!box) return;
+    box.hidden = false;
+    box.dataset.state = 'dirty';
+    box.textContent = '저장하지 않은 변경이 있습니다.';
+}
+
+function formatBannerSavedAt() {
+    const now = new Date();
+    const pad = n => String(n).padStart(2, '0');
+    return `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
 }
 
 // 상단 가로 배너가 사라져 갈 곳이 없어진 슬라이드들. 관리 화면에서 아예 안 보이면
@@ -2215,17 +2370,18 @@ function renderBannerSection(placement, title) {
             <div class="banner-editor-layout">
                 <div class="banner-visual-column">
                     <section class="banner-format-editor">
-                        <strong>데스크탑 · 4:5</strong>
+                        <strong>데스크탑 · 3:10</strong>
                         <div class="banner-image-preview ${safeImage ? '' : 'is-empty'}" id="banner-preview-${safeId}">
                             ${safeImage
                                 ? `<img src="${safeImage}" alt="">`
-                                : '<span>이미지 미등록<br><small>권장 800×1000px</small></span>'}
+                                : '<span>이미지 미등록<br><small>권장 720×2400px</small></span>'}
                         </div>
+                        <p class="banner-format-note" id="banner-preview-${safeId}-note" hidden></p>
                         <label class="banner-upload-button">
                             데스크탑 사진 교체
                             <input type="file" accept="image/png,image/jpeg,image/webp"
                                    class="banner-input-file-${safeId}"
-                                   onchange="previewBannerUpload(this, 'banner-preview-${safeId}')">
+                                   onchange="previewBannerUpload(this, 'banner-preview-${safeId}', 'desktop')">
                         </label>
                         ${safeImage ? `
                             <label class="banner-remove-image">
@@ -2240,11 +2396,12 @@ function renderBannerSection(placement, title) {
                                 ? `<img src="${safeMobileImage}" alt="">`
                                 : '<span>이미지 미등록<br><small>권장 1200×675px</small></span>'}
                         </div>
+                        <p class="banner-format-note" id="banner-mobile-preview-${safeId}-note" hidden></p>
                         <label class="banner-upload-button">
                             모바일 사진 교체
                             <input type="file" accept="image/png,image/jpeg,image/webp"
                                    class="banner-input-mobile-file-${safeId}"
-                                   onchange="previewBannerUpload(this, 'banner-mobile-preview-${safeId}')">
+                                   onchange="previewBannerUpload(this, 'banner-mobile-preview-${safeId}', 'mobile')">
                         </label>
                         ${safeMobileImage ? `
                             <label class="banner-remove-image">
@@ -2258,6 +2415,8 @@ function renderBannerSection(placement, title) {
                         <span>홍보 유형</span>
                         <select class="banner-input-type-${safeId}">
                             <option value="club" ${slide.type === 'club' ? 'selected' : ''}>동아리</option>
+                            <option value="survey" ${slide.type === 'survey' ? 'selected' : ''}>설문</option>
+                            <option value="etc" ${slide.type === 'etc' ? 'selected' : ''}>기타</option>
                             <option value="project" ${slide.type === 'project' ? 'selected' : ''}>프로젝트</option>
                             <option value="council" ${slide.type === 'council' ? 'selected' : ''}>학생회</option>
                         </select>
@@ -2325,15 +2484,16 @@ function renderBannerSection(placement, title) {
         <div class="banner-editor-layout ${isAtLimit ? 'is-disabled' : ''}">
             <div class="banner-visual-column">
                 <section class="banner-format-editor">
-                    <strong>데스크탑 · 4:5</strong>
+                    <strong>데스크탑 · 3:10</strong>
                     <div class="banner-image-preview is-empty" id="new-banner-preview">
-                        <span>사진 미리보기<br><small>권장 800×1000px</small></span>
+                        <span>사진 미리보기<br><small>권장 720×2400px</small></span>
                     </div>
+                    <p class="banner-format-note" id="new-banner-preview-note" hidden></p>
                     <label class="banner-upload-button ${isAtLimit ? 'is-disabled' : ''}">
                         데스크탑 사진 업로드
                         <input type="file" id="new-right_rail-image"
                                accept="image/png,image/jpeg,image/webp"
-                               onchange="previewBannerUpload(this, 'new-banner-preview')" ${isAtLimit ? 'disabled' : ''}>
+                               onchange="previewBannerUpload(this, 'new-banner-preview', 'desktop')" ${isAtLimit ? 'disabled' : ''}>
                     </label>
                 </section>
                 <section class="banner-format-editor">
@@ -2341,11 +2501,12 @@ function renderBannerSection(placement, title) {
                     <div class="banner-image-preview is-mobile is-empty" id="new-banner-mobile-preview">
                         <span>사진 미리보기<br><small>권장 1200×675px</small></span>
                     </div>
+                    <p class="banner-format-note" id="new-banner-mobile-preview-note" hidden></p>
                     <label class="banner-upload-button ${isAtLimit ? 'is-disabled' : ''}">
                         모바일 사진 업로드
                         <input type="file" id="new-right_rail-mobile-image"
                                accept="image/png,image/jpeg,image/webp"
-                               onchange="previewBannerUpload(this, 'new-banner-mobile-preview')" ${isAtLimit ? 'disabled' : ''}>
+                               onchange="previewBannerUpload(this, 'new-banner-mobile-preview', 'mobile')" ${isAtLimit ? 'disabled' : ''}>
                     </label>
                 </section>
             </div>
@@ -2354,6 +2515,8 @@ function renderBannerSection(placement, title) {
                     <span>홍보 유형</span>
                     <select id="new-right_rail-type" ${isAtLimit ? 'disabled' : ''}>
                         <option value="club">동아리</option>
+                        <option value="survey">설문</option>
+                        <option value="etc">기타</option>
                         <option value="project">프로젝트</option>
                         <option value="council">학생회</option>
                     </select>
@@ -2409,14 +2572,71 @@ function renderBannerSection(placement, title) {
     container.appendChild(addForm);
 }
 
-function previewBannerUpload(input, previewId) {
+/* 배너 사진의 규격.
+   오른쪽 레일은 폭 240px에 화면 높이만큼 길어 3:10이라야 잘리지 않고 꽉 찬다.
+   모바일은 가로로 눕는 자리라 16:9다. 어긋난 사진을 올리면 화면에서 잘리거나
+   위아래가 비는데, 올리고 나서야 알게 되면 다시 만들어 오는 수고가 생긴다.
+   그래서 고르는 순간 바로 알린다. */
+const BANNER_FORMATS = Object.freeze({
+    desktop: { ratio: 720 / 2400, label: '세로 3:10', recommend: '720×2400px' },
+    mobile: { ratio: 1200 / 675, label: '가로 16:9', recommend: '1200×675px' }
+});
+// 10%까지는 눈에 띄지 않아 넘어간다. 그보다 벌어지면 화면에서 티가 난다.
+const BANNER_RATIO_TOLERANCE = 0.1;
+const BANNER_MAX_BYTES = 5 * 1024 * 1024;
+
+function describeBannerRatio(width, height) {
+    if (!width || !height) return '';
+    const divisor = (a, b) => (b ? divisor(b, a % b) : a);
+    const g = divisor(width, height) || 1;
+    return `${Math.round(width / g)}:${Math.round(height / g)}`;
+}
+
+function setBannerFormatNote(previewId, state, message) {
+    const note = document.getElementById(`${previewId}-note`);
+    if (!note) return;
+    note.textContent = message;
+    note.dataset.state = state;
+    note.hidden = !message;
+}
+
+function previewBannerUpload(input, previewId, format = 'desktop') {
     const file = input?.files?.[0];
     const preview = document.getElementById(previewId);
     if (!file || !preview) return;
+    const spec = BANNER_FORMATS[format] || BANNER_FORMATS.desktop;
+
+    if (file.size > BANNER_MAX_BYTES) {
+        setBannerFormatNote(previewId, 'error',
+            `파일이 ${(file.size / 1024 / 1024).toFixed(1)}MB입니다. 5MB 이하로 줄여주세요.`);
+        input.value = '';
+        return;
+    }
+
     const reader = new FileReader();
     reader.onload = () => {
         preview.classList.remove('is-empty');
         preview.innerHTML = `<img src="${escapeHtml(reader.result)}" alt="선택한 배너 이미지 미리보기">`;
+
+        // 비율은 그림이 실제로 읽힌 뒤에야 알 수 있다.
+        const probe = new Image();
+        probe.onload = () => {
+            const width = probe.naturalWidth;
+            const height = probe.naturalHeight;
+            const actual = width / height;
+            const gap = Math.abs(actual - spec.ratio) / spec.ratio;
+            const size = `${width}×${height}px (${describeBannerRatio(width, height)})`;
+            if (gap <= BANNER_RATIO_TOLERANCE) {
+                setBannerFormatNote(previewId, 'ok', `${size} · 권장 비율에 맞습니다.`);
+                return;
+            }
+            const tooTall = actual < spec.ratio;
+            setBannerFormatNote(previewId, 'warn',
+                `${size} · 권장은 ${spec.label} ${spec.recommend}입니다. `
+                + `이대로 올리면 ${tooTall ? '위아래' : '좌우'}가 잘리거나 여백이 생깁니다.`);
+        };
+        probe.onerror = () => setBannerFormatNote(previewId, 'error', '이미지를 읽지 못했습니다.');
+        probe.src = reader.result;
     };
     reader.readAsDataURL(file);
 }
@@ -2579,7 +2799,8 @@ async function updateBannerSlide(slideId) {
         const idx = bannerSlides.findIndex(slide => Number(slide.id) === Number(slideId));
         if (idx !== -1) bannerSlides[idx] = result.slide;
         renderBannerList();
-        alert('학내 홍보가 수정되었습니다.');
+        // 창을 띄우지 않고 위쪽 표시만 바꾼다. 어느 배너가 언제 저장됐는지 남는다.
+        setBannerSaveState(`저장됨 · ${formatBannerSavedAt()}`);
     } catch (error) {
         alert(`배너 수정 실패: ${error.message}`);
     }
