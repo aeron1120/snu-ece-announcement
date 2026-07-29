@@ -1759,7 +1759,10 @@ function setFilterPanelOpen(open) {
     if (open) buildHostButtons();
 }
 
-function toggleFilterPanel() {
+function toggleFilterPanel(event) {
+    // 칩의 x는 바 안에 있다. 손가락이 조금만 빗나가도 바가 눌린 것으로 잡혀
+    // 패널이 닫혀 버리므로, 칩 영역에서 시작한 누름은 여닫기로 보지 않는다.
+    if (event?.target?.closest?.('.filter-active-chips')) return;
     const open = !document.getElementById('filter-panel')?.classList.contains('open');
     setFilterPanelOpen(open);
 }

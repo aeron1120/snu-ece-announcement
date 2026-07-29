@@ -59,16 +59,18 @@ html[data-view="mobile"] .drawer-scrim.drawer-open { display: block; }
 
 /* 제목 줄에서 빠져나와 화면 왼쪽 위 구석에 떠 있는 버튼.
    본문을 가리지 않도록 흐린 회색 반투명으로 조용히 둔다. */
-/* 공통 생김새. 폭 좁은 데스크탑에서도 같은 버튼을 서랍 손잡이로 쓴다. */
+/* 공통 생김새. 폭 좁은 데스크탑에서도 같은 버튼을 서랍 손잡이로 쓴다.
+   줄은 흰색, 바탕은 옅은 회색 반투명이다. 흰 바탕 위에 흰 버튼을 얹으면
+   경계가 사라져 버튼이 있는지조차 보이지 않는다. */
 .mobile-menu-btn {
     display: none;
     width: 40px;
     height: 40px;
     padding: 0;
     place-items: center;
-    color: rgba(31, 63, 143, 0.62);
-    background: rgba(255, 255, 255, 0.55);
-    border: 1px solid rgba(31, 63, 143, 0.12);
+    color: #fff;
+    background: rgba(96, 106, 124, 0.42);
+    border: 1px solid rgba(255, 255, 255, 0.28);
     border-radius: 12px;
     cursor: pointer;
     flex-shrink: 0;
@@ -79,9 +81,9 @@ html[data-view="mobile"] .drawer-scrim.drawer-open { display: block; }
 .mobile-menu-btn svg { width: 21px; height: 21px; }
 .mobile-menu-btn:hover,
 .mobile-menu-btn:focus-visible {
-    color: var(--primary-deep);
-    background: rgba(255, 255, 255, 0.86);
-    border-color: rgba(31, 63, 143, 0.28);
+    color: #fff;
+    background: rgba(72, 82, 100, 0.62);
+    border-color: rgba(255, 255, 255, 0.42);
 }
 html[data-view="mobile"] .mobile-menu-btn {
     display: grid;
@@ -697,3 +699,12 @@ html[data-view="mobile"] .guide-hint {
 }
 html[data-view="mobile"] .guide-hint-actions { justify-content: space-between; }
 html[data-view="mobile"] .guide-hint-actions .btn { flex: 1; min-height: 40px; }
+
+/* 폰에서는 칩의 x를 더 키운다. 빗나가면 뒤에 있는 상세 필터 바가 눌린다. */
+html[data-view="mobile"] .filter-chip { padding: 4px 4px 4px 10px; }
+html[data-view="mobile"] .filter-chip button {
+    width: 28px;
+    height: 28px;
+    margin: -4px 0;
+    font-size: 15px;
+}

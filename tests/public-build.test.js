@@ -2188,3 +2188,27 @@ test('mobile stacks notices, then the banner, then the footer', async () => {
     assert.match(html, /href="\.\/faq\.html">자주 묻는 질문</);
     assert.match(html, /href="\.\/guide\.html">사용 설명서</);
 });
+
+test('closing a filter chip does not collapse the detail panel', async () => {
+    const html = await readFile('index.html', 'utf8');
+    const app = await readFile('js/core.js', 'utf8');
+    const css = await readFile('css/core.css', 'utf8');
+    const mobileCss = await readFile('css/mobile.css', 'utf8');
+
+    // 칩의 x는 상세 필터 바 안에 있다. 손가락이 빗나가면 바가 눌려 패널이 닫힌다.
+    assert.match(html, /id="filter-toggle-bar"[\s\S]*?onclick="toggleFilterPanel\(event\)"/);
+    assert.match(readNamedFunction(app, 'toggleFilterPanel'), /closest\?\.\('\.filter-active-chips'\)\) return/);
+    // 누를 수 있는 크기도 함께 키운다.
+    assert.match(css, /\.filter-chip button\s*\{[^}]*width:\s*20px;[^}]*height:\s*20px/s);
+    assert.match(mobileCss, /\.filter-chip button\s*\{[^}]*width:\s*28px;[^}]*height:\s*28px/s);
+
+    // 서랍 손잡이는 흰 줄에 회색 반투명 바탕이라 흰 배경 위에서도 보인다.
+    assert.match(mobileCss, /\.mobile-menu-btn\s*\{[^}]*color:\s*#fff;[^}]*background:\s*rgba\(96, 106, 124/s);
+
+    // 안내를 닫은 뒤에도 서비스 안내에서 설명서로 돌아올 수 있다.
+    const serviceGuide = await readFile('service-guide.html', 'utf8');
+    assert.match(serviceGuide, /사용 설명서 다시 보기/);
+    assert.match(serviceGuide, /href="\.\/guide\.html"/);
+    // 첫 방문 안내를 다시 받게 되돌리는 것은 저장된 기록을 지우는 일이다.
+    assert.match(serviceGuide, /localStorage\.removeItem\('eceGuideHintSeen'\)/);
+});

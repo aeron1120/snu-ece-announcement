@@ -176,7 +176,7 @@
     <!-- 고급 필터 토글 바 -->
     <div class="filter-toggle-bar" id="filter-toggle-bar" role="button" tabindex="0"
          aria-expanded="false" aria-controls="filter-panel notice-quick-filters"
-         onclick="toggleFilterPanel()"
+         onclick="toggleFilterPanel(event)"
          onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleFilterPanel();}">
         <span class="filter-toggle-label" id="filter-toggle-label">
             <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 4h18M7 8h10M11 12h2M9 16h6"/></svg>

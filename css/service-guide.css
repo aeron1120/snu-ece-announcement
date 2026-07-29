@@ -95,3 +95,54 @@ section p {
     .guide-kicker { margin-top: 40px; }
     .guide-lead { margin-bottom: 38px; font-size: 16px; }
 }
+
+/* 사용 설명서 다시 보기 — 안내를 닫은 뒤에도 돌아올 자리 */
+.guide-replay {
+    margin-top: 10px;
+    padding: 26px 24px;
+    background: #f3f6fc;
+    border-top: 0;
+    border-left: 3px solid #163f91;
+}
+.guide-replay h2 { margin-bottom: 10px; }
+.guide-replay-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 18px;
+}
+.guide-replay-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    padding: 0 18px;
+    color: #fff;
+    background: #163f91;
+    border: 1px solid #163f91;
+    border-radius: 10px;
+    font: inherit;
+    font-size: 14px;
+    font-weight: 750;
+    text-decoration: none;
+    cursor: pointer;
+    transition: background-color .15s ease, color .15s ease, border-color .15s ease;
+}
+.guide-replay-btn:hover { background: #0f3278; border-color: #0f3278; }
+.guide-replay-btn.is-quiet { color: #163f91; background: #fff; border-color: #c6d3ea; }
+.guide-replay-btn.is-quiet:hover { background: #eaf0fb; border-color: #163f91; }
+.guide-replay-btn:disabled { opacity: .55; cursor: default; }
+.guide-replay-btn:focus-visible { outline: 2px solid #163f91; outline-offset: 2px; }
+.guide-replay-status {
+    min-height: 20px;
+    margin: 12px 0 0;
+    font-size: 13.5px;
+    font-weight: 700;
+}
+.guide-replay-status[data-state="done"] { color: #2f6b48; }
+.guide-replay-status[data-state="error"] { color: #c0392b; }
+
+@media (max-width: 560px) {
+    .guide-replay { padding: 20px 16px; }
+    .guide-replay-btn { flex: 1 1 100%; }
+}

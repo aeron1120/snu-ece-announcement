@@ -819,7 +819,22 @@ body {
     background: var(--primary); color: white; font-size: 11.5px; font-weight: 600;
     padding: 3px 9px; display: flex; align-items: center; gap: 5px;
 }
-.filter-chip button { background: none; border: none; color: rgba(255,255,255,0.85); cursor: pointer; font-size: 13px; padding: 0; line-height: 1; }
+/* x가 너무 작으면 손가락이 빗나가 뒤에 있는 바가 눌린다. 글자 크기는
+   그대로 두고 누를 수 있는 영역만 넓힌다. */
+.filter-chip button {
+    display: grid;
+    width: 20px;
+    height: 20px;
+    margin: -4px -5px -4px 0;
+    place-items: center;
+    background: none;
+    border: none;
+    border-radius: 50%;
+    color: rgba(255,255,255,0.85);
+    cursor: pointer;
+    font-size: 13px;
+    line-height: 1;
+}
 .filter-chip button:hover { color: white; }
 
 .filter-panel {
