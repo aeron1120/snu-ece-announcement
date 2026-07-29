@@ -2138,8 +2138,8 @@ test('a sticky search row takes over once the real search box scrolls away', asy
 
     // 화면에 붙어 있어야 스크롤해도 사라지지 않는다.
     assert.match(mobileCss, /\.mobile-sticky-search\s*\{[^}]*position:\s*fixed;[^}]*top:\s*0/s);
-    // 메뉴 버튼이 헤더 줄로 돌아가 더 이상 겹치지 않으므로 여백을 비우지 않는다.
-    assert.match(mobileCss, /\.mobile-sticky-search\s*\{[^}]*padding:\s*8px 12px 10px;/s);
+    // 떠 있는 메뉴 버튼이 검색 글자를 덮지 않게 왼쪽을 비워 둔다.
+    assert.match(mobileCss, /\.mobile-sticky-search\s*\{[^}]*padding:\s*8px 12px 10px 46px;/s);
 });
 
 test('first-time users get a guide, and slow notice loads show progress', async () => {

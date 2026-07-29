@@ -523,8 +523,8 @@ body {
    직접 그린다. 꺼짐은 옅은 회색 선, 켜짐은 브랜드 남색으로 채운다. */
 .bell-toggle {
     display: grid;
-    width: 36px;
-    height: 36px;
+    width: 42px;
+    height: 42px;
     padding: 0;
     place-items: center;
     color: #9aa2b1;
@@ -534,7 +534,7 @@ body {
     cursor: pointer;
     transition: color 0.15s ease, background-color 0.15s ease, transform 0.15s ease;
 }
-.bell-toggle svg { width: 22px; height: 22px; }
+.bell-toggle svg { width: 28px; height: 28px; }
 .bell-toggle:hover { color: var(--primary); background: var(--primary-light); }
 .bell-toggle:active { transform: scale(0.94); }
 /* 켜지면 선이 남색으로 진해지고 안쪽이 옅게 찬다. 색만으로 알리지 않도록
