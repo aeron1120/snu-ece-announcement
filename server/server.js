@@ -355,7 +355,9 @@ app.use((req, res, next) => {
         res.header('Access-Control-Allow-Origin', '*');
     }
     res.header('Access-Control-Allow-Headers', 'Content-Type, x-admin-token, x-super-admin-token, x-banner-token, x-crawl-secret, x-subscription-token');
-    res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
+    // 여기 빠진 메서드는 브라우저가 프리플라이트에서 막아 서버까지 오지도 않는다.
+    // 공지 숨김이 PATCH다.
+    res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
 
     if (req.method === 'OPTIONS') {
         return res.sendStatus(204);
