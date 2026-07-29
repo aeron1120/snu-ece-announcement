@@ -71,7 +71,13 @@ const noticeImageStore = createNoticeImageStore({
     supabaseUrl: SUPABASE_URL
 });
 const noticeThumbnailService = createNoticeThumbnailService({
-    cacheDir: thumbnailCacheDir
+    cacheDir: thumbnailCacheDir,
+    isOwnedUrl: url => noticeImageStore.isOwnedUrl(url),
+    fetchImage: async url => {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`thumbnail source ${response.status}`);
+        return Buffer.from(await response.arrayBuffer());
+    }
 });
 const noticeAnalyzer = process.env.GEMINI_API_KEY
     ? createNoticeAnalyzer({
