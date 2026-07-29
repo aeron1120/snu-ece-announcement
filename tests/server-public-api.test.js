@@ -454,3 +454,21 @@ test('five wrong passwords lock admin login for ten minutes', async t => {
     const blocked = await attempt({ password });
     assert.equal(blocked.status, 429);
 });
+
+test('saving a notice never stores a raw data URL when the bucket is available', async () => {
+    const server = await readFile(path.join(process.cwd(), 'server', 'server.js'), 'utf8');
+
+    // 저장 경로 두 곳 모두 업로드를 거쳐야 한다.
+    assert.match(server, /createNoticeImageStore/);
+    assert.match(server, /noticeImageStore\.persistImages/);
+    const createRoute = server.slice(
+        server.indexOf("app.post('/api/notices'"),
+        server.indexOf("app.put('/api/notices/:id'")
+    );
+    assert.match(createRoute, /persistImages/);
+    const updateRoute = server.slice(
+        server.indexOf("app.put('/api/notices/:id'"),
+        server.indexOf("app.delete('/api/notices/:id'")
+    );
+    assert.match(updateRoute, /persistImages/);
+});

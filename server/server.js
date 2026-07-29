@@ -23,6 +23,7 @@ import { createNoticeAnalyzer } from './services/notice-analyzer.js';
 import { createAutomationRouter } from './routes/automation-routes.js';
 import { createNoticeThumbnailRouter } from './routes/notice-thumbnail-route.js';
 import { createNoticeThumbnailService } from './services/notice-thumbnail-service.js';
+import { createNoticeImageStore } from './services/notice-image-store.js';
 import webPush from 'web-push';
 import { createPushService } from './services/push-service.js';
 import {
@@ -64,6 +65,10 @@ const kakaoBotWebhookService = createKakaoBotWebhookService({
     webhookUrl: process.env.KAKAO_NOTICE_WEBHOOK_URL,
     publicBaseUrl: publicSiteUrl,
     categoryProvider: () => automationStore.listCategories()
+});
+const noticeImageStore = createNoticeImageStore({
+    supabase,
+    supabaseUrl: SUPABASE_URL
 });
 const noticeThumbnailService = createNoticeThumbnailService({
     cacheDir: thumbnailCacheDir
@@ -3035,6 +3040,9 @@ app.post('/api/notices', requireNoticeAdmin, async (req, res) => {
             return res.status(400).json({ error: 'title과 content는 필수입니다.' });
         }
 
+        // 사진은 DB가 아니라 버킷에 두고 주소만 저장한다.
+        payload.images = await noticeImageStore.persistImages(payload.images);
+
         const newNotice = await createNotice(payload);
         const webhookResult = await kakaoBotWebhookService.notifyPublishedNotice(newNotice);
         if (webhookResult.reason === 'webhook_error') {
@@ -3058,6 +3066,8 @@ app.put('/api/notices/:id', requireNoticeAdmin, async (req, res) => {
         if (!payload.title || !payload.content) {
             return res.status(400).json({ error: 'title과 content는 필수입니다.' });
         }
+
+        payload.images = await noticeImageStore.persistImages(payload.images);
 
         const updated = await updateNotice(id, payload);
         if (!updated) {
