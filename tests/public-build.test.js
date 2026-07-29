@@ -2378,3 +2378,44 @@ test('closing a filter chip does not collapse the detail panel', async () => {
     // 첫 방문 안내를 다시 받게 되돌리는 것은 저장된 기록을 지우는 일이다.
     assert.match(serviceGuide, /localStorage\.removeItem\('eceGuideHintSeen'\)/);
 });
+
+test('the operator page names who runs the site and the footer points at it', async () => {
+    const operator = await readFile('operator.html', 'utf8');
+    const html = await readFile('index.html', 'utf8');
+    const prepare = await readFile('scripts/prepare-public.mjs', 'utf8');
+
+    // 운영 주체는 이름으로 밝힌다. 그게 이 페이지의 존재 이유다.
+    assert.match(operator, /김태현/);
+    assert.match(operator, /최재원/);
+    // 학부 공식 서비스로 오해받으면 안 된다.
+    assert.match(operator, /비공식/);
+    // 개인 연락처는 싣지 않는다. 문의는 기존 창구로 받는다.
+    assert.doesNotMatch(operator, /010-\d{4}-\d{4}/);
+
+    // 푸터의 '운영 주체 안내'가 서비스 안내가 아니라 이 페이지를 가리켜야 한다.
+    const operationColumn = html.slice(
+        html.indexOf('<nav class="footer-column" aria-label="운영">'),
+        html.indexOf('</nav>', html.indexOf('<nav class="footer-column" aria-label="운영">'))
+    );
+    assert.match(operationColumn, /href="\.\/operator\.html">운영 주체 안내/);
+    assert.doesNotMatch(operationColumn, /service-guide\.html/);
+
+    // 복사 목록에서 빠지면 서버가 404를 준다.
+    assert.match(prepare, /operator\.html/);
+});
+
+test('the legal pages name the same operators as the operator page', async () => {
+    const privacy = await readFile('privacy.html', 'utf8');
+    const terms = await readFile('terms.html', 'utf8');
+
+    // 개인정보 처리 책임자와 약관상 '운영자'가 누구인지 실명으로 밝혀야 한다.
+    for (const [name, page] of [['privacy.html', privacy], ['terms.html', terms]]) {
+        assert.match(page, /김태현/, `${name}에 운영자 이름이 없다`);
+        assert.match(page, /최재원/, `${name}에 운영자 이름이 없다`);
+        // 세 페이지가 따로 놀지 않도록 한 곳을 가리킨다.
+        assert.match(page, /href="\.\/operator\.html"/, `${name}이 운영 주체 안내로 링크하지 않는다`);
+    }
+
+    // 약관은 곳곳에서 '운영자'를 주어로 쓰므로 처음에 정의해야 한다.
+    assert.match(terms, /이하 &ldquo;운영자&rdquo;/);
+});

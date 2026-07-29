@@ -85,3 +85,76 @@ test('thumbnail service invalidates cache by update time and falls back safely',
         { kind: 'default' }
     );
 });
+
+const BUCKET_URL = 'https://project.supabase.co/storage/v1/object/public/notice-images/a.png';
+const ownsProjectBucket = url => String(url).startsWith('https://project.supabase.co/');
+
+test('thumbnail service fetches a bucket URL and converts it', async t => {
+    const cacheDir = await mkdtemp(path.join(tmpdir(), 'notice-thumbnails-'));
+    t.after(() => rm(cacheDir, { recursive: true, force: true }));
+    const { source } = await createSourceDataUrl();
+    const requested = [];
+    const service = createNoticeThumbnailService({
+        cacheDir,
+        isOwnedUrl: ownsProjectBucket,
+        fetchImage: async url => {
+            requested.push(url);
+            return source;
+        }
+    });
+
+    const result = await service.getThumbnail({
+        id: 21,
+        updatedAt: '2026-07-29T00:00:00.000Z',
+        image: BUCKET_URL
+    });
+
+    assert.deepEqual(requested, [BUCKET_URL]);
+    assert.equal(result.kind, 'webp');
+    assert.equal((await sharp(result.body).metadata()).format, 'webp');
+});
+
+test('thumbnail service never fetches a URL the bucket does not own', async t => {
+    const cacheDir = await mkdtemp(path.join(tmpdir(), 'notice-thumbnails-'));
+    t.after(() => rm(cacheDir, { recursive: true, force: true }));
+    let called = false;
+    // 남의 주소를 따라가면 이 엔드포인트가 요청 대행 통로가 된다.
+    const service = createNoticeThumbnailService({
+        cacheDir,
+        isOwnedUrl: ownsProjectBucket,
+        fetchImage: async () => {
+            called = true;
+            return Buffer.alloc(0);
+        }
+    });
+
+    const result = await service.getThumbnail({
+        id: 22,
+        updatedAt: '2026-07-29T00:00:00.000Z',
+        image: 'https://elsewhere.example/a.png'
+    });
+
+    assert.equal(called, false);
+    assert.deepEqual(result, { kind: 'default' });
+});
+
+test('thumbnail service falls back to the default when the fetch fails', async t => {
+    const cacheDir = await mkdtemp(path.join(tmpdir(), 'notice-thumbnails-'));
+    t.after(() => rm(cacheDir, { recursive: true, force: true }));
+    const service = createNoticeThumbnailService({
+        cacheDir,
+        isOwnedUrl: ownsProjectBucket,
+        fetchImage: async () => {
+            throw new Error('network down');
+        }
+    });
+
+    assert.deepEqual(
+        await service.getThumbnail({
+            id: 23,
+            updatedAt: '2026-07-29T00:00:00.000Z',
+            image: BUCKET_URL
+        }),
+        { kind: 'default' }
+    );
+});

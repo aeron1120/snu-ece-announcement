@@ -538,3 +538,41 @@ test('approved banners wait in staging until an admin picks the slot they replac
     });
     assert.equal(bad.status, 400);
 });
+
+test('saving a notice never stores a raw data URL when the bucket is available', async () => {
+    const server = await readFile(path.join(process.cwd(), 'server', 'server.js'), 'utf8');
+
+    // 저장 경로 두 곳 모두 업로드를 거쳐야 한다.
+    assert.match(server, /createNoticeImageStore/);
+    assert.match(server, /noticeImageStore\.persistImages/);
+    const createRoute = server.slice(
+        server.indexOf("app.post('/api/notices'"),
+        server.indexOf("app.put('/api/notices/:id'")
+    );
+    assert.match(createRoute, /persistImages/);
+    const updateRoute = server.slice(
+        server.indexOf("app.put('/api/notices/:id'"),
+        server.indexOf("app.delete('/api/notices/:id'")
+    );
+    assert.match(updateRoute, /persistImages/);
+});
+
+test('deleting a notice clears its bucket objects even when the notice is hidden', async () => {
+    const server = await readFile(path.join(process.cwd(), 'server', 'server.js'), 'utf8');
+    const deleteRoute = server.slice(
+        server.indexOf("app.delete('/api/notices/:id'"),
+        server.indexOf("app.post('/api/notices/:id/view'")
+    );
+
+    // 소프트 삭제라 행은 남는다. 그래도 파일은 지운다.
+    assert.match(deleteRoute, /removeImages/);
+    // 지우기 전에 주소를 읽어와야 한다.
+    const readAt = deleteRoute.indexOf('getNoticeImagesById');
+    assert.ok(readAt >= 0 && readAt < deleteRoute.indexOf('removeImages'),
+        '이미지 목록을 먼저 읽어야 지울 수 있다');
+    // 숨긴 공지도 지울 수 있다. published만 보는 조회를 쓰면 그 파일이 버킷에 남는다.
+    assert.doesNotMatch(deleteRoute, /getPublishedNoticeById/);
+    const helperAt = server.indexOf('async function getNoticeImagesById');
+    const helper = server.slice(helperAt, server.indexOf('\n}', helperAt));
+    assert.doesNotMatch(helper, /'status'/);
+});
