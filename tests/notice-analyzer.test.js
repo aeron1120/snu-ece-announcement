@@ -63,6 +63,7 @@ test('analyzer retries one schema-invalid response and returns corrected JSON', 
     };
     const analyzer = createNoticeAnalyzer({
         apiKey: 'test-key',
+        wait: async () => {},
         model: 'gemini-test-model',
         fetchImpl,
         categoryProvider: async () => [{ id: 2, key: 'ACADEMIC', name: '학사' }]
@@ -91,6 +92,7 @@ test('analyzer retries one schema-invalid response and returns corrected JSON', 
 test('analyzer fails after two invalid model responses', async () => {
     const analyzer = createNoticeAnalyzer({
         apiKey: 'test-key',
+        wait: async () => {},
         model: 'gemini-test-model',
         fetchImpl: async () => ({
             ok: true,
@@ -122,6 +124,7 @@ test('verification retries with a correction before giving up', async () => {
     const replies = [good, '{"summary": []}', good];
     const analyzer = createNoticeAnalyzer({
         apiKey: 'test-key',
+        wait: async () => {},
         fetchImpl: async (url, options) => {
             bodies.push(JSON.parse(options.body).contents[0].parts[0].text);
             return {
@@ -147,6 +150,7 @@ test('a schema failure names the rule that broke', async () => {
     // 알 수 없어 운영자가 손쓸 수 없다.
     const analyzer = createNoticeAnalyzer({
         apiKey: 'test-key',
+        wait: async () => {},
         fetchImpl: async () => ({
             ok: true,
             json: async () => ({
@@ -176,4 +180,66 @@ test('a schema failure names the rule that broke', async () => {
             return true;
         }
     );
+});
+
+test('a rate limited call fails fast instead of burning the next attempt', async () => {
+    // 429는 스키마 오류가 아니다. 곧바로 다시 부르면 남은 한도만 태우고
+    // 똑같이 실패한다. 재시도는 스키마가 틀렸을 때만 의미가 있다.
+    let calls = 0;
+    const analyzer = createNoticeAnalyzer({
+        apiKey: 'test-key',
+        wait: async () => {},
+        fetchImpl: async () => {
+            calls += 1;
+            return {
+                ok: false,
+                status: 429,
+                headers: { get: name => (name.toLowerCase() === 'retry-after' ? '47' : null) },
+                json: async () => ({ error: { message: 'Quota exceeded. retry in 47s' } })
+            };
+        },
+        categoryProvider: async () => []
+    });
+
+    await assert.rejects(
+        analyzer.analyzeNotice({ title: '제목', content: '본문' }),
+        error => {
+            assert.equal(error.status, 429);
+            assert.equal(error.retryAfterSeconds, 47);
+            return true;
+        }
+    );
+    assert.equal(calls, 1);
+});
+
+test('calls are paced so one crawl cannot drain the minute quota', async () => {
+    // 크롤 한 번에 스무 건을 연속으로 분석하면 무료 등급 분당 한도를
+    // 곧바로 넘긴다. 호출 사이 최소 간격을 지켜야 한다.
+    const good = JSON.stringify({
+        summary: ['핵심'],
+        deadline: null,
+        targets: ['전체'],
+        keywords: [],
+        existingCategoryIds: [],
+        confidence: 0.9
+    });
+    const waited = [];
+    const analyzer = createNoticeAnalyzer({
+        apiKey: 'test-key',
+        wait: async () => {},
+        minIntervalMs: 6000,
+        wait: async ms => { waited.push(ms); },
+        now: (() => { let t = 0; return () => t; })(),
+        fetchImpl: async () => ({
+            ok: true,
+            json: async () => ({ candidates: [{ content: { parts: [{ text: good }] } }] })
+        }),
+        categoryProvider: async () => []
+    });
+
+    await analyzer.analyzeNotice({ title: '제목', content: '본문' });
+
+    // 분석 1회 + 검수 1회. 두 번째 호출 앞에서 간격을 지켜야 한다.
+    assert.equal(waited.length, 1);
+    assert.equal(waited[0], 6000);
 });

@@ -72,6 +72,10 @@ const noticeAnalyzer = process.env.GEMINI_API_KEY
     ? createNoticeAnalyzer({
         apiKey: process.env.GEMINI_API_KEY,
         model: process.env.GEMINI_MODEL || 'gemini-flash-latest',
+        // 무료 등급의 분당 한도에 맞춘 간격. 한 번의 크롤이 한도를 다 쓰면
+        // 그 창 동안 관리자의 수동 편집까지 429로 막힌다.
+        // 유료 등급으로 올리면 줄여서 크롤 시간을 되돌릴 수 있다.
+        minIntervalMs: Number(process.env.GEMINI_MIN_INTERVAL_MS) || 6000,
         categoryProvider: async () => {
             const categories = await automationStore.listCategories();
             const canonicalSlugs = new Set(
