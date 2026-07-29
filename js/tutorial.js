@@ -1,8 +1,11 @@
 /* 사용 설명서 튜토리얼.
 
-   문서를 읽히는 대신 실제 화면 위에서 한 기능씩 짚는다. 설명하는 버튼만
-   남기고 나머지는 어둡게 덮으므로 시선이 흩어지지 않고, 남겨 둔 자리는
-   진짜 버튼이라 사용자가 직접 눌러보며 익힐 수 있다.
+   문서를 읽히는 대신 실제 화면 위에서 한 기능씩 짚는다. 설명하는 자리만
+   남기고 나머지는 어둡게 덮으므로 시선이 흩어지지 않는다.
+
+   안내 중에는 아래 화면을 누를 수 없다. 서랍이 열리거나 공지 상세로
+   넘어가 버리면 다음에 짚을 자리가 화면에서 사라져 안내가 끊기기 때문이다.
+   덮개가 클릭을 모두 받아내고, 사용자는 카드의 이전·다음으로만 움직인다.
 
    단계마다 target으로 가리킬 곳을 정한다. 그 자리가 화면에 없으면
    (데스크탑 전용 버튼을 모바일에서 볼 때 같은 경우) 그 단계는 조용히 건너뛴다.
@@ -16,13 +19,13 @@
     const CARD_GAP = 14;
     const EDGE = 12;
 
-    /* action: 'click'이면 그 자리를 직접 눌러야 다음으로 간다.
-       settle은 누른 뒤 화면이 바뀔 시간을 얼마나 기다릴지다. */
+    /* hint를 적으면 카드 아래에 한 줄 덧붙는다. */
     const STEPS = [
         {
             target: '.search-container',
             title: '검색으로 시작하세요',
-            body: '제목과 본문을 함께 찾습니다. 글자를 입력하는 즉시 아래 목록이 걸러지니 검색 버튼을 따로 누를 필요는 없습니다.'
+            body: '제목과 본문을 함께 찾습니다. 글자를 입력하는 즉시 아래 목록이 걸러지니 검색 버튼을 따로 누를 필요는 없습니다.',
+            hint: '안내를 보는 동안에는 화면이 잠깁니다'
         },
         {
             target: '#search-guide-btn',
@@ -44,34 +47,22 @@
         {
             target: '#category-tabs',
             title: '카테고리로 나눠 보기',
-            body: '학사·기회·혜택·커뮤니티로 갈라 봅니다. 기회와 혜택은 마감이 급한 순서로, 학사와 커뮤니티는 최신 순서로 자동 정렬됩니다.',
-            action: 'click',
-            hint: '카테고리 하나를 눌러보세요',
-            settle: 260
+            body: '학사·기회·혜택·커뮤니티로 갈라 봅니다. 기회와 혜택은 마감이 급한 순서로, 학사와 커뮤니티는 최신 순서로 자동 정렬됩니다.'
         },
         {
             target: '#notice-quick-filters',
             title: '자주 쓰는 조건은 한 번에',
-            body: '마감 임박, 리워드 있음, 신청 필요, 마감을 바로 켜고 끕니다. 여러 개를 함께 켜면 모두 만족하는 공지만 남습니다.',
-            action: 'click',
-            hint: '조건 하나를 눌러 켜보세요',
-            settle: 240
+            body: '마감 임박, 리워드 있음, 신청 필요, 마감을 바로 켜고 끕니다. 여러 개를 함께 켜면 모두 만족하는 공지만 남습니다.'
         },
         {
             target: '#filter-toggle-bar',
             title: '더 좁히고 싶다면',
-            body: '학년, 대상, 등록 기간, 조회수까지 상세 조건을 펼쳐 고를 수 있습니다. 켜 둔 조건은 이 줄에 칩으로 남아 한눈에 보입니다.',
-            action: 'click',
-            hint: '눌러서 상세 필터를 펼쳐보세요',
-            settle: 330
+            body: '학년, 대상, 등록 기간, 조회수까지 상세 조건을 펼쳐 고를 수 있습니다. 켜 둔 조건은 이 줄에 칩으로 남아 한눈에 보입니다.'
         },
         {
             target: '#notice-sort-chips',
             title: '정렬 바꾸기',
-            body: '최신순, 마감임박순, 조회순 중에 고릅니다. 마감임박순에서 마감일이 없는 공지는 맨 뒤로 갑니다.',
-            action: 'click',
-            hint: '정렬 기준을 하나 눌러보세요',
-            settle: 240
+            body: '최신순, 마감임박순, 조회순 중에 고릅니다. 마감임박순에서 마감일이 없는 공지는 맨 뒤로 갑니다.'
         },
         {
             target: '#notice-grid .card',
@@ -102,7 +93,7 @@
         {
             final: true,
             title: '준비되었습니다',
-            body: '검색으로 찾고, 조건으로 좁히고, 열어서 확인하면 됩니다. 이 안내는 검색창 오른쪽 돋보기에서 언제든 다시 열 수 있습니다.'
+            body: '이제 화면 잠금을 풀고 직접 써 보세요. 검색으로 찾고, 조건으로 좁히고, 열어서 확인하면 됩니다. 이 안내는 검색창 오른쪽 돋보기에서 언제든 다시 열 수 있습니다.'
         }
     ];
 
@@ -114,8 +105,6 @@
     let steps = [];
     let index = 0;
     let currentTarget = null;
-    let clickWatcher = null;
-    let settleTimer = 0;
     let followTimer = 0;
     let leaveStep = null;
 
@@ -175,14 +164,23 @@
         elements.next.addEventListener('click', () => goTo(index + 1));
         layer.querySelector('.tutorial-skip').addEventListener('click', () => closeTutorial());
 
-        /* 가림판을 누르면 아무 일도 일어나지 않아야 한다. 그냥 두면 뒤에 있는
-           것이 눌리지는 않아도 클릭이 문서까지 올라가 다른 처리가 깨어난다. */
-        for (const shade of Object.values(shades)) {
-            shade.addEventListener('click', event => {
-                event.preventDefault();
-                event.stopPropagation();
-            });
-        }
+        /* 안내 중에는 아래 화면이 눌리지 않아야 한다. 층 전체가 화면을 덮고
+           클릭을 받으므로 아래로는 아무것도 내려가지 않는다. 여기서 한 번 더
+           막는 것은 층에 떨어진 클릭이 문서까지 올라가 다른 처리를 깨우는 것을
+           끊기 위해서다. 카드 안에서 난 클릭만 그대로 지나간다. */
+        const swallow = (types, cancel) => {
+            for (const type of types) {
+                layer.addEventListener(type, event => {
+                    if (card.contains(event.target)) return;
+                    if (cancel) event.preventDefault();
+                    event.stopPropagation();
+                }, true);
+            }
+        };
+        swallow(['click', 'dblclick', 'mousedown', 'mouseup', 'contextmenu'], true);
+        /* 손가락과 포인터는 막기만 하고 취소하지는 않는다. 취소해 버리면
+           화면을 쓸어 내리는 동작까지 함께 죽어 아래를 볼 수 없게 된다. */
+        swallow(['pointerdown', 'pointerup', 'touchstart', 'touchend'], false);
     }
 
     function isVisible(element) {
@@ -274,37 +272,17 @@
         }, 60);
     }
 
-    function detachClickWatcher() {
-        if (!clickWatcher) return;
-        document.removeEventListener('click', clickWatcher, true);
-        clickWatcher = null;
-        window.clearTimeout(settleTimer);
-    }
-
-    function watchForClick(step, target) {
-        detachClickWatcher();
-        if (step.action !== 'click' || !target) return;
-        clickWatcher = event => {
-            if (!target.contains(event.target)) return;
-            detachClickWatcher();
-            // 누른 결과가 화면에 나타날 시간을 준 뒤 넘어간다.
-            settleTimer = window.setTimeout(() => goTo(index + 1), step.settle || 240);
-        };
-        document.addEventListener('click', clickWatcher, true);
-    }
-
     function render() {
         const step = steps[index];
         if (!step) return closeTutorial();
 
-        detachClickWatcher();
         if (leaveStep) { leaveStep(); leaveStep = null; }
         currentTarget = step.final ? null : resolveTarget(step) || null;
         if (currentTarget && typeof step.onEnter === 'function') {
             leaveStep = step.onEnter(currentTarget) || null;
         }
 
-        layer.dataset.action = currentTarget && step.action === 'click' ? 'click' : 'read';
+        layer.dataset.action = step.hint ? 'note' : 'read';
         elements.count.textContent = `${index + 1} / ${steps.length}`;
         elements.title.textContent = step.title;
         elements.body.textContent = step.body;
@@ -325,7 +303,6 @@
         reposition();
         // 카드 높이는 글을 넣은 뒤에야 확정되므로 한 프레임 뒤 다시 맞춘다.
         requestAnimationFrame(reposition);
-        watchForClick(step, currentTarget);
         elements.next.focus({ preventScroll: true });
     }
 
@@ -337,6 +314,13 @@
     }
 
     function onKeyDown(event) {
+        // 키보드로도 아래 화면을 깨울 수 없어야 한다. 카드 밖에 초점이
+        // 가 있다면 누르는 시늉만 나고 아무 일도 일어나지 않는다.
+        if ((event.key === 'Enter' || event.key === ' ') && card && !card.contains(event.target)) {
+            event.preventDefault();
+            event.stopPropagation();
+            return;
+        }
         if (event.key === 'Escape') { event.preventDefault(); closeTutorial(); }
         else if (event.key === 'ArrowRight') { event.preventDefault(); goTo(index + 1); }
         else if (event.key === 'ArrowLeft') { event.preventDefault(); goTo(index - 1); }
@@ -347,6 +331,9 @@
         /* 두 번째 단계에서 가리키는 것이 이 안내를 여는 돋보기다. 설명대로
            눌러보는 사람이 있으므로, 이미 열려 있으면 처음으로 되돌리지 않는다. */
         if (!layer.hidden) return;
+        /* 서랍이나 상세 화면이 열린 채로 시작하면 짚을 자리가 가려진다.
+           안내는 언제나 공지 목록에서 출발한다. */
+        window.closeMobileDrawer?.();
         steps = usableSteps();
         if (!steps.length) return;
         index = 0;
@@ -361,7 +348,6 @@
 
     function closeTutorial() {
         if (!layer || layer.hidden) return;
-        detachClickWatcher();
         if (leaveStep) { leaveStep(); leaveStep = null; }
         window.clearInterval(followTimer);
         window.removeEventListener('scroll', reposition, true);

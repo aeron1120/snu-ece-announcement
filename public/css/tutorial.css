@@ -9,8 +9,10 @@
     position: fixed;
     inset: 0;
     z-index: 4000;
-    /* 층 자체는 클릭을 받지 않는다. 받는 것은 아래의 가림판과 설명 카드뿐이다. */
-    pointer-events: none;
+    /* 층이 화면 전체를 덮고 클릭을 받아낸다. 안내 중에 서랍이 열리거나 공지
+       상세로 넘어가면 다음에 짚을 자리가 사라져 안내가 끊기기 때문이다.
+       스크롤은 막지 않으므로 설명하는 자리를 화면 가운데로 옮길 수 있다. */
+    pointer-events: auto;
     font-family: inherit;
 }
 
@@ -41,10 +43,8 @@
 
 .tutorial-layer.is-open .tutorial-ring { opacity: 1; }
 
-/* 직접 눌러야 넘어가는 단계에서는 테두리가 천천히 숨을 쉰다. */
-.tutorial-layer[data-action="click"] .tutorial-ring {
-    animation: tutorial-pulse 1.7s ease-in-out infinite;
-}
+/* 지금 짚고 있는 자리를 눈으로 찾기 쉽도록 테두리가 천천히 숨을 쉰다. */
+.tutorial-ring { animation: tutorial-pulse 2.4s ease-in-out infinite; }
 
 @keyframes tutorial-pulse {
     0%, 100% { box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.92), 0 0 0 6px rgba(90, 140, 255, 0.32); }
@@ -109,7 +109,7 @@
     word-break: keep-all;
 }
 
-/* 직접 눌러보라고 청하는 줄. 눌러야만 넘어가는 단계에서만 나온다. */
+/* 카드 아래에 덧붙는 한 줄. 적어 둔 단계에서만 나온다. */
 .tutorial-hint {
     display: none;
     align-items: center;
@@ -123,7 +123,7 @@
     font-weight: 700;
 }
 
-.tutorial-layer[data-action="click"] .tutorial-hint { display: flex; }
+.tutorial-layer[data-action="note"] .tutorial-hint { display: flex; }
 
 .tutorial-hint-dot {
     width: 7px;
@@ -216,7 +216,7 @@
 
 @media (prefers-reduced-motion: reduce) {
     .tutorial-shade, .tutorial-ring, .tutorial-card, .tutorial-progress-fill { transition: none; }
-    .tutorial-layer[data-action="click"] .tutorial-ring { animation: none; }
+    .tutorial-ring { animation: none; }
     .tutorial-hint-dot { animation: none; }
 }
 
