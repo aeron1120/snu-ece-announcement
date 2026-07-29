@@ -1,3 +1,5 @@
+import { getGeminiRetryAfterSeconds } from './gemini-rate-limit.js';
+
 export class NoticeAnalysisError extends Error {
     constructor(message, options) {
         super(message, options);
@@ -130,6 +132,10 @@ ${JSON.stringify(draft)}`.trim();
 
 /* 어느 규칙이 깨졌는지까지 남긴다. "스키마를 만족하지 못했다"만으로는
    운영자가 손쓸 수 없고, 크롤러 로그에도 단서가 남지 않는다. */
+function isRateLimited(error) {
+    return Number(error?.status) === 429;
+}
+
 function describeCause(error) {
     const message = String(error?.message || '').trim();
     return message || 'reason unknown';
@@ -204,11 +210,25 @@ export function createNoticeAnalyzer({
     apiKey,
     model = 'gemini-flash-latest',
     fetchImpl = fetch,
-    categoryProvider = async () => []
+    categoryProvider = async () => [],
+    // 무료 등급은 분당 호출 수가 막혀 있다. 크롤 한 번이 스무 건을 연속으로
+    // 분석하면 한도를 즉시 넘겨, 그 창 동안 관리자의 수동 편집까지 막힌다.
+    minIntervalMs = 6000,
+    wait = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds)),
+    now = () => Date.now()
 }) {
     if (!apiKey) throw new Error('Gemini API key is required');
 
+    let nextCallAt = 0;
+
+    async function pace() {
+        const delay = nextCallAt - now();
+        if (delay > 0) await wait(delay);
+        nextCallAt = now() + minIntervalMs;
+    }
+
     async function generate(prompt) {
+        await pace();
         const response = await fetchImpl(
             `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
             {
@@ -222,9 +242,17 @@ export function createNoticeAnalyzer({
         );
         const data = await response.json();
         if (!response.ok) {
-            throw new NoticeAnalysisError(
+            const error = new NoticeAnalysisError(
                 data?.error?.message || `Gemini request failed (${response.status})`
             );
+            error.status = response.status;
+            if (response.status === 429) {
+                error.retryAfterSeconds = getGeminiRetryAfterSeconds(
+                    response.headers?.get?.('retry-after'),
+                    data
+                );
+            }
+            throw error;
         }
         return data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
     }
@@ -258,6 +286,9 @@ export function createNoticeAnalyzer({
                     );
                     break;
                 } catch (error) {
+                    // 한도 초과는 스키마 오류가 아니다. 곧바로 다시 부르면
+                    // 남은 한도만 태우고 똑같이 막힌다.
+                    if (isRateLimited(error)) throw error;
                     lastError = error;
                 }
             }
@@ -292,6 +323,7 @@ export function createNoticeAnalyzer({
                         )?.key || null
                     };
                 } catch (error) {
+                    if (isRateLimited(error)) throw error;
                     verificationError = error;
                 }
             }
