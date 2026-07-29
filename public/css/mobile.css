@@ -86,16 +86,36 @@ html[data-view="mobile"] .drawer-scrim.drawer-open { display: block; }
     border-color: rgba(255, 255, 255, 0.42);
 }
 /* 화면 왼쪽 위에 떠 있는 버튼. 흐름에서 빠져 있어 제목은 이 버튼이 없는
-   것처럼 왼쪽 끝에 붙는다. 바탕과 테두리는 지워 배경에 묻힌다. */
+   것처럼 왼쪽 끝에 붙는다. 평소에는 숨어 있다가 목록을 조금이라도 내리면
+   나타나고, 손을 떼고 잠시 두면 스스로 사라진다. */
 html[data-view="mobile"] .mobile-menu-btn {
     display: grid;
     position: fixed;
-    top: 4px;
-    left: 4px;
-    z-index: 1050;
-    width: 32px;
-    height: 32px;
-    color: #9aa2b1;
+    top: 10px;
+    left: 10px;
+    z-index: 1060;
+    width: 34px;
+    height: 34px;
+    color: #7c8698;
+    background: rgba(255, 255, 255, 0.82);
+    border-color: rgba(31, 63, 143, 0.1);
+    border-radius: 10px;
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(-6px);
+    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: blur(6px);
+    transition: opacity .2s ease, transform .2s ease, top .2s ease, color .15s ease;
+}
+html[data-view="mobile"] .mobile-menu-btn.is-visible {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateY(0);
+}
+/* 검색 줄이 함께 떠 있으면 그 줄 안에 나란히 선 것처럼 높이를 맞춘다.
+   검색칸은 위 여백 8px에 42px 높이라 가운데가 29px, 손잡이는 34px이므로 12px. */
+html[data-view="mobile"] .mobile-menu-btn.is-with-search {
+    top: 12px;
     background: transparent;
     border-color: transparent;
     -webkit-backdrop-filter: none;
@@ -179,8 +199,8 @@ html[data-view="mobile"] .header {
     row-gap: 10px;
     align-items: center;
     gap: 8px;
-    /* 왼쪽 위에 뜬 손잡이 바로 아래에서 시작한다. 제목은 왼쪽 끝에 그대로 붙는다. */
-    margin: 24px 0 10px;
+    /* 손잡이는 평소 숨어 있으므로 위를 비워 둘 필요가 없다. */
+    margin: 0 0 10px;
     padding: 2px 0 8px;
     background: transparent;
     border: 0;
@@ -665,7 +685,7 @@ html[data-view="mobile"] .mobile-sticky-search {
     left: 0;
     z-index: 1040;
     width: 100%;
-    padding: 8px 12px 10px 46px;
+    padding: 8px 12px 10px 52px;
     background: rgba(255, 255, 255, 0.94);
     border: 0;
     border-bottom: 1px solid rgba(31, 63, 143, 0.1);

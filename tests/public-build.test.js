@@ -192,17 +192,15 @@ test('the public page drops the top banner, the saved-posts feature, and the ref
     assert.match(html, /<h1 class="site-title" id="site-title">[\s\S]*?id="site-title-mark"[\s\S]*?alt="SNU ECE 공지방"/);
     assert.match(html, /<span class="site-title-text">SNU ECE 공지방<\/span>/);
     assert.doesNotMatch(html, /제목을 누르면 새로고침|site-title-hint|reloadNoticeBoard/);
-    assert.match(html, /id="bell-toggle"[\s\S]*?aria-pressed="false"/);
+    // 종은 화면에서 뺐다. 알림은 푸터의 "알림 설정"으로만 연다.
+    assert.doesNotMatch(html, /id="bell-toggle"/);
+    assert.match(html, />알림 설정</);
     assert.match(html, /onclick="openNotificationPreferences\(\)"/);
     assert.doesNotMatch(app, /function reloadNoticeBoard/);
     assert.match(app, /function updateBellState/);
     assert.doesNotMatch(css, /site-title:hover[\s\S]*text-decoration:\s*underline/);
-    // 종은 이모지가 아니라 직접 그린 선 아이콘이다. 기기마다 모양이 달라지지 않는다.
-    assert.match(html, /id="bell-toggle"[\s\S]*?<svg/);
-    assert.doesNotMatch(html, /id="bell-toggle"[\s\S]{0,200}🔔/);
-    assert.match(css, /\.bell-toggle\[aria-pressed="true"\]\s*\{[^}]*color:\s*var\(--primary\)/s);
-    // 켜지면 안쪽이 옅게 차서 색만이 아니라 형태로도 구분된다.
-    assert.match(css, /\.bell-toggle\[aria-pressed="true"\] svg path:first-child\s*\{[^}]*fill:\s*var\(--primary-light\)/s);
+
+
 });
 
 test('layout mode is chosen before first paint and follows the real viewport', async () => {
@@ -2139,7 +2137,9 @@ test('a sticky search row takes over once the real search box scrolls away', asy
     // 화면에 붙어 있어야 스크롤해도 사라지지 않는다.
     assert.match(mobileCss, /\.mobile-sticky-search\s*\{[^}]*position:\s*fixed;[^}]*top:\s*0/s);
     // 떠 있는 메뉴 버튼이 검색 글자를 덮지 않게 왼쪽을 비워 둔다.
-    assert.match(mobileCss, /\.mobile-sticky-search\s*\{[^}]*padding:\s*8px 12px 10px 46px;/s);
+    assert.match(mobileCss, /\.mobile-sticky-search\s*\{[^}]*padding:\s*8px 12px 10px 52px;/s);
+    // 검색 줄이 뜨면 손잡이가 그 줄에 맞춰 내려온다.
+    assert.match(mobileCss, /\.mobile-menu-btn\.is-with-search\s*\{[^}]*top:\s*12px/s);
 });
 
 test('first-time users get a guide, and slow notice loads show progress', async () => {
@@ -2214,7 +2214,12 @@ test('closing a filter chip does not collapse the detail panel', async () => {
     const menuRule = menuBlock.slice(0, menuBlock.indexOf('}'));
     // 흐름에서 빠져 떠 있어야 제목이 버튼 없는 것처럼 왼쪽 끝에 붙는다.
     assert.match(menuRule, /position:\s*fixed/);
-    assert.match(menuRule, /background:\s*transparent/);
+    // 평소에는 숨어 있다가 목록을 내리면 나타나고, 두면 스스로 사라진다.
+    assert.match(menuRule, /opacity:\s*0/);
+    assert.match(menuRule, /pointer-events:\s*none/);
+    assert.match(mobileCss, /\.mobile-menu-btn\.is-visible\s*\{[^}]*opacity:\s*1/s);
+    assert.match(readNamedFunction(app, 'revealMobileMenuHandle'), /MENU_HANDLE_IDLE_MS/);
+    assert.match(readNamedFunction(app, 'revealMobileMenuHandle'), /isMobileDrawerOpen\(\)/);
     // 푸터 2x2의 십자 구분선은 없앤다.
     assert.doesNotMatch(mobileCss, /\.footer-column\s*\{[^}]*border-right/s);
     // 헤더도 흰 카드가 아니라 배경 위에 그대로 얹힌다.

@@ -1326,12 +1326,19 @@ function syncMobileStickySearch() {
         }
         // 검색창 아랫변이 화면 위로 넘어가면 그때부터 대신 선다.
         const shouldShow = field.getBoundingClientRect().bottom <= 4;
-        if (shouldShow === bar.classList.contains('visible')) return;
+        if (shouldShow === bar.classList.contains('visible')) {
+            syncMobileMenuHandlePosition();
+            return;
+        }
         if (shouldShow) {
             bar.hidden = false;
-            requestAnimationFrame(() => bar.classList.add('visible'));
+            requestAnimationFrame(() => {
+                bar.classList.add('visible');
+                syncMobileMenuHandlePosition();
+            });
         } else {
             bar.classList.remove('visible');
+            syncMobileMenuHandlePosition();
             window.setTimeout(() => {
                 if (!bar.classList.contains('visible')) bar.hidden = true;
             }, 180);
@@ -1382,10 +1389,47 @@ function jumpToNoticeSearch() {
     window.setTimeout(() => input.focus({ preventScroll: true }), 420);
 }
 
+/* 왼쪽 위 메뉴 손잡이.
+   늘 떠 있으면 제목과 본문을 가리므로 평소에는 숨겨 둔다. 목록을 조금이라도
+   내리면 나타나고, 손을 떼고 잠시 두면 스스로 사라진다. 검색 줄이 함께 떠
+   있을 때는 그 줄 왼쪽에 나란히 서도록 자리를 옮긴다. */
+const MENU_HANDLE_IDLE_MS = 2600;
+let menuHandleHideTimer = null;
+
+function revealMobileMenuHandle() {
+    const handle = document.querySelector('.mobile-menu-btn');
+    if (!handle || getLayoutMode() !== 'mobile') return;
+    handle.classList.add('is-visible');
+    window.clearTimeout(menuHandleHideTimer);
+    menuHandleHideTimer = window.setTimeout(() => {
+        // 서랍이 열려 있는 동안에는 손잡이를 거두지 않는다.
+        if (isMobileDrawerOpen()) return;
+        handle.classList.remove('is-visible');
+    }, MENU_HANDLE_IDLE_MS);
+}
+
+function syncMobileMenuHandlePosition() {
+    const handle = document.querySelector('.mobile-menu-btn');
+    const bar = document.getElementById('mobile-sticky-search');
+    if (!handle) return;
+    // 검색 줄이 떠 있으면 그 줄 안에 나란히 선 것처럼 맞춘다.
+    handle.classList.toggle('is-with-search', Boolean(bar && bar.classList.contains('visible')));
+}
+
 function watchMobileStickySearch() {
     if (!document.getElementById('mobile-sticky-search')) return;
-    window.addEventListener('scroll', syncMobileStickySearch, { passive: true });
+    const onScroll = () => {
+        syncMobileStickySearch();
+        revealMobileMenuHandle();
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
     window.addEventListener('resize', syncMobileStickySearch, { passive: true });
+    // 손잡이를 만지는 동안에는 사라지지 않게 시계를 다시 돌린다.
+    document.querySelector('.mobile-menu-btn')
+        ?.addEventListener('pointerenter', revealMobileMenuHandle);
+    // 맨 위에서는 스크롤이 없어 아무 신호도 오지 않는다. 처음 한 번 보여 줘
+    // 메뉴가 있다는 것만 알리고 곧 거둔다.
+    revealMobileMenuHandle();
     syncMobileStickySearch();
 }
 
