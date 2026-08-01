@@ -15,7 +15,7 @@
     'use strict';
 
     const TUTORIAL_SEEN_KEY = 'eceTutorialSeen';
-    const RING_PADDING = 8;
+    const RING_PADDING = 0;
     const CARD_GAP = 14;
     const EDGE = 12;
     const MOVE_MIN_MS = 300;
@@ -24,7 +24,7 @@
     /* hint를 적으면 카드 아래에 한 줄 덧붙는다. */
     const STEPS = [
         {
-            target: '.search-container',
+            target: '#searchInput',
             title: '검색으로 시작하세요',
             body: '제목과 본문을 함께 찾습니다. 글자를 입력하는 즉시 아래 목록이 걸러지니 검색 버튼을 따로 누를 필요는 없습니다.',
             hint: '안내를 보는 동안에는 화면이 잠깁니다'
