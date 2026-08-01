@@ -283,7 +283,8 @@ test('mobile cards stay compact, keep paging, and disable notice comparison drag
 
     assert.doesNotMatch(html, /class="search-brand"/);
     assert.match(html, /class="detail-back"[^>]*aria-label="이전 화면"[\s\S]*<svg[\s\S]*<\/button>/);
-    assert.match(mobileCss, /\.card\s*\{[^}]*height:\s*auto;[^}]*aspect-ratio:\s*0\.72/s);
+    assert.match(mobileCss, /\.card\s*\{[^}]*min-height:\s*0/s);
+    assert.doesNotMatch(mobileCss, /\.card\s*\{[^}]*aspect-ratio:/s);
     assert.match(mobileCss, /\.card\s*\{[^}]*border-radius:\s*0;[^}]*box-shadow:/s);
     assert.match(mobileCss, /\.card\.card-urgent\s*\{[^}]*border:\s*2px solid #c0392b/s);
     assert.match(mobileCss, /\.card-img-preview\s*\{[^}]*object-fit:\s*cover/s);
@@ -815,10 +816,34 @@ test('manual Gemini analysis saves canonical category ids with the notice', asyn
     assert.match(admin, /categoryIds:\s*analysis\.categorySlugs/);
     assert.match(admin, /return withResolvedCategoryIds\(verified\)/);
     assert.match(admin, /verificationPrompt/);
+    assert.match(admin, /출력 형식:[\s\S]*?"deadline"[\s\S]*?"startDate"/);
+    assert.match(admin, /document\.getElementById\('post-start-date'\)\.value = parsed\.startDate \|\| ''/);
+    const save = readNamedFunction(admin, 'generateAIAndSave');
+    assert.match(save, /if \(!startDate && analysis\.startDate\)/);
+    assert.match(save, /startDate = analysis\.startDate/);
+    assert.match(save, /if \(!deadline && analysis\.deadline\)/);
     assert.match(admin, /verifiedNumbers/);
     assert.match(admin, /const newNoticeData = \{[\s\S]*categoryIds,/);
     assert.match(server, /const categoryIds = Array\.from\(new Set/);
     assert.match(schema, /notice_payload \? 'categoryIds'[\s\S]*insert into public\.notice_categories/);
+});
+
+test('explicit notice ranges supply start and deadline when Gemini omits them', async () => {
+    const admin = await readFile('js/admin.js', 'utf8');
+    const source = readNamedFunction(admin, 'extractExplicitNoticeDateRange');
+    const extract = new Function(`${source}; return extractExplicitNoticeDateRange;`)();
+
+    assert.deepEqual(
+        extract('2026학년도 2학기 수강신청 안내 (8/12 18:00 ~ 9/17 24:00)', new Date('2026-08-02T00:00:00')),
+        { startDate: '2026-08-12', deadline: '2026-09-17' }
+    );
+    assert.deepEqual(
+        extract('행사일은 8월 12일입니다.', new Date('2026-08-02T00:00:00')),
+        { startDate: '', deadline: '' }
+    );
+    const analysis = readNamedFunction(admin, 'runNoticeAnalysis');
+    assert.match(analysis, /if \(!draft\.startDate && explicitRange\.startDate\)/);
+    assert.match(analysis, /if \(!verified\.startDate && explicitRange\.startDate\)/);
 });
 
 test('the compose form picks an analysis mode instead of a verification checkbox', async () => {
@@ -1780,13 +1805,14 @@ test('notice detail supports inline image navigation, image copying, and a shado
     assert.deepEqual(result, { wrappedBack: 2, current: 1, updates: 3 });
 });
 
-test('notice cards are equal-height SNU-newsroom cards in the shared core layer', async () => {
+test('notice cards keep a baseline height but expand instead of clipping titles', async () => {
     const app = await readFile('js/core.js', 'utf8');
     const css = await readFile('css/core.css', 'utf8');
 
     assert.match(css, /\.grid\s*\{[^}]*display:\s*grid/s);
-    // 모든 카드가 같은 높이여야 블록 크기가 일정하다.
-    assert.match(css, /\.card\s*\{[^}]*height:\s*440px/s);
+    // 짧은 카드는 기준 높이를 유지하고 긴 제목이 오면 아래로 늘어난다.
+    assert.match(css, /\.card\s*\{[^}]*min-height:\s*440px;[^}]*height:\s*auto/s);
+    assert.match(css, /\.card-title\s*\{[^}]*display:\s*block;[^}]*overflow-wrap:\s*anywhere/s);
     // 포스터는 고정 높이, 사진은 cover.
     assert.match(css, /\.card-poster\s*\{[^}]*height:\s*216px/s);
     assert.match(css, /\.card-img-preview\s*\{[^}]*object-fit:\s*cover/s);
@@ -2531,8 +2557,19 @@ test('mobile guide pages hide desktop rails and mobile card titles stay containe
         assert.match(page, /matchMedia\('\(max-width: 820px\)'\)/);
     }
     assert.match(guideCss, /@media \(max-width: 820px\)[\s\S]*?\.guide-page-rail\s*\{\s*display:\s*none !important;/);
-    assert.match(mobileCss, /\.card-poster-title\s*\{[\s\S]*?max-height:\s*calc\(1\.32em \* 4\)[\s\S]*?overflow:\s*hidden;/);
-    assert.match(mobileCss, /\.card-title\s*\{[\s\S]*?word-break:\s*keep-all;[\s\S]*?overflow-wrap:\s*anywhere;[\s\S]*?-webkit-line-clamp:\s*2;/);
+    assert.match(mobileCss, /\.card-poster\.is-text\s*\{[^}]*height:\s*auto;[^}]*min-height:\s*154px/s);
+    assert.match(mobileCss, /\.card-poster-title\s*\{[^}]*overflow:\s*visible/s);
+    assert.match(mobileCss, /\.card-title\s*\{[^}]*word-break:\s*keep-all;[^}]*overflow-wrap:\s*anywhere;[^}]*display:\s*block;[^}]*overflow:\s*visible/s);
+    assert.match(mobileCss, /\.card-date\s*\{[^}]*white-space:\s*normal;[^}]*overflow-wrap:\s*anywhere/s);
+});
+
+test('category selection uses one blue mobile baseline and a modest weight change', async () => {
+    const css = await readFile('css/core.css', 'utf8');
+    const mobile = await readFile('css/mobile.css', 'utf8');
+
+    assert.match(css, /\.category-tab\.active\s*\{[^}]*font-weight:\s*750/s);
+    assert.match(mobile, /\.category-tabs\s*\{[^}]*border-bottom:\s*2px solid var\(--primary-deep\)/s);
+    assert.match(mobile, /\.category-tab\.active\s*\{[^}]*border-bottom-color:\s*transparent;[^}]*font-weight:\s*750/s);
 });
 
 test('notice links stop before Korean particles and surrounding punctuation', async () => {

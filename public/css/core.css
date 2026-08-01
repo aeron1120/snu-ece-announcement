@@ -598,7 +598,7 @@ body {
 .category-tab:hover { color: var(--primary); }
 .category-tab.active {
     color: var(--primary-deep);
-    font-weight: 800;
+    font-weight: 750;
     border-bottom-color: var(--primary-deep);
 }
 .category-tab:focus-visible { outline: 2px solid var(--primary); outline-offset: -4px; }
@@ -1007,12 +1007,14 @@ body {
     text-align: center;
     font-variant-numeric: tabular-nums;
 }
-/* 서울대 소식 카드 스타일. 모든 카드는 같은 높이다:
+/* 서울대 소식 카드 스타일. 기본 높이는 맞추되 긴 제목과 날짜가 들어오면
+   카드가 늘어나 내용을 잘라내지 않는다:
    포스터(사진 또는 큰 제목) → 제목 → 날짜(요일 포함) → 본문 발췌. */
 .card {
     background: var(--card-bg);
     border: 1px solid var(--border);
-    height: 440px;
+    min-height: 440px;
+    height: auto;
     position: relative;
     min-width: 0;
     overflow: hidden;
@@ -1186,15 +1188,14 @@ body {
 .card-title {
     margin: 0; font-size: 16.5px; line-height: 1.45;
     word-break: keep-all; font-weight: 700; color: var(--text-main);
-    display: -webkit-box;
-    overflow: hidden;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 2;
+    display: block;
+    overflow-wrap: anywhere;
 }
 .card-date {
     font-size: 12.5px; color: var(--text-sub); font-weight: 600;
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
+    max-width: 100%;
     letter-spacing: -0.03em;
     font-size: clamp(10.5px, 0.82vw, 12.5px);
 }
