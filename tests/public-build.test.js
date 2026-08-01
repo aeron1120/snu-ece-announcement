@@ -2515,3 +2515,26 @@ test('mobile guide pages hide desktop rails and mobile card titles stay containe
     assert.match(mobileCss, /\.card-poster-title\s*\{[\s\S]*?max-height:\s*calc\(1\.32em \* 4\)[\s\S]*?overflow:\s*hidden;/);
     assert.match(mobileCss, /\.card-title\s*\{[\s\S]*?word-break:\s*keep-all;[\s\S]*?overflow-wrap:\s*anywhere;[\s\S]*?-webkit-line-clamp:\s*2;/);
 });
+
+test('notice links stop before Korean particles and surrounding punctuation', async () => {
+    const app = await readFile('js/core.js', 'utf8');
+    const context = {};
+    runInNewContext(`
+        ${readNamedFunction(app, 'escapeHtml')}
+        ${readNamedFunction(app, 'linkify')}
+        this.linkify = linkify;
+    `, context);
+
+    const linked = context.linkify('신청(https://forms.gle/JTkSYXtCVNE5zELt5)는 SNU 포털에서 확인.');
+    assert.match(linked, /href="https:\/\/forms\.gle\/JTkSYXtCVNE5zELt5"/);
+    assert.match(linked, /<\/a>\)는 SNU/);
+    assert.doesNotMatch(linked, /href="[^"]*\)는/);
+
+    const balanced = context.linkify('https://example.com/docs_(v2).');
+    assert.match(balanced, /href="https:\/\/example\.com\/docs_\(v2\)"/);
+    assert.match(balanced, /<\/a>\.$/);
+
+    const quoted = context.linkify('"https://example.com/apply" <안내>');
+    assert.match(quoted, /^&quot;<a href="https:\/\/example\.com\/apply"/);
+    assert.match(quoted, /<\/a>&quot; &lt;안내&gt;$/);
+});

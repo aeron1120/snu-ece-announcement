@@ -1634,9 +1634,40 @@ function suspendNoticeHoverPreview() {
 
 function linkify(text) {
     if(!text) return "";
-    // 먼저 전체를 이스케이프하므로, 뒤이어 매칭되는 URL에는 따옴표가 남아 있지 않다.
-    const safeText = escapeHtml(text);
-    return safeText.replace(/(https?:\/\/[^\s<]+[^<.,:;"')\]\s])/g, `<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>`);
+    // 한국어 조사는 URL 문자가 아니다. 괄호 안의 링크라면 닫는 괄호도 링크에서 분리한다.
+    const rawText = String(text);
+    const urlPattern = /https?:\/\/[^\s<>"'\u3131-\u318e\uac00-\ud7a3]+/gi;
+    let html = '';
+    let cursor = 0;
+
+    for (const match of rawText.matchAll(urlPattern)) {
+        const matched = match[0];
+        let url = matched;
+        let suffix = '';
+
+        while (/[.,;:!?]$/.test(url)) {
+            suffix = url.slice(-1) + suffix;
+            url = url.slice(0, -1);
+        }
+
+        const bracketPairs = { ')': '(', ']': '[', '}': '{' };
+        while (bracketPairs[url.slice(-1)]) {
+            const closing = url.slice(-1);
+            const opening = bracketPairs[closing];
+            const openingCount = url.split(opening).length - 1;
+            const closingCount = url.split(closing).length - 1;
+            if (closingCount <= openingCount) break;
+            suffix = closing + suffix;
+            url = url.slice(0, -1);
+        }
+
+        html += escapeHtml(rawText.slice(cursor, match.index));
+        const safeUrl = escapeHtml(url);
+        html += `<a href="${safeUrl}" target="_blank" rel="noopener noreferrer">${safeUrl}</a>${escapeHtml(suffix)}`;
+        cursor = match.index + matched.length;
+    }
+
+    return html + escapeHtml(rawText.slice(cursor));
 }
 
 function safeHttpUrl(value) {
