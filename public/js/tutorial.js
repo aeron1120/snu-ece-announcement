@@ -467,6 +467,7 @@
 
         if (leaveStep) { leaveStep(); leaveStep = null; }
         currentTarget = step.final ? null : resolveTarget(step) || null;
+        layer.classList.toggle('has-target', Boolean(currentTarget));
         if (currentTarget && typeof step.onEnter === 'function') {
             leaveStep = step.onEnter(currentTarget) || null;
         }
