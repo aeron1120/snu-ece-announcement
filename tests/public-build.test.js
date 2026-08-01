@@ -2082,7 +2082,7 @@ test('the admin console is usable on a phone and keeps AI editing in reach', asy
     }
 
     // 역할별로 열리는 탭이 코드에 못박혀 있다.
-    assert.match(admin, /master: \['review', 'backfill', 'compose', 'notices', 'banner', 'banner-inquiry', 'feedback', 'settings'\]/);
+    assert.match(admin, /master: \['review', 'backfill', 'compose', 'notices', 'banner', 'banner-inquiry', 'feedback', 'analytics', 'settings'\]/);
     assert.match(admin, /notice: \['review', 'backfill', 'compose', 'notices'\]/);
     assert.match(admin, /banner: \['banner', 'banner-inquiry'\]/);
     // 쓸 수 없는 탭은 감추는 게 아니라 지운다.

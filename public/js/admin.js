@@ -127,7 +127,7 @@ async function showGeminiRetryCountdown(error) {
 /* 역할별로 열리는 탭.
    마스터는 전부, 공지 관리자는 공지 관련 셋, 배너 관리자는 배너만 본다. */
 const ADMIN_TABS_BY_ROLE = Object.freeze({
-    master: ['review', 'backfill', 'compose', 'notices', 'banner', 'banner-inquiry', 'feedback', 'settings'],
+    master: ['review', 'backfill', 'compose', 'notices', 'banner', 'banner-inquiry', 'feedback', 'analytics', 'settings'],
     notice: ['review', 'backfill', 'compose', 'notices'],
     banner: ['banner', 'banner-inquiry']
 });
@@ -234,6 +234,7 @@ function selectAdminTab(name) {
     if (name === 'notices') loadAdminNoticeList();
     if (name === 'feedback') loadAdminFeedback();
     if (name === 'banner-inquiry') loadAdminFeedback();
+    if (name === 'analytics') loadBetaAnalytics();
     // 로그인할 때 이미 신분을 확인했으므로 배너·설정에서 비밀번호를 다시 묻지 않는다.
     if (name === 'banner') unlockBannerPanel();
     if (name === 'settings') unlockSettingsPanel();
@@ -916,6 +917,54 @@ async function analyzeNotice() {
 // ========================================
 // 💬 익명 피드백 (관리자 열람)
 // ========================================
+
+function analyticsMonthValue() {
+    const input = document.getElementById('analytics-month');
+    if (input && !input.value) input.value = new Date().toISOString().slice(0, 7);
+    return input?.value || new Date().toISOString().slice(0, 7);
+}
+
+function renderBetaAnalytics(summary) {
+    const metrics = document.getElementById('analytics-metrics');
+    const daily = document.getElementById('analytics-daily');
+    if (!metrics || !daily) return;
+    const rate = summary.returnRate === null ? '-' : `${summary.returnRate}%`;
+    const rating = summary.averageRating === null ? '-' : `${summary.averageRating} / 5`;
+    metrics.innerHTML = [
+        ['페이지 조회수', `${Number(summary.pageViews || 0).toLocaleString()}회`],
+        ['순 방문자', `${Number(summary.uniqueVisitors || 0).toLocaleString()}명`],
+        ['재방문자', `${Number(summary.returningVisitors || 0).toLocaleString()}명 (${rate})`],
+        ['만족도 평점', `${rating} · ${Number(summary.ratingCount || 0)}건`]
+    ].map(([label, value]) => `<article><span>${label}</span><strong>${value}</strong></article>`).join('');
+    const rows = Array.isArray(summary.daily) ? summary.daily : [];
+    daily.innerHTML = rows.length ? `<table><thead><tr><th>날짜</th><th>조회수</th><th>순 방문자</th><th>재방문자</th></tr></thead><tbody>${rows.map(row => `<tr><td>${escapeHtml(row.date)}</td><td>${Number(row.pageViews)}</td><td>${Number(row.uniqueVisitors)}</td><td>${Number(row.returningVisitors)}</td></tr>`).join('')}</tbody></table>` : '<div class="review-empty">선택한 달의 집계가 아직 없습니다.</div>';
+}
+
+async function loadBetaAnalytics() {
+    const status = document.getElementById('analytics-status');
+    if (status) status.textContent = '집계 정보를 불러오는 중입니다.';
+    try {
+        const summary = await apiRequest(`/api/admin/beta-analytics?month=${encodeURIComponent(analyticsMonthValue())}`, { headers: getSuperAdminHeaders() });
+        renderBetaAnalytics(summary);
+        if (status) { status.textContent = `${summary.month} 익명 베타 집계`; status.style.color = 'var(--text-sub)'; }
+    } catch (error) {
+        if (status) { status.textContent = error.message || '집계를 불러오지 못했습니다.'; status.style.color = 'var(--danger)'; }
+    }
+}
+
+async function downloadBetaReport() {
+    const status = document.getElementById('analytics-status');
+    try {
+        const report = await apiRequest(`/api/admin/beta-report?month=${encodeURIComponent(analyticsMonthValue())}`, { headers: getSuperAdminHeaders() });
+        const url = URL.createObjectURL(new Blob([report.markdown], { type: 'text/markdown;charset=utf-8' }));
+        const link = document.createElement('a');
+        link.href = url; link.download = report.filename; link.click();
+        URL.revokeObjectURL(url);
+        if (status) { status.textContent = `${report.filename} 다운로드를 시작했습니다.`; status.style.color = 'var(--ok)'; }
+    } catch (error) {
+        if (status) { status.textContent = error.message || '보고서 생성에 실패했습니다.'; status.style.color = 'var(--danger)'; }
+    }
+}
 
 async function loadAdminFeedback() {
     const list = document.getElementById('admin-feedback-list');

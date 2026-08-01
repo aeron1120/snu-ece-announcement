@@ -543,6 +543,17 @@
             </div>
             <div class="feedback-shot-list" id="feedback-shot-list"></div>
         </div>
+        <div class="beta-rating-field" aria-label="베타 서비스 평점">
+            <span>베타 서비스는 어떠셨나요? <small>선택 사항 · 익명 집계</small></span>
+            <input type="hidden" id="beta-rating" value="">
+            <div class="beta-rating-buttons" role="group" aria-label="5점 평점">
+                <button type="button" data-beta-rating="1" onclick="selectBetaRating(1)" aria-label="1점">1</button>
+                <button type="button" data-beta-rating="2" onclick="selectBetaRating(2)" aria-label="2점">2</button>
+                <button type="button" data-beta-rating="3" onclick="selectBetaRating(3)" aria-label="3점">3</button>
+                <button type="button" data-beta-rating="4" onclick="selectBetaRating(4)" aria-label="4점">4</button>
+                <button type="button" data-beta-rating="5" onclick="selectBetaRating(5)" aria-label="5점">5</button>
+            </div>
+        </div>
         <p id="feedback-status" class="review-status" aria-live="polite"></p>
         <div class="review-actions" style="border-top: none; padding-top: 0;">
             <button class="btn" id="feedback-submit" type="button" onclick="submitFeedback()">익명으로 보내기</button>

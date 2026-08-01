@@ -124,6 +124,45 @@ function buildApiUrl(path) {
     return API_BASE_URL ? `${API_BASE_URL}${path}` : path;
 }
 
+// 베타 측정은 브라우저 난수 식별자만 쓰며, 서버에는 그 해시만 저장된다.
+function betaAnalyticsSessionId() {
+    let id = localStorage.getItem('eceBetaAnalyticsId');
+    if (!id) {
+        id = (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`).replace(/-/g, '');
+        localStorage.setItem('eceBetaAnalyticsId', id);
+    }
+    return id;
+}
+
+function trackBetaEvent(type, rating = null) {
+    const payload = JSON.stringify({
+        type,
+        rating,
+        sessionId: betaAnalyticsSessionId(),
+        pagePath: location.pathname
+    });
+    fetch(buildApiUrl('/api/analytics/events'), {
+        method: 'POST', keepalive: true,
+        headers: { 'Content-Type': 'application/json' }, body: payload
+    }).catch(() => {});
+}
+
+function initializeBetaAnalytics() {
+    const visitedKey = 'eceBetaAnalyticsVisited';
+    const hasVisited = localStorage.getItem(visitedKey) === '1';
+    trackBetaEvent('page_view');
+    if (hasVisited) trackBetaEvent('return_visit');
+    localStorage.setItem(visitedKey, '1');
+}
+
+function selectBetaRating(score) {
+    document.querySelectorAll('[data-beta-rating]').forEach(button => {
+        button.classList.toggle('selected', Number(button.dataset.betaRating) === Number(score));
+    });
+    const input = document.getElementById('beta-rating');
+    if (input) input.value = String(score);
+}
+
 // ========================================
 // 🖥 뷰 모드 (데스크탑 / 모바일)
 // 레이아웃은 CSS가 data-view로 가르고, 동작 차이는 등록된 뷰 모듈이 맡는다.
@@ -1772,6 +1811,12 @@ async function submitFeedback() {
         input.value = '';
         feedbackShots = [];
         renderFeedbackShots();
+        const rating = Number(document.getElementById('beta-rating')?.value || 0);
+        if (rating >= 1 && rating <= 5) {
+            trackBetaEvent('rating', rating);
+            document.getElementById('beta-rating').value = '';
+            document.querySelectorAll('[data-beta-rating]').forEach(button => button.classList.remove('selected'));
+        }
         setStatus('보내주셔서 감사합니다. 익명으로 전달되었습니다.');
     } catch (error) {
         setStatus(error.message || '전송에 실패했습니다. 잠시 후 다시 시도해주세요.', true);
@@ -3937,6 +3982,7 @@ document.addEventListener('keydown', function(e) {
 document.addEventListener('DOMContentLoaded', async function () {
     if (document.body.dataset.page !== 'public') return;
 
+    initializeBetaAnalytics();
     updateLayoutToggleLabel();
     initializeResponsiveLayout();
     applyViewModule(getLayoutMode());
