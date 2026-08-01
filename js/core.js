@@ -310,7 +310,7 @@ function createNoticeViewportLoader(options) {
         image.addEventListener('error', () => {
             if (image.dataset.defaultFallbackApplied === 'true') return;
             image.dataset.defaultFallbackApplied = 'true';
-            image.closest('.card')?.classList.add('is-thumbnail-fallback');
+            image.closest?.('.card')?.classList.add('is-thumbnail-fallback');
             image.src = defaultUrl;
         });
         image.src = resolveUrl(pendingUrl);
