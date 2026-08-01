@@ -155,12 +155,45 @@ function initializeBetaAnalytics() {
     localStorage.setItem(visitedKey, '1');
 }
 
-function selectBetaRating(score) {
-    document.querySelectorAll('[data-beta-rating]').forEach(button => {
-        button.classList.toggle('selected', Number(button.dataset.betaRating) === Number(score));
-    });
-    const input = document.getElementById('beta-rating');
-    if (input) input.value = String(score);
+const BETA_NOTICE_OPEN_COUNT_KEY = 'eceBetaNoticeOpenCount';
+const BETA_RATING_PROMPTS_KEY = 'eceBetaRatingPrompts';
+const BETA_RATING_MILESTONES = [3, 13];
+
+function storedBetaRatingPrompts() {
+    try {
+        const values = JSON.parse(localStorage.getItem(BETA_RATING_PROMPTS_KEY) || '[]');
+        return Array.isArray(values) ? values.map(Number).filter(Number.isFinite) : [];
+    } catch {
+        return [];
+    }
+}
+
+function closeBetaRatingPrompt() {
+    closeModal('beta-rating-modal');
+}
+
+function submitBetaRating(score) {
+    const rating = Number(score);
+    if (rating >= 1 && rating <= 5) trackBetaEvent('rating', rating);
+    closeBetaRatingPrompt();
+}
+
+function recordBetaNoticeOpen() {
+    let count = Number(localStorage.getItem(BETA_NOTICE_OPEN_COUNT_KEY) || 0);
+    count = Number.isFinite(count) ? count + 1 : 1;
+    localStorage.setItem(BETA_NOTICE_OPEN_COUNT_KEY, String(count));
+    if (!BETA_RATING_MILESTONES.includes(count)) return;
+
+    const prompted = storedBetaRatingPrompts();
+    if (prompted.includes(count)) return;
+    prompted.push(count);
+    localStorage.setItem(BETA_RATING_PROMPTS_KEY, JSON.stringify(prompted));
+
+    const help = document.getElementById('beta-rating-help');
+    if (help) help.textContent = count === 3
+        ? '공지 3개를 열어본 시점의 평가를 남겨주세요. 익명으로 집계됩니다.'
+        : '공지를 13회 열어본 후의 평가를 남겨주세요. 이후에는 다시 묻지 않습니다.';
+    window.setTimeout(() => openModal('beta-rating-modal'), 450);
 }
 
 // ========================================
@@ -1559,6 +1592,26 @@ function positionNoticeHoverPreview(card) {
     preview.style.width = `${previewWidth}px`;
 }
 
+function noticeHoverPreviewLines(notice) {
+    const summary = (Array.isArray(notice?.aiSummary) ? notice.aiSummary : [])
+        .flatMap(item => String(item || '').split(/\r?\n/))
+        .map(item => item.replace(/^\s*[-•·]\s*/, '').trim())
+        .filter(Boolean)
+        .slice(0, 3);
+    if (summary.length >= 3) return summary;
+
+    const sourceLabel = notice?.sourceUrl
+        ? '출처: 전기·정보공학부 홈페이지'
+        : `출처: ${String(notice?.host || '직접 등록 공지').trim()}`;
+    const attachmentLabel = Array.isArray(notice?.attachments) && notice.attachments.length > 0
+        ? '첨부파일이 있습니다.'
+        : '첨부파일이 없습니다.';
+
+    if (summary.length === 2) return [...summary, `${sourceLabel} · ${attachmentLabel}`];
+    if (summary.length === 1) return [...summary, sourceLabel, attachmentLabel];
+    return ['AI 요약이 아직 없습니다.', sourceLabel, attachmentLabel];
+}
+
 function renderNoticeHoverPreview(notice, card) {
     const preview = document.getElementById('notice-hover-preview');
     if (!preview || !notice || !card) return;
@@ -1566,13 +1619,10 @@ function renderNoticeHoverPreview(notice, card) {
         suspendNoticeHoverPreview();
         return;
     }
-    const summary = Array.isArray(notice.aiSummary) ? notice.aiSummary.filter(Boolean).slice(0, 3) : [];
-    const content = String(notice.content || '').replace(/\s+/g, ' ').trim();
-    const previewLines = summary.length ? summary : [content || '요약이 아직 없습니다.'];
+    const previewLines = noticeHoverPreviewLines(notice);
     preview.innerHTML = `
         <div class="notice-hover-preview-body">
             <span class="notice-hover-preview-label">AI 3줄 미리보기</span>
-            <h3>${escapeHtml(notice.title || '제목 없음')}</h3>
             <ul class="notice-hover-preview-summary-list">
                 ${previewLines.map(line => `<li>${escapeHtml(line)}</li>`).join('')}
             </ul>
@@ -1858,12 +1908,6 @@ async function submitFeedback() {
         input.value = '';
         feedbackShots = [];
         renderFeedbackShots();
-        const rating = Number(document.getElementById('beta-rating')?.value || 0);
-        if (rating >= 1 && rating <= 5) {
-            trackBetaEvent('rating', rating);
-            document.getElementById('beta-rating').value = '';
-            document.querySelectorAll('[data-beta-rating]').forEach(button => button.classList.remove('selected'));
-        }
         setStatus('보내주셔서 감사합니다. 익명으로 전달되었습니다.');
     } catch (error) {
         setStatus(error.message || '전송에 실패했습니다. 잠시 후 다시 시도해주세요.', true);
@@ -2958,6 +3002,7 @@ async function openDetail(idStr) {
 
     showDetailView();
     detailHistoryPushed = syncUrlToNotice(currentViewId);
+    recordBetaNoticeOpen();
 }
 
 function runNoticeSurfaceTransition(update, target) {

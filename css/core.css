@@ -1237,19 +1237,17 @@ body {
 body.notice-dragging .notice-hover-preview { display: none !important; }
 .notice-hover-preview-body { padding: 14px 16px 15px; }
 .notice-hover-preview-label { color: var(--primary); font-size: 11px; font-weight: 800; letter-spacing: 0.08em; }
-.notice-hover-preview h3 {
-    margin: 6px 0 7px; overflow: hidden; color: var(--text-main); font-size: 16px; line-height: 1.4;
-    text-overflow: ellipsis; white-space: nowrap;
-}
 .notice-hover-preview-summary-list {
     display: grid;
     gap: 4px;
-    margin: 0;
+    margin: 8px 0 0;
     padding-left: 18px;
-    color: #5b6270;
-    font-size: 13px;
-    line-height: 1.48;
+    color: #111827;
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1.55;
 }
+.notice-hover-preview-summary-list li::marker { color: #111827; }
 .notice-hover-preview-summary-list li {
     overflow: hidden;
     text-overflow: ellipsis;
@@ -2432,9 +2430,11 @@ body.reordering-compare-block .compare-trash-zone {
 .filter-switch-text { font-size: 13px; font-weight: 600; line-height: 1.5; }
 .filter-switch-text small { display: block; margin-top: 2px; color: var(--text-sub); font-size: 11.5px; font-weight: 500; }
 
-.beta-rating-field { margin-top: 14px; padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: #f8f9fc; }
-.beta-rating-field > span { display: block; color: var(--text-main); font-size: 13px; font-weight: 700; }
-.beta-rating-field small { color: var(--text-sub); font-size: 11px; font-weight: 500; }
-.beta-rating-buttons { display: flex; gap: 6px; margin-top: 9px; }
-.beta-rating-buttons button { width: 34px; height: 32px; border: 1px solid var(--border); border-radius: 7px; background: #fff; color: var(--text-sub); cursor: pointer; font-weight: 750; }
-.beta-rating-buttons button:hover, .beta-rating-buttons button.selected { border-color: var(--primary); background: var(--primary); color: #fff; }
+.beta-rating-prompt { width: min(420px, 100%); text-align: center; }
+.beta-rating-kicker { margin: 0 0 7px; color: var(--primary); font-size: 11px; font-weight: 850; letter-spacing: .12em; }
+.beta-rating-prompt h2 { margin: 0; color: var(--text-main); font-size: 21px; }
+.beta-rating-help { margin: 10px 0 0; color: var(--text-sub); font-size: 13px; line-height: 1.65; word-break: keep-all; }
+.beta-rating-buttons { display: flex; justify-content: center; gap: 8px; margin-top: 18px; }
+.beta-rating-buttons button { width: 44px; height: 42px; border: 1px solid var(--border); border-radius: 10px; background: #fff; color: var(--text-main); cursor: pointer; font-size: 15px; font-weight: 800; }
+.beta-rating-buttons button:hover, .beta-rating-buttons button:focus-visible { border-color: var(--primary); background: var(--primary); color: #fff; }
+.beta-rating-later { margin-top: 14px; padding: 7px 10px; color: var(--text-sub); background: transparent; border: 0; cursor: pointer; font: inherit; font-size: 12px; }

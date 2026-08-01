@@ -256,7 +256,7 @@
 .ai-progress-steps {
     width: min(520px, 100%);
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(3, 1fr);
     gap: 8px;
     margin: 0 auto;
     padding: 0;

@@ -546,21 +546,28 @@
             </div>
             <div class="feedback-shot-list" id="feedback-shot-list"></div>
         </div>
-        <div class="beta-rating-field" aria-label="베타 서비스 평점">
-            <span>베타 서비스는 어떠셨나요? <small>선택 사항 · 익명 집계</small></span>
-            <input type="hidden" id="beta-rating" value="">
-            <div class="beta-rating-buttons" role="group" aria-label="5점 평점">
-                <button type="button" data-beta-rating="1" onclick="selectBetaRating(1)" aria-label="1점">1</button>
-                <button type="button" data-beta-rating="2" onclick="selectBetaRating(2)" aria-label="2점">2</button>
-                <button type="button" data-beta-rating="3" onclick="selectBetaRating(3)" aria-label="3점">3</button>
-                <button type="button" data-beta-rating="4" onclick="selectBetaRating(4)" aria-label="4점">4</button>
-                <button type="button" data-beta-rating="5" onclick="selectBetaRating(5)" aria-label="5점">5</button>
-            </div>
-        </div>
         <p id="feedback-status" class="review-status" aria-live="polite"></p>
         <div class="review-actions" style="border-top: none; padding-top: 0;">
             <button class="btn" id="feedback-submit" type="button" onclick="submitFeedback()">익명으로 보내기</button>
         </div>
+    </div>
+</div>
+
+<div class="overlay" id="beta-rating-modal" onclick="if(event.target===this) closeBetaRatingPrompt()">
+    <div class="modal beta-rating-prompt" role="dialog" aria-modal="true" aria-labelledby="beta-rating-title"
+         onclick="event.stopPropagation()">
+        <button class="close-btn" type="button" onclick="closeBetaRatingPrompt()" aria-label="닫기">×</button>
+        <p class="beta-rating-kicker">베타 테스팅</p>
+        <h2 id="beta-rating-title">공지방 사용은 어떠셨나요?</h2>
+        <p class="beta-rating-help" id="beta-rating-help">공지 3개를 열어본 시점의 평가를 남겨주세요. 익명으로 집계됩니다.</p>
+        <div class="beta-rating-buttons" role="group" aria-label="5점 평점">
+            <button type="button" onclick="submitBetaRating(1)" aria-label="1점">1</button>
+            <button type="button" onclick="submitBetaRating(2)" aria-label="2점">2</button>
+            <button type="button" onclick="submitBetaRating(3)" aria-label="3점">3</button>
+            <button type="button" onclick="submitBetaRating(4)" aria-label="4점">4</button>
+            <button type="button" onclick="submitBetaRating(5)" aria-label="5점">5</button>
+        </div>
+        <button class="beta-rating-later" type="button" onclick="closeBetaRatingPrompt()">지금은 넘기기</button>
     </div>
 </div>
 

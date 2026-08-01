@@ -942,12 +942,20 @@ test('admin AI work shows progress while login is isolated in a server-session p
 
     assert.match(html, /id="ai-progress-bar"/);
     assert.match(html, /id="ai-progress-percent"/);
-    for (const step of ['prepare', 'analyze', 'process', 'save']) {
+    for (const step of ['prepare', 'analyze', 'process']) {
         assert.match(html, new RegExp(`data-ai-step="${step}"`));
     }
+    assert.doesNotMatch(html, /data-ai-step="save"/);
     assert.match(admin, /beginAiProgress\('공지 원문을 준비하고 있습니다\.'/);
     assert.match(admin, /updateAiProgress\(18, 'Gemini가 원문을 분석하고 있습니다\.'/);
     assert.match(admin, /finishAiProgress\('Gemini 분석이 완료되었습니다\.'/);
+    const saveFlow = readNamedFunction(admin, 'generateAIAndSave');
+    assert.ok(
+        saveFlow.indexOf("finishAiProgress('Gemini 편집 결과가 모두 반영되었습니다.')")
+            < saveFlow.indexOf('compressNoticeImage'),
+        '100% 완료 시점은 이미지 처리·공지 저장보다 앞이어야 한다'
+    );
+    assert.doesNotMatch(saveFlow, /updateAiProgress\((84|95),/);
 
     assert.doesNotMatch(html, /id="admin-gate"|id="admin-gate-password"/);
     assert.match(loginHtml, /id="admin-login-password"[^>]*value=""/);
@@ -1321,12 +1329,23 @@ test('desktop notice cards expose a delayed hover preview without enabling it on
     assert.match(app, /\(hover: hover\) and \(pointer: fine\)/);
     assert.match(app, /\}, 620\);/);
     assert.match(app, /card\.addEventListener\('mouseenter'/);
-    assert.match(app, /const previewLines = summary\.length \? summary : \[content/);
+    assert.match(app, /function noticeHoverPreviewLines/);
     assert.match(app, /AI 3줄 미리보기/);
     assert.match(app, /notice-hover-preview-summary-list/);
+    assert.doesNotMatch(readNamedFunction(app, 'renderNoticeHoverPreview'), /<h3>/);
+    const context = {};
+    runInNewContext(`${readNamedFunction(app, 'noticeHoverPreviewLines')}; this.lines = noticeHoverPreviewLines;`, context);
+    assert.deepEqual(Array.from(context.lines({
+        aiSummary: ['요약 1', '요약 2'],
+        sourceUrl: 'https://ece.snu.ac.kr/notice',
+        attachments: [{ name: 'file.pdf' }]
+    })), ['요약 1', '요약 2', '출처: 전기·정보공학부 홈페이지 · 첨부파일이 있습니다.']);
+    assert.deepEqual(Array.from(context.lines({ aiSummary: [], host: '학생회', attachments: [] })),
+        ['AI 요약이 아직 없습니다.', '출처: 학생회', '첨부파일이 없습니다.']);
     assert.match(app, /right-ad-rail/);
     assert.match(css, /\.notice-hover-preview\s*\{[^}]*position:\s*fixed/s);
     assert.match(css, /\.notice-hover-preview-summary-list li\s*\{[^}]*text-overflow:\s*ellipsis;[^}]*white-space:\s*nowrap;/s);
+    assert.match(css, /\.notice-hover-preview-summary-list\s*\{[^}]*color:\s*#111827;[^}]*font-size:\s*14px;[^}]*font-weight:\s*600/s);
     assert.match(mobileCss, /\.notice-hover-preview\s*\{\s*display:\s*none !important;/);
 });
 
@@ -2552,4 +2571,26 @@ test('service guide sections and footer tutorial targets have clear boundaries',
     assert.match(tutorial, /target:\s*'#footer-sync \.footer-sync-content'/);
     assert.match(css, /\.footer-tutorial-links\s*\{[^}]*width:\s*max-content[^}]*padding:\s*4px 8px/);
     assert.match(css, /\.footer-sync-content\s*\{[^}]*display:\s*inline-flex[^}]*padding:\s*5px 8px/);
+});
+
+test('beta ratings appear only after the third and thirteenth notice opens', async () => {
+    const html = await readFile('index.html', 'utf8');
+    const app = await readFile('js/core.js', 'utf8');
+
+    const feedbackModal = html.slice(
+        html.indexOf('id="contact-modal"'),
+        html.indexOf('id="beta-rating-modal"')
+    );
+    assert.doesNotMatch(feedbackModal, /베타 서비스는 어떠셨나요|beta-rating-buttons/);
+    assert.match(html, /id="beta-rating-modal"/);
+    assert.match(app, /BETA_RATING_MILESTONES = \[3, 13\]/);
+    assert.match(readNamedFunction(app, 'recordBetaNoticeOpen'), /BETA_RATING_MILESTONES\.includes\(count\)/);
+    assert.match(readNamedFunction(app, 'recordBetaNoticeOpen'), /prompted\.includes\(count\)/);
+    assert.match(readNamedFunction(app, 'openDetail'), /recordBetaNoticeOpen\(\)/);
+    assert.doesNotMatch(readNamedFunction(app, 'submitFeedback'), /rating|beta-rating/);
+});
+
+test('admin role radios do not inherit the rectangular text-input chrome', async () => {
+    const css = await readFile('css/admin-login.css', 'utf8');
+    assert.match(css, /\.role-option input\s*\{[^}]*min-height:\s*0;[^}]*padding:\s*0;[^}]*border:\s*0;[^}]*background:\s*transparent;[^}]*box-shadow:\s*none;/s);
 });

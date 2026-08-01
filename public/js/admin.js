@@ -37,7 +37,7 @@ let kakaoBackfillDrafts = [];
 
 // 제목 양식에서 쓰는 유형 목록. 편집할 때 기존 제목을 되돌려 읽는 데에도 쓴다.
 const TITLE_KINDS = ['모집', '안내', '신청', '접수', '공지', '행사', '변경 안내', '결과 발표', '기간 연장', '설문', '제휴'];
-const AI_PROGRESS_STEPS = ['prepare', 'analyze', 'process', 'save'];
+const AI_PROGRESS_STEPS = ['prepare', 'analyze', 'process'];
 
 function setAiProgress(value, status, activeStep = null, ceiling = value) {
     aiProgressValue = Math.max(aiProgressValue, Math.min(100, Math.round(value)));
@@ -82,7 +82,7 @@ function updateAiProgress(value, status, activeStep, ceiling = value + 12) {
 function finishAiProgress(status = '작업이 완료되었습니다.') {
     if (aiProgressTimer) clearInterval(aiProgressTimer);
     aiProgressTimer = null;
-    setAiProgress(100, status, 'save', 100);
+    setAiProgress(100, status, 'process', 100);
     document.querySelectorAll('[data-ai-step]').forEach(item => {
         item.classList.remove('active');
         item.classList.add('done');
@@ -1451,7 +1451,15 @@ async function generateAIAndSave() {
             requiresAction = existing.requiresAction === true;
         }
 
-        updateAiProgress(68, '첨부 이미지를 정리하고 있습니다.', 'process', 82);
+        if (analysisFailure) {
+            updateAiProgress(98, 'Gemini 편집을 완료하지 못했습니다. 기존 내용으로 저장을 계속합니다.', 'process', 98);
+            document.getElementById('ai-progress-heading').textContent = 'Gemini 편집 미완료';
+        } else {
+            finishAiProgress('Gemini 편집 결과가 모두 반영되었습니다.');
+            document.getElementById('ai-progress-heading').textContent = 'Gemini 편집 완료';
+        }
+        await new Promise(resolve => setTimeout(resolve, 250));
+        document.getElementById('ai-progress-status').textContent = '첨부 이미지를 정리하고 있습니다.';
         // 붙여넣은 이미지 → 파일 첨부 순으로 합치고 최대 20장으로 자른다.
         for (const src of pastedImages) {
             if (finalImages.length >= MAX_NOTICE_IMAGES) break;
@@ -1485,7 +1493,7 @@ async function generateAIAndSave() {
             categoryIds,
             images: finalImages
         };
-        updateAiProgress(84, '공지 내용을 서버에 저장하고 있습니다.', 'save', 94);
+        document.getElementById('ai-progress-status').textContent = '공지 내용을 서버에 저장하고 있습니다.';
         if (editingNoticeId) {
             await apiRequest(`/api/notices/${editingNoticeId}`, {
                 method: 'PUT',
@@ -1499,10 +1507,8 @@ async function generateAIAndSave() {
                 body: JSON.stringify(newNoticeData)
             });
         }
-        updateAiProgress(95, '저장된 공지 목록을 새로 불러오고 있습니다.', 'save', 98);
+        document.getElementById('ai-progress-status').textContent = '저장된 공지 목록을 새로 불러오고 있습니다.';
         await loadAdminNoticeList();
-        finishAiProgress(editingNoticeId ? '공지 수정이 완료되었습니다.' : '공지 등록이 완료되었습니다.');
-        await new Promise(resolve => setTimeout(resolve, 250));
     } catch (error) {
         if (isGeminiRateLimitError(error)) {
             await showGeminiRetryCountdown(error);
