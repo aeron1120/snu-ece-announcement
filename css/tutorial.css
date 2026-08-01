@@ -31,6 +31,10 @@
 /* 구멍 테두리. 클릭을 가로채면 안 되므로 보이기만 한다. */
 .tutorial-ring {
     position: fixed;
+    box-sizing: border-box;
+    max-width: calc(100vw - 8px);
+    max-height: calc(100vh - 8px);
+    overflow: hidden;
     border-radius: 14px;
     pointer-events: none;
     box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.92), 0 0 0 6px rgba(90, 140, 255, 0.35);

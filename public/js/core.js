@@ -1134,6 +1134,21 @@ function formatDetailMeta(dateLabel, views, registeredOn = '') {
     return parts.join(' &nbsp;|&nbsp; ');
 }
 
+function renderDetailDates(notice) {
+    const target = document.getElementById('detail-dates');
+    if (!target) return;
+    const registered = noticeRegisteredOn(notice);
+    const start = String(notice.startDate || '').slice(0, 10);
+    const deadline = String(notice.deadlineAt || notice.deadline || '').slice(0, 10);
+    const rows = [
+        registered && ['등록일', registered],
+        start && ['시행·접수 시작일', start],
+        deadline && ['마감일', deadline]
+    ].filter(Boolean);
+    target.hidden = rows.length === 0;
+    target.innerHTML = rows.map(([label, date]) => `<div><dt>${label}</dt><dd>${escapeHtml(formatDateWithWeekday(date))}</dd></div>`).join('');
+}
+
 /* 공지에 붙는 날짜.
 
    학생이 알고 싶은 것은 '언제 열려 있는가'다. 그래서 마감일이 있으면
@@ -2862,6 +2877,7 @@ async function openDetail(idStr) {
         notice.views,
         noticeRegisteredOn(notice)
     );
+    renderDetailDates(notice);
     document.getElementById('detail-summary').innerHTML = (notice.aiSummary || []).map(item => `<li>${escapeHtml(item)}</li>`).join('');
     document.getElementById('detail-content').innerHTML = linkify(notice.content || "");
 

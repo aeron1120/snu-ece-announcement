@@ -280,10 +280,10 @@
        자르는 일은 실제로 그릴 때 한 번만 한다. */
     function holeAround(rect) {
         return {
-            top: rect.top - RING_PADDING,
-            left: rect.left - RING_PADDING,
-            right: rect.right + RING_PADDING,
-            bottom: rect.bottom + RING_PADDING
+            top: Math.max(4, rect.top - RING_PADDING),
+            left: Math.max(4, rect.left - RING_PADDING),
+            right: Math.min(window.innerWidth - 4, rect.right + RING_PADDING),
+            bottom: Math.min(window.innerHeight - 4, rect.bottom + RING_PADDING)
         };
     }
 

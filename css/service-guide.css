@@ -223,6 +223,14 @@ section p {
 .guide-category-list strong { color: #1f2a3f; font-weight: 750; }
 .guide-category-sort { color: #6b7688; }
 
+.guide-rail { position: fixed; top: 50%; z-index: 5; width: 150px; transform: translateY(-50%); }
+.guide-rail-left { left: 20px; }
+.guide-rail-right { right: 20px; text-align: right; }
+.guide-rail a { display: block; padding: 20px 16px; color: #fff; background: #173b82; box-shadow: 0 12px 28px rgba(17, 44, 102, .2); font-size: 12px; line-height: 1.6; text-decoration: none; }
+.guide-rail-right a { background: #f3f6fc; color: #173b82; border: 1px solid #d5deef; }
+.guide-rail strong { font-size: 16px; }
+@media (max-width: 1280px) { .guide-rail { display: none; } }
+
 @media (max-width: 640px) {
     .guide-category-list > div { grid-template-columns: 1fr; gap: 6px; }
 }
