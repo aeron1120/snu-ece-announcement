@@ -2500,3 +2500,18 @@ test('the legal pages name the same operators as the operator page', async () =>
     // 약관은 곳곳에서 '운영자'를 주어로 쓰므로 처음에 정의해야 한다.
     assert.match(terms, /이하 &ldquo;운영자&rdquo;/);
 });
+
+test('mobile guide pages hide desktop rails and mobile card titles stay contained', async () => {
+    const operator = await readFile('operator.html', 'utf8');
+    const guide = await readFile('service-guide.html', 'utf8');
+    const guideCss = await readFile('css/service-guide.css', 'utf8');
+    const mobileCss = await readFile('css/mobile.css', 'utf8');
+
+    for (const page of [operator, guide]) {
+        assert.doesNotMatch(page, /<html[^>]*data-view="desktop"/);
+        assert.match(page, /matchMedia\('\(max-width: 820px\)'\)/);
+    }
+    assert.match(guideCss, /@media \(max-width: 820px\)[\s\S]*?\.guide-page-rail\s*\{\s*display:\s*none !important;/);
+    assert.match(mobileCss, /\.card-poster-title\s*\{[\s\S]*?max-height:\s*calc\(1\.32em \* 4\)[\s\S]*?overflow:\s*hidden;/);
+    assert.match(mobileCss, /\.card-title\s*\{[\s\S]*?word-break:\s*keep-all;[\s\S]*?overflow-wrap:\s*anywhere;[\s\S]*?-webkit-line-clamp:\s*2;/);
+});
