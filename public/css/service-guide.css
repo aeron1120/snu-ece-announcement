@@ -223,13 +223,23 @@ section p {
 .guide-category-list strong { color: #1f2a3f; font-weight: 750; }
 .guide-category-sort { color: #6b7688; }
 
-.guide-rail { position: fixed; top: 50%; z-index: 5; width: 150px; transform: translateY(-50%); }
-.guide-rail-left { left: 20px; }
-.guide-rail-right { right: 20px; text-align: right; }
-.guide-rail a { display: block; padding: 20px 16px; color: #fff; background: #173b82; box-shadow: 0 12px 28px rgba(17, 44, 102, .2); font-size: 12px; line-height: 1.6; text-decoration: none; }
-.guide-rail-right a { background: #f3f6fc; color: #173b82; border: 1px solid #d5deef; }
-.guide-rail strong { font-size: 16px; }
-@media (max-width: 1280px) { .guide-rail { display: none; } }
+.guide-site-rail { position: fixed; inset-block: 0; z-index: 5; width: 300px; padding: 42px 28px; box-sizing: border-box; }
+.guide-site-rail-left { left: 0; color: #fff; background: #234792; }
+.guide-brand { display: grid; justify-items: center; gap: 12px; color: inherit; font-size: 28px; line-height: 1.15; text-align: center; text-decoration: none; }
+.guide-brand img { width: 140px; height: 140px; object-fit: contain; }
+.guide-site-rail nav { display: grid; gap: 14px; margin-top: 36px; }
+.guide-site-rail nav span { margin-bottom: 4px; font-size: 12px; font-weight: 800; opacity: .72; }
+.guide-site-rail nav a { color: inherit; font-size: 15px; font-weight: 700; text-decoration: none; }
+.guide-site-rail-right { right: 0; display: flex; flex-direction: column; align-items: center; justify-content: space-between; color: #1d3f8c; background: #fff; border-left: 1px solid #edf0f5; }
+.guide-join { color: inherit; font-size: 42px; font-weight: 900; line-height: .95; letter-spacing: .04em; text-align: center; text-decoration: none; }
+.guide-live-banner, .guide-banner-fallback { display: block; width: 100%; color: #1d3f8c; text-align: center; text-decoration: none; }
+.guide-live-banner img { display: block; width: 100%; max-height: 250px; object-fit: contain; background: #f4f6fa; }
+.guide-live-banner span { display: block; padding-top: 10px; font-size: 13px; font-weight: 750; }
+.guide-banner-fallback { padding: 22px 12px; border: 1px solid #d5deef; background: #f7f9fd; font-size: 13px; line-height: 1.7; }
+.guide-banner-fallback strong { font-size: 19px; }
+.guide-banner-loading { color: #6e7b95; font-size: 12px; }
+@media (min-width: 1281px) { .guide-shell { max-width: 840px; } }
+@media (max-width: 1280px) { .guide-site-rail { display: none; } }
 
 @media (max-width: 640px) {
     .guide-category-list > div { grid-template-columns: 1fr; gap: 6px; }
