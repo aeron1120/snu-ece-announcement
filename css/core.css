@@ -90,6 +90,12 @@ body {
     letter-spacing: -0.1px;
 }
 .footer-link-list { margin: 0; padding: 0; list-style: none; }
+.footer-tutorial-links {
+    width: max-content;
+    max-width: 100%;
+    margin: -4px -8px;
+    padding: 4px 8px;
+}
 .footer-link-list li { margin: 0; }
 .footer-link-list a,
 .footer-link-list button,
@@ -131,6 +137,15 @@ body {
     border-top: 1px solid var(--border-soft);
     color: #6f7885;
     font-size: 12px;
+}
+.footer-sync-content {
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px 8px;
+    max-width: 100%;
+    margin: -5px -8px;
+    padding: 5px 8px;
 }
 .footer-sync-icon { width: 14px; height: 14px; flex-shrink: 0; }
 .footer-sync-label { font-weight: 700; }

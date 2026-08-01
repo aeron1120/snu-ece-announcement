@@ -2538,3 +2538,18 @@ test('notice links stop before Korean particles and surrounding punctuation', as
     assert.match(quoted, /^&quot;<a href="https:\/\/example\.com\/apply"/);
     assert.match(quoted, /<\/a>&quot; &lt;안내&gt;$/);
 });
+
+test('service guide sections and footer tutorial targets have clear boundaries', async () => {
+    const guide = await readFile('service-guide.html', 'utf8');
+    const html = await readFile('index.html', 'utf8');
+    const tutorial = await readFile('js/tutorial.js', 'utf8');
+    const css = await readFile('css/core.css', 'utf8');
+
+    assert.match(guide, /class="guide-category-sort"[\s\S]*?<\/section>\s*<section>\s*<h2>관련 공지<\/h2>/);
+    assert.match(html, /class="footer-link-list footer-tutorial-links"/);
+    assert.match(html, /class="footer-sync-content"/);
+    assert.match(tutorial, /target:\s*'\.footer-column\[aria-label="문의"\] \.footer-tutorial-links'/);
+    assert.match(tutorial, /target:\s*'#footer-sync \.footer-sync-content'/);
+    assert.match(css, /\.footer-tutorial-links\s*\{[^}]*width:\s*max-content[^}]*padding:\s*4px 8px/);
+    assert.match(css, /\.footer-sync-content\s*\{[^}]*display:\s*inline-flex[^}]*padding:\s*5px 8px/);
+});

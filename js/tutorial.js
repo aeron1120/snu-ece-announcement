@@ -90,12 +90,12 @@
             body: '학생 단체와 학내 행사 홍보가 도는 자리입니다. 검수를 거친 항목만 정해진 기간 동안 걸립니다.'
         },
         {
-            target: '.footer-column[aria-label="문의"]',
+            target: '.footer-column[aria-label="문의"] .footer-tutorial-links',
             title: '문의와 홍보 신청',
             body: '개선 의견은 익명으로 보낼 수 있고, 홍보 신청은 양식을 내면 검수 뒤 배너로 올라갑니다. 자주 묻는 질문도 여기 있습니다.'
         },
         {
-            target: '#footer-sync',
+            target: '#footer-sync .footer-sync-content',
             title: '언제 가져온 공지인지',
             body: '마지막으로 학부 홈페이지에서 공지를 가져온 시각입니다. 원문이 방금 올라왔다면 여기 시각 이후에 반영됩니다.'
         },
