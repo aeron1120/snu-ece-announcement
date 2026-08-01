@@ -2465,8 +2465,9 @@ function renderNoticeCards(animate = false) {
             : '';
         // 본문 발췌: 목록 응답은 원문을 담지 않으므로 AI 3줄 요약을 발췌로 쓴다.
         const excerpt = Array.isArray(notice.aiSummary) ? notice.aiSummary.join(' ') : '';
-        // 이미지 카드만 본문 위에 제목을 다시 보여준다(텍스트 카드는 포스터가 곧 제목).
-        const titleHtml = hasImg ? `<h3 class="card-title">${safeTitle}</h3>` : '';
+        // 사진이 없어 포스터 안에 제목을 크게 쓴 카드도, 목록을 아래로 훑을 때
+        // 태그 다음에 제목을 놓쳐 버리지 않도록 본문 첫 줄에 한 번 더 적는다.
+        const titleHtml = `<h3 class="card-title">${safeTitle}</h3>`;
         const rewardText = notice.rewardNote || notice.surveyReward || '';
         // 리워드는 조회수와 같은 줄, 바로 왼쪽에 놓는다. 자리보다 길면
         // 렌더 후 measureCardRewardMarquee가 컨베이어처럼 흘려보낸다.

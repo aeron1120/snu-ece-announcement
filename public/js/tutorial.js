@@ -239,14 +239,17 @@
         const clampV = value => Math.min(Math.max(EDGE, value), Math.max(EDGE, vh - ch - EDGE));
         const clampH = value => Math.min(Math.max(EDGE, value), Math.max(EDGE, vw - cw - EDGE));
         const middle = clampH(rect.left + rect.width / 2 - cw / 2);
+        // 검색창처럼 설명 상자보다 넓은 대상은 가운데에 띄우기보다 왼쪽 선을
+        // 맞추는 편이 대상과 설명의 관계가 반듯하게 보인다.
+        const stackedLeft = rect.width >= cw ? clampH(rect.left) : middle;
 
         const beside = [];
         if (rect.right + CARD_GAP + cw + EDGE <= vw) beside.push({ left: rect.right + CARD_GAP, top: clampV(rect.top) });
         if (rect.left - CARD_GAP - cw - EDGE >= 0) beside.push({ left: rect.left - CARD_GAP - cw, top: clampV(rect.top) });
 
         const stacked = [];
-        if (rect.bottom + CARD_GAP + ch + EDGE <= vh) stacked.push({ top: rect.bottom + CARD_GAP, left: middle });
-        if (rect.top - CARD_GAP - ch - EDGE >= 0) stacked.push({ top: rect.top - CARD_GAP - ch, left: middle });
+        if (rect.bottom + CARD_GAP + ch + EDGE <= vh) stacked.push({ top: rect.bottom + CARD_GAP, left: stackedLeft });
+        if (rect.top - CARD_GAP - ch - EDGE >= 0) stacked.push({ top: rect.top - CARD_GAP - ch, left: stackedLeft });
 
         // 세로로 긴 표적은 옆에 세우는 편이 낫다. 넓적한 것은 아래위가 자연스럽다.
         const tall = rect.height > vh * 0.4;
