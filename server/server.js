@@ -2651,7 +2651,14 @@ app.post('/api/feedback', async (req, res) => {
 
 app.post('/api/notices/:id/summary-report', feedbackLimiter, async (req, res) => {
     try {
-        const notice = await getPublishedNoticeById(req.params.id);
+        /* 다른 호출부와 달리 여기만 문자열을 그대로 넘겼다. 파일 모드의 수동
+           공지는 Number(notice.id) === id로 찾으므로 문자열이면 절대 걸리지
+           않고, 자동 수집 공지에서만 우연히 답이 나왔다. */
+        const id = Number(req.params.id);
+        if (!Number.isSafeInteger(id)) {
+            return res.status(400).json({ error: '유효하지 않은 id입니다.' });
+        }
+        const notice = await getPublishedNoticeById(id);
         if (!notice) {
             return res.status(404).json({ error: '공지를 찾을 수 없습니다.' });
         }
