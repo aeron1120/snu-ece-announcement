@@ -37,7 +37,9 @@ create table if not exists public.app_settings (
   banner_admin_name text not null default '학생회 대외협력국 (국장 : 이배너)',
   banner_admin_phone text not null default '010-8888-9999',
   banner_admin_kakao text not null default 'snu_ece_ads',
-  banner_password text not null,
+  -- 더는 쓰지 않는다. 서버는 banner_token_hash로만 판단하고 저장할 때마다
+  -- 이 열을 빈 문자열로 덮어쓴다. not null이라 열 자체는 남겨 둔다.
+  banner_password text not null default '',
   admin_token_hash text not null,
   -- 배너·마스터 비밀번호도 해시로 보관한다. 기존 행에는 없을 수 있으므로
   -- 비워 둘 수 있게 두고, 서버가 읽을 때 환경변수 기본값으로 되돌린다.
@@ -51,6 +53,20 @@ alter table if exists public.app_settings add column if not exists banner_admin_
 alter table if exists public.app_settings add column if not exists banner_admin_kakao text not null default 'snu_ece_ads';
 alter table if exists public.app_settings add column if not exists banner_token_hash text;
 alter table if exists public.app_settings add column if not exists master_token_hash text;
+alter table if exists public.app_settings alter column banner_password set default '';
+
+-- 평문 배너 비밀번호를 지운다. 해시가 아직 비어 있는 행은 지우기 전에 그 평문을
+-- 옛 형식(salt 없는 sha256)으로 옮겨 둬야 기존 비밀번호가 계속 통한다. 서버가
+-- 읽는 형식과 같아야 하므로 여기서도 sha256을 쓴다. 다음 로그인에 성공하면
+-- 서버가 scrypt로 다시 적는다.
+update public.app_settings
+set banner_token_hash = encode(sha256(banner_password::bytea), 'hex')
+where coalesce(banner_token_hash, '') = ''
+  and coalesce(banner_password, '') <> '';
+
+update public.app_settings
+set banner_password = ''
+where banner_password <> '';
 
 create table if not exists public.banner_slides (
   id bigint generated always as identity primary key,
@@ -534,6 +550,14 @@ create index if not exists notification_jobs_due_idx
 create index if not exists notification_deliveries_due_idx
   on public.notification_deliveries (status, next_attempt_at);
 
+-- 서버는 service_role 키로만 붙고 그 역할은 RLS를 우회한다. 프런트는 Supabase에
+-- 직접 붙지 않으므로, 정책을 하나도 두지 않은 채 RLS만 켜면 anon 키로 오는
+-- PostgREST 요청이 전부 막힌다. app_settings에는 평문 배너 비밀번호와 관리자
+-- 토큰 해시가 들어 있으니 이 네 개가 빠지면 안 된다.
+alter table public.app_settings enable row level security;
+alter table public.notices enable row level security;
+alter table public.banner_slides enable row level security;
+alter table public.promo_slots enable row level security;
 alter table public.crawl_runs enable row level security;
 alter table public.crawl_items enable row level security;
 alter table public.categories enable row level security;
@@ -546,6 +570,12 @@ alter table public.notification_jobs enable row level security;
 alter table public.notification_deliveries enable row level security;
 alter table public.automation_audit_logs enable row level security;
 
+-- RLS를 켜도 Supabase가 public 스키마의 새 테이블에 기본으로 준 권한은 남는다.
+-- 두 가지를 함께 걸어야 anon 키가 쓸모없어진다.
+revoke all on public.app_settings from anon, authenticated;
+revoke all on public.notices from anon, authenticated;
+revoke all on public.banner_slides from anon, authenticated;
+revoke all on public.promo_slots from anon, authenticated;
 revoke all on public.crawl_runs from anon, authenticated;
 revoke all on public.crawl_items from anon, authenticated;
 revoke all on public.categories from anon, authenticated;

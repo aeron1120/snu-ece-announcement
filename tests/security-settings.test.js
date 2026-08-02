@@ -47,7 +47,27 @@ test('a row written before the hash columns existed still opens the banner scree
     assert.equal(restored.bannerTokenHash, sha('legacy-plain'));
     assert.equal(restored.adminTokenHash, sha('notice-password'));
     // 마스터 해시는 저장된 적이 없으므로 환경변수에서 온 기본값으로 남는다.
-    assert.equal(restored.masterTokenHash, sha(process.env.SUPER_ADMIN_TOKEN || process.env.ADMIN_TOKEN || ''));
+    // 기본값은 이제 scrypt라 salt 때문에 값을 직접 맞대볼 수 없다.
+    assert.match(restored.masterTokenHash, /^scrypt\$/);
+});
+
+test('the plaintext banner password is read once and never written back', () => {
+    // 평문이 app_settings에 남아 있으면 그 행이 새는 순간 배너 비밀번호가
+    // 그대로 새어 나간다. 옛 행에서 해시를 복원하는 데만 쓰고, 저장할 때는
+    // 열을 비워 예전에 적힌 값을 지운다.
+    const restored = securitySettingsFromRow({
+        admin_name: adminInfo.name,
+        admin_phone: adminInfo.phone,
+        admin_kakao: adminInfo.kakao,
+        banner_admin_name: bannerInfo.name,
+        banner_admin_phone: bannerInfo.phone,
+        banner_admin_kakao: bannerInfo.kakao,
+        banner_password: 'legacy-plain',
+        admin_token_hash: sha('notice-password')
+    });
+
+    assert.equal(restored.bannerPassword, undefined);
+    assert.equal(securitySettingsToRow(restored).banner_password, '');
 });
 
 test('the admin contact details survive the round trip', () => {
@@ -62,7 +82,6 @@ test('the admin contact details survive the round trip', () => {
 
     assert.deepEqual(restored.adminInfo, adminInfo);
     assert.deepEqual(restored.bannerInfo, bannerInfo);
-    assert.equal(restored.bannerPassword, 'banner-plain');
 });
 
 test('the schema has a column for every field the server writes', async () => {
@@ -106,6 +125,7 @@ test('settings still save on a database that has not been migrated yet', async (
     assert.equal(Object.hasOwn(legacy, 'master_token_hash'), false);
     // 나머지는 그대로 저장되어야 한다.
     assert.equal(legacy.admin_token_hash, 'a');
-    assert.equal(legacy.banner_password, 'p');
     assert.equal(legacy.admin_name, adminInfo.name);
+    // 열이 not null이라 남겨 두되 평문은 담지 않는다.
+    assert.equal(legacy.banner_password, '');
 });

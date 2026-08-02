@@ -6,6 +6,12 @@ import { promises as fs } from 'fs';
 import { createClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
 import cron from 'node-cron';
+import {
+    createCredentialHash,
+    isLegacyCredentialHash,
+    legacyHashToken,
+    verifyCredential
+} from './services/credential-hash.js';
 import { getGeminiRetryAfterSeconds } from './services/gemini-rate-limit.js';
 import { buildKakaoBackfillDrafts } from './services/kakao-backfill.js';
 import { createOcrService } from './services/ocr-service.js';
@@ -220,11 +226,10 @@ const defaultBannerInfo = {
 const defaultSecuritySettings = {
     adminInfo: { ...defaultAdminInfo },
     bannerInfo: { ...defaultBannerInfo },
-    bannerPassword: process.env.BANNER_ADMIN_PASSWORD || '',
-    adminTokenHash: hashToken(initialNoticeAdminToken),
+    adminTokenHash: createCredentialHash(initialNoticeAdminToken),
     // 배너·마스터 관리자도 공지 관리자와 같은 방식으로 해시만 보관한다.
-    bannerTokenHash: hashToken(process.env.BANNER_ADMIN_PASSWORD || ''),
-    masterTokenHash: hashToken(process.env.SUPER_ADMIN_TOKEN || process.env.ADMIN_TOKEN || '')
+    bannerTokenHash: createCredentialHash(process.env.BANNER_ADMIN_PASSWORD || ''),
+    masterTokenHash: createCredentialHash(process.env.SUPER_ADMIN_TOKEN || process.env.ADMIN_TOKEN || '')
 };
 
 /* 관리자 역할.
@@ -239,6 +244,30 @@ function roleCredentialHash(settings, role) {
     if (role === 'banner') return safe.bannerTokenHash || defaultSecuritySettings.bannerTokenHash;
     if (role === 'master') return safe.masterTokenHash || defaultSecuritySettings.masterTokenHash;
     return '';
+}
+
+const ROLE_HASH_FIELD = Object.freeze({
+    notice: 'adminTokenHash',
+    banner: 'bannerTokenHash',
+    master: 'masterTokenHash'
+});
+
+/* 이미 저장된 비밀번호는 salt 없는 sha256이다. 그 평문을 알 수 있는 순간은
+   로그인에 성공한 때뿐이므로, 그 자리에서 scrypt로 다시 적는다. 이렇게 하지
+   않으면 관리자가 비밀번호를 직접 바꾸기 전까지 옛 해시가 그대로 남는다.
+
+   저장에 실패해도 로그인은 그대로 진행한다 — 해시를 못 바꾼 것이 관리자를
+   밖에 세워 둘 이유는 되지 않는다. 다음 로그인에 다시 시도한다. */
+async function upgradeLegacyCredential(settings, role, password) {
+    const field = ROLE_HASH_FIELD[role];
+    if (!field || !isLegacyCredentialHash(roleCredentialHash(settings, role))) return settings;
+
+    try {
+        return await saveSecuritySettings({ ...settings, [field]: createCredentialHash(password) });
+    } catch (error) {
+        console.error('비밀번호 해시 형식 갱신 실패:', error?.message || error);
+        return settings;
+    }
 }
 
 // 마스터는 다른 두 역할의 권한을 모두 품는다.
@@ -288,6 +317,22 @@ function recordAdminLoginFailure(req) {
 
 function clearAdminLoginFailures(req) {
     adminLoginAttempts.delete(loginAttemptKey(req));
+}
+
+/* 세션 쿠키는 저장된 해시와 문자열만 맞대보면 끝나지만, 헤더 토큰은 요청마다
+   scrypt를 다시 돌린다. 그 계산이 일부러 비싸다는 점이 곧 공격 표면이라 —
+   틀린 토큰을 계속 던지는 것만으로 CPU를 태울 수 있다 — 로그인 화면과 같은
+   잠금을 함께 건다. 잠겨 있으면 해시를 계산하기 전에 돌려보낸다. */
+function verifyHeaderToken(req, token, ...expectedHashes) {
+    if (!token || getAdminLoginLock(req)) return false;
+
+    if (expectedHashes.some(hash => verifyCredential(token, hash))) {
+        clearAdminLoginFailures(req);
+        return true;
+    }
+
+    recordAdminLoginFailure(req);
+    return false;
 }
 
 // 오래된 기록이 메모리에 계속 쌓이지 않게 이따금 치운다.
@@ -459,10 +504,7 @@ app.post('/api/admin/session', authenticationLimiter, async (req, res) => {
         // 마스터를 먼저 보므로 같은 비밀번호를 쓰면 가장 높은 권한을 받는다.
         const candidates = ADMIN_ROLES.includes(requestedRole) ? [requestedRole] : ADMIN_ROLES;
         const matched = password
-            ? candidates.find(role => {
-                const expected = roleCredentialHash(settings, role);
-                return expected && hashToken(password) === expected;
-            })
+            ? candidates.find(role => verifyCredential(password, roleCredentialHash(settings, role)))
             : null;
 
         if (!matched) {
@@ -483,10 +525,14 @@ app.post('/api/admin/session', authenticationLimiter, async (req, res) => {
         }
 
         clearAdminLoginFailures(req);
+        // 평문을 손에 쥐고 있는 순간은 여기뿐이다. 옛 해시라면 지금 새 형식으로
+        // 옮긴다. 세션에는 옮긴 뒤의 해시를 담아야 방금 만든 세션이 곧바로
+        // 끊기지 않는다.
+        const current = await upgradeLegacyCredential(settings, matched, password);
         const sessionId = crypto.randomBytes(32).toString('base64url');
         adminSessions.set(sessionId, {
             role: matched,
-            credentialHash: roleCredentialHash(settings, matched),
+            credentialHash: roleCredentialHash(current, matched),
             expiresAt: Date.now() + ADMIN_SESSION_TTL_MS
         });
         setAdminSessionCookie(res, sessionId);
@@ -596,13 +642,15 @@ async function readSettingsFile() {
                 phone: String(parsed?.bannerInfo?.phone || defaultBannerInfo.phone),
                 kakao: String(parsed?.bannerInfo?.kakao || defaultBannerInfo.kakao)
             },
-            bannerPassword: String(parsed?.bannerPassword || defaultSecuritySettings.bannerPassword),
             adminTokenHash: String(parsed?.adminTokenHash || defaultSecuritySettings.adminTokenHash),
             // 예전 설정 파일에는 배너 비밀번호가 평문으로만 있다. 처음 읽을 때
-            // 그 값을 해시로 옮겨 두 방식이 같은 결과를 내게 한다.
+            // 그 값을 해시로 옮겨 두 방식이 같은 결과를 내게 한다. 여기서는 옛
+            // 형식으로 옮긴다 — 설정은 요청마다 다시 읽으므로 이 자리에서
+            // scrypt를 돌리면 공개 엔드포인트까지 느려진다. 로그인에 성공하면
+            // upgradeLegacyCredential이 새 형식으로 바꿔 준다.
             bannerTokenHash: String(
                 parsed?.bannerTokenHash
-                || (parsed?.bannerPassword ? hashToken(parsed.bannerPassword) : '')
+                || (parsed?.bannerPassword ? legacyHashToken(parsed.bannerPassword) : '')
                 || defaultSecuritySettings.bannerTokenHash
             ),
             masterTokenHash: String(parsed?.masterTokenHash || defaultSecuritySettings.masterTokenHash)
@@ -840,10 +888,6 @@ function normalizeBannerInfo(input = {}) {
     };
 }
 
-function hashToken(token) {
-    return crypto.createHash('sha256').update(String(token || ''), 'utf8').digest('hex');
-}
-
 function normalizeDeadline(deadline) {
     const value = String(deadline || '').trim();
     return value ? value : null;
@@ -952,9 +996,11 @@ function toClientSettings(settings) {
 /* Supabase 행과 설정 객체를 옮기는 자리. 역할별 해시를 한 곳에서 다뤄야
    저장할 때와 읽을 때가 어긋나지 않는다. 예전 행에는 해시 열이 없고 배너
    비밀번호가 평문으로만 있으므로, 파일 저장소와 똑같이 그 값을 해시로 옮겨
-   읽어 기존 비밀번호가 계속 통하게 한다. */
+   읽어 기존 비밀번호가 계속 통하게 한다.
+
+   평문은 여기서 읽기만 하고 다시 쓰지는 않는다. securitySettingsToRow가
+   banner_password를 빈 문자열로 덮어써서, 다음 저장에 그 열이 비워진다. */
 function securitySettingsFromRow(data = {}) {
-    const bannerPassword = String(data.banner_password || defaultSecuritySettings.bannerPassword);
     return {
         adminInfo: {
             name: String(data.admin_name || defaultAdminInfo.name),
@@ -966,11 +1012,10 @@ function securitySettingsFromRow(data = {}) {
             phone: String(data.banner_admin_phone || defaultBannerInfo.phone),
             kakao: String(data.banner_admin_kakao || defaultBannerInfo.kakao)
         },
-        bannerPassword,
         adminTokenHash: String(data.admin_token_hash || defaultSecuritySettings.adminTokenHash),
         bannerTokenHash: String(
             data.banner_token_hash
-            || (data.banner_password ? hashToken(data.banner_password) : '')
+            || (data.banner_password ? legacyHashToken(data.banner_password) : '')
             || defaultSecuritySettings.bannerTokenHash
         ),
         masterTokenHash: String(data.master_token_hash || defaultSecuritySettings.masterTokenHash)
@@ -1004,7 +1049,9 @@ function securitySettingsToRow(normalized) {
         banner_admin_name: normalized.bannerInfo.name,
         banner_admin_phone: normalized.bannerInfo.phone,
         banner_admin_kakao: normalized.bannerInfo.kakao,
-        banner_password: normalized.bannerPassword,
+        // 배너 비밀번호는 banner_token_hash로만 판단한다. 열 자체는 not null이라
+        // 남겨 두되, 저장할 때마다 비워서 예전에 적힌 평문을 지운다.
+        banner_password: '',
         admin_token_hash: normalized.adminTokenHash,
         banner_token_hash: normalized.bannerTokenHash,
         master_token_hash: normalized.masterTokenHash,
@@ -1028,7 +1075,6 @@ async function getSecuritySettings() {
             const seeded = {
                 adminInfo: { ...defaultAdminInfo },
                 bannerInfo: { ...defaultBannerInfo },
-                bannerPassword: defaultSecuritySettings.bannerPassword,
                 adminTokenHash: defaultSecuritySettings.adminTokenHash,
                 bannerTokenHash: defaultSecuritySettings.bannerTokenHash,
                 masterTokenHash: defaultSecuritySettings.masterTokenHash
@@ -1046,7 +1092,6 @@ async function saveSecuritySettings(settings) {
     const normalized = {
         adminInfo: normalizeAdminInfo(settings?.adminInfo || {}),
         bannerInfo: normalizeBannerInfo(settings?.bannerInfo || {}),
-        bannerPassword: String(settings?.bannerPassword || defaultSecuritySettings.bannerPassword),
         adminTokenHash: String(settings?.adminTokenHash || defaultSecuritySettings.adminTokenHash),
         bannerTokenHash: String(settings?.bannerTokenHash || defaultSecuritySettings.bannerTokenHash),
         masterTokenHash: String(settings?.masterTokenHash || defaultSecuritySettings.masterTokenHash)
@@ -1101,13 +1146,14 @@ function requireAdminRole(requiredRole, failureMessage) {
                 ? 'x-banner-token'
                 : (requiredRole === 'master' ? 'x-super-admin-token' : 'x-admin-token');
             const token = getHeaderToken(req, headerName);
-            if (token) {
-                const tokenHash = hashToken(token);
-                if (tokenHash === roleCredentialHash(settings, requiredRole)
-                    || tokenHash === roleCredentialHash(settings, 'master')) {
-                    req.adminRole = requiredRole;
-                    return next();
-                }
+            if (verifyHeaderToken(
+                req,
+                token,
+                roleCredentialHash(settings, requiredRole),
+                roleCredentialHash(settings, 'master')
+            )) {
+                req.adminRole = requiredRole;
+                return next();
             }
 
             return res.status(401).json({ error: failureMessage });
@@ -1136,7 +1182,7 @@ async function requireAnyAdmin(req, res, next) {
                 ? 'x-banner-token'
                 : (role === 'master' ? 'x-super-admin-token' : 'x-admin-token');
             const token = getHeaderToken(req, headerName);
-            if (token && hashToken(token) === roleCredentialHash(settings, role)) {
+            if (verifyHeaderToken(req, token, roleCredentialHash(settings, role))) {
                 req.adminRole = role;
                 return next();
             }
@@ -1158,6 +1204,16 @@ function feedbackKindLabelForStaff(item) {
     const roles = { notice: '공지 관리자', banner: '배너 관리자', master: '마스터' };
     const kinds = { bug: '오류 제보', question: '문의', request: '요청' };
     return `${roles[item.staffRole] || '관리자'} ${kinds[item.staffKind] || '문의'}`;
+}
+
+/* 파일 모드가 읽는 기본 파일을 만들어 둔다. server/data는 커밋하지 않으므로
+   새로 받은 저장소나 CI에는 이 파일들이 없고, 관리자 화면을 다루는 테스트가
+   파일이 없다는 이유로 무더기로 실패한다. ensureDefaultData와 달리 Supabase는
+   건드리지 않으니, 자격 증명 없이도 부를 수 있다. */
+async function ensureFileStorageSeed() {
+    await ensureNoticesFile();
+    await ensureSettingsFile();
+    await ensureBannerFile();
 }
 
 async function ensureDefaultData() {
@@ -2605,7 +2661,14 @@ app.post('/api/feedback', async (req, res) => {
 
 app.post('/api/notices/:id/summary-report', feedbackLimiter, async (req, res) => {
     try {
-        const notice = await getPublishedNoticeById(req.params.id);
+        /* 다른 호출부와 달리 여기만 문자열을 그대로 넘겼다. 파일 모드의 수동
+           공지는 Number(notice.id) === id로 찾으므로 문자열이면 절대 걸리지
+           않고, 자동 수집 공지에서만 우연히 답이 나왔다. */
+        const id = Number(req.params.id);
+        if (!Number.isSafeInteger(id)) {
+            return res.status(400).json({ error: '유효하지 않은 id입니다.' });
+        }
+        const notice = await getPublishedNoticeById(id);
         if (!notice) {
             return res.status(404).json({ error: '공지를 찾을 수 없습니다.' });
         }
@@ -2957,7 +3020,7 @@ app.post('/api/banner/verify', async (req, res) => {
     try {
         const inputPassword = String(req.body?.password || '').trim();
         const settings = await getSecuritySettings();
-        const ok = inputPassword && inputPassword === settings.bannerPassword;
+        const ok = verifyCredential(inputPassword, roleCredentialHash(settings, 'banner'));
         if (!ok) {
             return res.status(401).json({ error: '비밀번호가 올바르지 않습니다.' });
         }
@@ -2997,12 +3060,9 @@ app.put('/api/settings/passwords', requireSuperAdmin, async (req, res) => {
         const current = await getSecuritySettings();
         const next = {
             ...current,
-            adminTokenHash: newNoticeAdminToken ? hashToken(newNoticeAdminToken) : current.adminTokenHash,
-            // 평문 bannerPassword는 옛 클라이언트 호환용으로만 남기고
-            // 실제 판단은 해시로 한다.
-            bannerPassword: newBannerPassword || current.bannerPassword,
-            bannerTokenHash: newBannerPassword ? hashToken(newBannerPassword) : current.bannerTokenHash,
-            masterTokenHash: newMasterPassword ? hashToken(newMasterPassword) : current.masterTokenHash
+            adminTokenHash: newNoticeAdminToken ? createCredentialHash(newNoticeAdminToken) : current.adminTokenHash,
+            bannerTokenHash: newBannerPassword ? createCredentialHash(newBannerPassword) : current.bannerTokenHash,
+            masterTokenHash: newMasterPassword ? createCredentialHash(newMasterPassword) : current.masterTokenHash
         };
 
         await saveSecuritySettings(next);
@@ -3469,6 +3529,7 @@ export {
     buildBannerSlideUpdate,
     cleanupExpiredBanners,
     createBannerSlide,
+    ensureFileStorageSeed,
     isBannerExpiryActive,
     listBannerSlides,
     listImminentDeadlineNotices,
