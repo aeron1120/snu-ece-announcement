@@ -7,6 +7,7 @@
   },
   "scripts": {
     "start": "node server/server.js",
+    "pretest": "node scripts/ensure-test-data.mjs",
     "test": "node --test --test-concurrency=1",
     "prepare:public": "node scripts/prepare-public.mjs",
     "migrate:categories:dry-run": "node scripts/migrate-notice-categories.mjs",

@@ -1206,6 +1206,16 @@ function feedbackKindLabelForStaff(item) {
     return `${roles[item.staffRole] || '관리자'} ${kinds[item.staffKind] || '문의'}`;
 }
 
+/* 파일 모드가 읽는 기본 파일을 만들어 둔다. server/data는 커밋하지 않으므로
+   새로 받은 저장소나 CI에는 이 파일들이 없고, 관리자 화면을 다루는 테스트가
+   파일이 없다는 이유로 무더기로 실패한다. ensureDefaultData와 달리 Supabase는
+   건드리지 않으니, 자격 증명 없이도 부를 수 있다. */
+async function ensureFileStorageSeed() {
+    await ensureNoticesFile();
+    await ensureSettingsFile();
+    await ensureBannerFile();
+}
+
 async function ensureDefaultData() {
     if (!useSupabase) {
         await ensureNoticesFile();
@@ -3519,6 +3529,7 @@ export {
     buildBannerSlideUpdate,
     cleanupExpiredBanners,
     createBannerSlide,
+    ensureFileStorageSeed,
     isBannerExpiryActive,
     listBannerSlides,
     listImminentDeadlineNotices,
