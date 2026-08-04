@@ -31,9 +31,12 @@ final class PosterTitleTests: XCTestCase {
         XCTAssertFalse(title.body.isEmpty)
     }
 
-    /// 크기는 길이와 무관하게 고정이다. `mobile.css`의 14.5px과 같아야 한다.
+    /// 크기는 제목 길이와 무관하게 한 값이다. 웹의 14.5px보다 크게 두었는데,
+    /// 기기에서 포스터에 비해 글자가 작아 보였기 때문이다.
     func testFontSizeIsFlatRegardlessOfLength() {
-        XCTAssertEqual(PosterTitle.fontSize, 14.5)
+        XCTAssertEqual(PosterTitle.fontSize, 18)
         XCTAssertEqual(PosterTitle.lineHeight, 1.32)
+        // 본문에 다시 적히는 제목(12.5)보다는 확실히 커야 포스터가 제목 구실을 한다.
+        XCTAssertGreaterThan(PosterTitle.fontSize, 12.5)
     }
 }

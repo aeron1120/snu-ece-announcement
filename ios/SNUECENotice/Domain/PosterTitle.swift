@@ -11,8 +11,13 @@ struct PosterTitle: Equatable {
     var hostLine: String?
     var body: String
 
-    /// 웹 `mobile.css`의 `font-size: 14.5px !important`.
-    static let fontSize: CGFloat = 14.5
+    /// 포스터 제목 크기.
+    ///
+    /// 웹 `mobile.css`는 14.5px로 못박아 두었지만, 실제 기기에서 보면 카드
+    /// 절반을 차지하는 포스터에 비해 글자가 작아 제목이 눈에 들어오지 않는다.
+    /// 포스터가 내용만큼 자라는 구조라 키워도 잘리지 않으므로 한 단계 올렸다.
+    /// 웹과 일부러 다르게 둔 값이다.
+    static let fontSize: CGFloat = 18
     /// `line-height: 1.32`.
     static let lineHeight: CGFloat = 1.32
 

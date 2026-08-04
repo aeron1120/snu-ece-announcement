@@ -6,17 +6,28 @@ struct APIError: LocalizedError, Equatable {
     var statusCode: Int?
     var code: String?
     var retryAfterSeconds: Int?
+    /// 사용자가 화면을 떠나거나 새로고침을 놓아 요청이 중간에 끊긴 경우.
+    ///
+    /// 실패가 아니라 '그만둔 것'이므로 화면에 오류로 알리지 않는다. 이것을
+    /// 가려내지 않으면 당겨서 새로고침할 때마다 멀쩡한 목록이 연결 실패
+    /// 안내로 덮인다.
+    var isCancellation = false
 
     var errorDescription: String? { message }
 
     static let offline = APIError(message: "인터넷 연결을 확인해주세요.", statusCode: nil)
 
     static func transport(_ error: Error) -> APIError {
+        if error is CancellationError {
+            return APIError(message: "요청이 취소되었습니다.", isCancellation: true)
+        }
         let nsError = error as NSError
         guard nsError.domain == NSURLErrorDomain else {
             return APIError(message: error.localizedDescription)
         }
         switch nsError.code {
+        case NSURLErrorCancelled:
+            return APIError(message: "요청이 취소되었습니다.", isCancellation: true)
         case NSURLErrorNotConnectedToInternet, NSURLErrorNetworkConnectionLost:
             return .offline
         case NSURLErrorTimedOut:
@@ -84,7 +95,9 @@ struct APIClient {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.httpBody = body
-        request.timeoutInterval = 20
+        // 운영 API는 무료 Render 인스턴스라 한동안 요청이 없으면 잠든다.
+        // 깨어나는 데 30초 가까이 걸리는 일이 있어 넉넉히 잡는다.
+        request.timeoutInterval = 45
 
         let data: Data
         let response: URLResponse

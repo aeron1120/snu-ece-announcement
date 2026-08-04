@@ -105,9 +105,16 @@ final class BoardViewModel: ObservableObject {
             }
         } catch {
             guard version == requestVersion else { return }
-            notices = []
-            pagination = .empty
-            loadError = error as? APIError ?? APIError(message: error.localizedDescription)
+            let failure = error as? APIError ?? APIError.transport(error)
+            // 사용자가 새로고침을 놓거나 화면을 떠나 끊긴 요청은 실패가 아니다.
+            // 보고 있던 목록을 그대로 두고 조용히 물러난다.
+            guard !failure.isCancellation else { return }
+            // 이미 받아 둔 목록이 있으면 지우지 않는다. 새로고침 한 번 실패했다고
+            // 보고 있던 공지가 사라지면, 오프라인에서 읽던 사람이 화면을 통째로 잃는다.
+            if notices.isEmpty {
+                pagination = .empty
+            }
+            loadError = failure
         }
     }
 

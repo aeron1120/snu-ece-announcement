@@ -23,7 +23,7 @@ struct BoardView: View {
 
     var body: some View {
         ScrollViewReader { scroller in
-            ScrollView {
+            ScrollView(.vertical) {
                 VStack(alignment: .leading, spacing: 0) {
                     BoardHeaderView()
                         .padding(.bottom, 10)
@@ -77,7 +77,14 @@ struct BoardView: View {
                     SiteFooterView(syncState: board.syncState)
                 }
                 .padding(.horizontal, Theme.Metrics.pagePadding)
+                // 본문 폭을 스크롤 영역 폭에 못박는다. 안쪽 어느 한 조각이
+                // 제 몫보다 넓다고 보고해도 가로로 밀려나지 않는다 — 웹에서
+                // 칸마다 `minmax(0, 1fr)`과 `min-width: 0`으로 막아 둔 것과 같은 뜻이다.
+                .containerRelativeFrame(.horizontal)
             }
+            // 세로 목록이므로 가로로는 튕기지도 않는다. 비스듬히 쓸어도
+            // 아래위로만 움직인다.
+            .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
             // 스크롤 위치를 읽는 자리. GeometryReader와 preference로 재던 예전
             // 방식은 ScrollView 안에서 값이 밖으로 나오지 않아 쓰지 않는다.
             .onScrollGeometryChange(for: CGFloat.self) { geometry in
@@ -153,16 +160,51 @@ struct BoardView: View {
     @ViewBuilder
     private var emptyOrError: some View {
         if let error = board.loadError {
-            NoticeEmptyState(
-                title: "공지 목록을 불러오지 못했습니다.",
-                message: error.message,
-                actionTitle: "다시 시도",
-                isError: true,
-                action: { Task { await board.reload(page: 1) } }
-            )
+            if board.notices.isEmpty {
+                NoticeEmptyState(
+                    title: "공지 목록을 불러오지 못했습니다.",
+                    message: error.message,
+                    actionTitle: "다시 시도",
+                    isError: true,
+                    action: { Task { await board.reload(page: 1) } }
+                )
+            } else {
+                // 보고 있던 목록이 남아 있으면 화면을 통째로 덮지 않는다.
+                // 새로 받아오지 못했다는 것만 한 줄로 알리고 다시 시도할 길을 준다.
+                refreshFailureBanner(error)
+            }
         } else if board.isEmpty && board.hasLoadedOnce {
             emptyState
         }
+    }
+
+    private func refreshFailureBanner(_ error: APIError) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "exclamationmark.triangle")
+                .font(.system(size: 13, weight: .bold))
+            Text(error.message)
+                .font(Theme.Typography.sans(12.5, .semibold))
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 8)
+            Button("다시 시도") {
+                Task { await board.reload(page: max(1, board.pagination.page)) }
+            }
+            .font(Theme.Typography.sans(12.5, .bold))
+            .fixedSize()
+        }
+        .foregroundStyle(Theme.Palette.danger)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Theme.Palette.dangerBackground)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(Theme.Palette.danger.opacity(0.22), lineWidth: 1)
+                )
+        )
+        .padding(.top, 12)
     }
 
     /// 웹 `renderNoticeEmptyState()`와 문구가 같다. 검색 결과가 없을 때와
