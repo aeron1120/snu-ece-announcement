@@ -1,0 +1,263 @@
+import SwiftUI
+
+/// 공지 목록 화면. 웹 `index.html`의 `#board-view` 한 벌을 그대로 옮겼다.
+///
+/// 위에서부터 제목 → 카테고리 탭 → 검색 → 상세 필터 → 정렬 → 카드 목록 →
+/// 쪽 넘김 → 학내 홍보 → 푸터 순서다. 순서를 바꾸면 웹과 다른 화면이 되므로
+/// 새 요소는 이 흐름 안의 제자리에 끼워 넣는다.
+struct BoardView: View {
+    @EnvironmentObject private var board: BoardViewModel
+    @EnvironmentObject private var router: AppRouter
+
+    @State private var scrollOffset: CGFloat = 0
+    /// 진짜 검색창이 화면 밖으로 나갔는지. 나갔으면 위에 대신 붙는 줄을 띄운다.
+    @State private var searchFieldHidden = false
+    /// 왼쪽 위 손잡이는 목록을 조금이라도 내리면 나타나고, 손을 떼고 잠시 두면 사라진다.
+    @State private var menuHandleVisible = false
+    @State private var menuHideTask: Task<Void, Never>?
+    @State private var isFilterExpanded = false
+
+    private static let searchAnchor = "notice-search"
+    /// 손잡이가 스스로 숨기까지 기다리는 시간. 웹 `MENU_HANDLE_IDLE_MS`와 같다.
+    private static let menuHandleIdle = Duration.milliseconds(2600)
+
+    var body: some View {
+        ScrollViewReader { scroller in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    BoardHeaderView()
+                        .padding(.bottom, 10)
+
+                    CategoryTabsView(
+                        categories: board.orderedCategories,
+                        selectedSlug: board.selectedCategorySlug,
+                        onSelect: { board.selectCategory(slug: $0) }
+                    )
+                    .padding(.bottom, 12)
+
+                    searchSection
+                        .id(Self.searchAnchor)
+
+                    ResultsToolbar(
+                        total: board.pagination.total,
+                        showsCount: board.showsResultCount,
+                        sort: board.filters.sort,
+                        onSelectSort: { board.setSort($0) }
+                    )
+                    .padding(.vertical, 4)
+
+                    NoticeGrid(
+                        notices: board.notices,
+                        isLoading: board.isLoading && !board.hasLoadedOnce,
+                        // 결과 건수 줄이 서면 그 자리가 채워지므로 왼쪽 열을 끌어올리지 않는다.
+                        staggered: !board.showsResultCount,
+                        thumbnailURL: { board.service.thumbnailURL(for: $0) },
+                        onSelect: { router.openNotice(id: $0.id) }
+                    )
+                    .padding(.top, 2)
+
+                    emptyOrError
+
+                    if board.pagination.total > 0 {
+                        NoticePaginationView(
+                            pagination: board.pagination,
+                            isLoading: board.isLoading,
+                            onSelect: { page in
+                                Task {
+                                    await board.goToPage(page)
+                                    withAnimation { scroller.scrollTo(Self.searchAnchor, anchor: .top) }
+                                }
+                            }
+                        )
+                    }
+
+                    BannerCarouselView(slides: board.bannerSlides.displayableRightRail)
+                        .padding(.vertical, 4)
+
+                    SiteFooterView(syncState: board.syncState)
+                }
+                .padding(.horizontal, Theme.Metrics.pagePadding)
+            }
+            // 스크롤 위치를 읽는 자리. GeometryReader와 preference로 재던 예전
+            // 방식은 ScrollView 안에서 값이 밖으로 나오지 않아 쓰지 않는다.
+            .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                geometry.contentOffset.y + geometry.contentInsets.top
+            } action: { _, offset in
+                handleScroll(offset: offset)
+            }
+            .scrollDismissesKeyboard(.interactively)
+            .background(Theme.Palette.background)
+            .refreshable { await board.refresh() }
+            .onChange(of: router.scrollToSearchToken) { _, _ in
+                withAnimation { scroller.scrollTo(Self.searchAnchor, anchor: .top) }
+            }
+        }
+        .toolbar(.hidden, for: .navigationBar)
+        // 내비게이션 바를 감췄으므로 본문이 상태 표시줄 아래로 흘러 들어가
+        // 시계와 글자가 겹친다. 그 자리만 흰 판으로 덮어 둔다.
+        .overlay(alignment: .top) { StatusBarBackdrop() }
+        .overlay(alignment: .top) { stickySearchBar }
+        .overlay(alignment: .topLeading) { floatingMenuHandle }
+        .overlay(alignment: .center) {
+            if board.isLoading && board.hasLoadedOnce {
+                LoadingOverlay(message: "공지를 불러오는 중입니다…")
+                    .transition(.opacity)
+            }
+        }
+        .animation(.easeOut(duration: 0.18), value: board.isLoading)
+    }
+
+    // MARK: - 조각들
+
+    private var searchSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            NoticeSearchField(
+                text: Binding(
+                    get: { board.filters.searchText },
+                    set: { board.searchTextChanged($0) }
+                ),
+                onGuide: { router.present(.userGuide) }
+            )
+
+            FilterToggleBar(
+                isExpanded: isFilterExpanded,
+                chips: board.filters.activeChips,
+                onToggle: {
+                    withAnimation(.easeOut(duration: 0.22)) { isFilterExpanded.toggle() }
+                },
+                onRemoveChip: { board.clearChip($0) }
+            )
+            .padding(.top, 8)
+
+            if isFilterExpanded {
+                QuickFiltersRow(
+                    isOn: { board.filters.isOn($0) },
+                    onToggle: { board.toggleQuickFilter($0) }
+                )
+                .padding(.top, 5)
+                .transition(.move(edge: .top).combined(with: .opacity))
+
+                FilterPanel(
+                    filters: board.filters,
+                    hosts: board.hosts,
+                    onApply: { board.applyFilters($0) },
+                    onReset: { board.resetDetailedFilters() },
+                    onClose: { withAnimation(.easeOut(duration: 0.22)) { isFilterExpanded = false } }
+                )
+                .padding(.top, 6)
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var emptyOrError: some View {
+        if let error = board.loadError {
+            NoticeEmptyState(
+                title: "공지 목록을 불러오지 못했습니다.",
+                message: error.message,
+                actionTitle: "다시 시도",
+                isError: true,
+                action: { Task { await board.reload(page: 1) } }
+            )
+        } else if board.isEmpty && board.hasLoadedOnce {
+            emptyState
+        }
+    }
+
+    /// 웹 `renderNoticeEmptyState()`와 문구가 같다. 검색 결과가 없을 때와
+    /// 조건이 걸린 채 비었을 때, 아무것도 없을 때를 갈라 말한다.
+    private var emptyState: some View {
+        let search = board.filters.searchText.trimmed
+        if !search.isEmpty {
+            return NoticeEmptyState(
+                title: "“\(search)” 검색 결과가 없습니다.",
+                message: "검색어를 줄이거나 다른 표현으로 다시 찾아보세요.",
+                actionTitle: "검색어 지우기",
+                action: { board.clearSearch() }
+            )
+        }
+        if board.filters.hasDetailedFilters {
+            return NoticeEmptyState(
+                title: "해당하는 공지가 없습니다.",
+                message: "다른 카테고리나 조건으로 다시 확인해 주세요."
+            )
+        }
+        return NoticeEmptyState(
+            title: "아직 등록된 공지가 없습니다.",
+            message: "새 공지가 검수되면 이곳에 표시됩니다."
+        )
+    }
+
+    /// 목록을 한참 내려가 진짜 검색창이 화면 밖으로 나가면 그때부터 대신 선다.
+    @ViewBuilder
+    private var stickySearchBar: some View {
+        if searchFieldHidden {
+            StickySearchBar { router.jumpToSearch() }
+                .transition(.move(edge: .top).combined(with: .opacity))
+        }
+    }
+
+    /// 화면 왼쪽 위에 떠 있는 손잡이. 흐름에서 빠져 있어 제목은 이 버튼이
+    /// 없는 것처럼 왼쪽 끝에 붙는다.
+    @ViewBuilder
+    private var floatingMenuHandle: some View {
+        if menuHandleVisible {
+            Button {
+                router.openDrawer()
+            } label: {
+                Image(systemName: "line.3.horizontal")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(searchFieldHidden ? Theme.Palette.primary : Color(hex: 0x7C8698))
+                    .frame(width: 34, height: 34)
+                    .background {
+                        if !searchFieldHidden {
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .fill(.regularMaterial)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                        .stroke(Theme.Palette.primary.opacity(0.1), lineWidth: 1)
+                                )
+                        }
+                    }
+            }
+            .buttonStyle(PressableStyle())
+            .accessibilityLabel("메뉴 열기")
+            .padding(.leading, 10)
+            .padding(.top, searchFieldHidden ? 12 : 10)
+            .transition(.opacity.combined(with: .move(edge: .top)))
+        }
+    }
+
+    // MARK: - 스크롤 반응
+
+    private func handleScroll(offset: CGFloat) {
+        scrollOffset = offset
+        // 검색창은 제목·탭 아래에 있다. 그만큼 내려가면 화면 밖으로 나간 것으로 본다.
+        let hidden = offset > 190
+        if hidden != searchFieldHidden {
+            withAnimation(.easeOut(duration: 0.18)) { searchFieldHidden = hidden }
+        }
+
+        guard offset > 12 else {
+            menuHideTask?.cancel()
+            if menuHandleVisible {
+                withAnimation(.easeOut(duration: 0.2)) { menuHandleVisible = false }
+            }
+            return
+        }
+        if !menuHandleVisible {
+            withAnimation(.easeOut(duration: 0.2)) { menuHandleVisible = true }
+        }
+        scheduleMenuHandleHide()
+    }
+
+    private func scheduleMenuHandleHide() {
+        menuHideTask?.cancel()
+        menuHideTask = Task {
+            try? await Task.sleep(for: Self.menuHandleIdle)
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeOut(duration: 0.2)) { menuHandleVisible = false }
+        }
+    }
+}

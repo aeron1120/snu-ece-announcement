@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 675" role="img" aria-labelledby="title desc">
+  <title id="title">학생 모집 모바일 배너</title>
+  <desc id="desc">모바일 가로 화면에 맞춘 학생 모집 안내</desc>
+  <rect width="1200" height="675" fill="#eef3fb"/>
+  <rect x="28" y="28" width="1144" height="619" fill="#fff" stroke="#1f3f8f" stroke-width="4"/>
+  <text x="74" y="100" fill="#1f3f8f" font-family="Arial, sans-serif" font-size="22" font-weight="700">SNU ECE</text>
+  <text x="74" y="232" fill="#17337a" font-family="Arial, sans-serif" font-size="86" font-weight="800">STUDENT RECRUIT</text>
+  <rect x="74" y="276" width="590" height="92" fill="#1f3f8f"/>
+  <text x="369" y="335" fill="#fff" font-family="Arial, sans-serif" font-size="32" font-weight="700" text-anchor="middle">학생 모집 안내</text>
+  <g fill="none" stroke="#1f3f8f" stroke-width="15">
+    <circle cx="882" cy="272" r="65"/>
+    <circle cx="1050" cy="272" r="65"/>
+    <path d="M764 472c16-92 56-138 118-138s102 46 118 138M932 472c16-92 56-138 118-138s102 46 118 138"/>
+  </g>
+  <text x="74" y="590" fill="#65759b" font-family="Arial, sans-serif" font-size="20">MOBILE BANNER 02</text>
+</svg>

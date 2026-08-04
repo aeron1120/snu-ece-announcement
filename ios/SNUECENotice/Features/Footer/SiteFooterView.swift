@@ -1,0 +1,192 @@
+import SwiftUI
+
+/// 목록 맨 아래 푸터.
+///
+/// 폰에서는 서랍이 접혀 있어 푸터가 사실상 주 내비게이션이 된다. 그래서
+/// 데스크톱과 반대로 링크를 더 크고 진하게 키우고, 수집 신선도를 맨 위 배지로
+/// 올린다. 순서는 동기화 → 링크 → 법적 고지다.
+struct SiteFooterView: View {
+    let syncState: SyncState
+
+    @EnvironmentObject private var router: AppRouter
+    @Environment(\.openURL) private var openURL
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            SyncStatusBadge(state: syncState)
+                .padding(.bottom, 12)
+
+            HStack(alignment: .top, spacing: 16) {
+                VStack(alignment: .leading, spacing: 0) {
+                    column("서비스") {
+                        footerButton("서비스 안내") { router.present(.userGuide) }
+                        footerButton("알림 설정") { router.present(.notificationPreferences) }
+                        footerLink("업데이트 내역", "changelog.html")
+                    }
+                    column("바로가기") {
+                        externalLink("전기정보공학부", "https://ece.snu.ac.kr")
+                        externalLink("mySNU", "https://my.snu.ac.kr")
+                        externalLink("eTL", "https://etl.snu.ac.kr")
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                VStack(alignment: .leading, spacing: 0) {
+                    column("문의") {
+                        footerButton("일반 문의") { router.present(.feedback) }
+                        footerButton("홍보 신청") { router.present(.bannerInquiry) }
+                        footerLink("자주 묻는 질문", "faq.html")
+                    }
+                    column("운영") {
+                        footerLink("운영 주체 안내", "operator.html")
+                        footerLink("개인정보처리방침", "privacy.html")
+                        footerLink("이용약관", "terms.html")
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            legal
+        }
+        .padding(.top, 14)
+        .padding(.horizontal, 4)
+        .overlay(alignment: .top) {
+            Theme.Palette.borderSoft.frame(height: 1)
+        }
+        .padding(.top, 26)
+    }
+
+    private var legal: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("본 서비스는 학생이 운영하는 비공식 통합 안내 페이지입니다. 공지 원문과 운영 기관의 안내를 최종 기준으로 합니다.")
+            Text("© \(currentYear) SNU ECE 공지방")
+        }
+        .font(Theme.Typography.sans(10.5))
+        .lineSpacing(3)
+        .foregroundStyle(Theme.Palette.footerText)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.top, 10)
+        .padding(.bottom, 16)
+        .overlay(alignment: .top) {
+            Theme.Palette.borderSoft.frame(height: 1).offset(y: -10)
+        }
+        .padding(.top, 10)
+    }
+
+    private var currentYear: String {
+        String(DateFormatting.calendar.component(.year, from: Date()))
+    }
+
+    @ViewBuilder
+    private func column(_ title: String, @ViewBuilder content: () -> some View) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(title)
+                .font(Theme.Typography.sans(12, .bold))
+                .foregroundStyle(Theme.Palette.textSub)
+                .padding(.bottom, 4)
+            content()
+        }
+        .padding(.vertical, 4)
+        .padding(.bottom, 10)
+    }
+
+    private func footerButton(_ title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(Theme.Typography.sans(14, .semibold))
+                .foregroundStyle(Theme.Palette.textMain)
+                .frame(maxWidth: .infinity, minHeight: 36, alignment: .leading)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(PressableStyle(scale: 0.99))
+    }
+
+    /// 아직 앱 화면으로 옮기지 않은 문서는 웹의 같은 페이지를 앱 안에서 연다.
+    private func footerLink(_ title: String, _ page: String) -> some View {
+        footerButton(title) {
+            let base = APIConfiguration.current.publicSiteURL
+            router.present(.webPage(base.appendingPathComponent(page)))
+        }
+    }
+
+    private func externalLink(_ title: String, _ url: String) -> some View {
+        Button {
+            if let target = URL(string: url) { openURL(target) }
+        } label: {
+            HStack(spacing: 5) {
+                Text(title)
+                    .font(Theme.Typography.sans(14, .semibold))
+                Image(systemName: "arrow.up.right.square")
+                    .font(.system(size: 11, weight: .bold))
+                    .opacity(0.7)
+            }
+            .foregroundStyle(Theme.Palette.textMain)
+            .frame(maxWidth: .infinity, minHeight: 36, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PressableStyle(scale: 0.99))
+        .accessibilityLabel("\(title) (새 창)")
+    }
+}
+
+/// 수집 신선도 배지. 색만으로 상태를 구분하지 않고 문구와 아이콘도 함께 바뀐다.
+struct SyncStatusBadge: View {
+    let state: SyncState
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 1) {
+            HStack(spacing: 5) {
+                Image(systemName: icon)
+                    .font(.system(size: 12, weight: .bold))
+                Text(state.label)
+                    .font(Theme.Typography.sans(12.5, .heavy))
+            }
+            if !state.detail.isEmpty {
+                Text(state.detail)
+                    .font(Theme.Typography.sans(11.5))
+                    .opacity(0.85)
+                    .monospacedDigit()
+            }
+        }
+        .foregroundStyle(foreground)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 9)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(background)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(foreground.opacity(0.22), lineWidth: 1)
+                )
+        )
+        .accessibilityElement(children: .combine)
+    }
+
+    private var icon: String {
+        switch state {
+        case .loading: "arrow.triangle.2.circlepath"
+        case .ok: "arrow.triangle.2.circlepath"
+        case .stale: "clock"
+        case .failed: "exclamationmark.triangle"
+        }
+    }
+
+    private var foreground: Color {
+        switch state {
+        case .loading: Theme.Palette.footerLink
+        case .ok: Theme.Palette.ok
+        case .stale: Theme.Palette.warning
+        case .failed: Theme.Palette.danger
+        }
+    }
+
+    private var background: Color {
+        switch state {
+        case .loading: Color(hex: 0xF4F6F9)
+        case .ok: Theme.Palette.okBackground
+        case .stale: Theme.Palette.warningBackground
+        case .failed: Theme.Palette.dangerBackground
+        }
+    }
+}
