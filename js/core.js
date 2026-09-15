@@ -2797,9 +2797,62 @@ function updateDetailImage() {
         counter.hidden = !hasMultiple;
         counter.textContent = `${detailImageIndex + 1} / ${detailImageArray.length}`;
     }
-    document.querySelectorAll('#detail-gallery .gallery-img').forEach((image, index) => {
-        image.classList.toggle('active', index === detailImageIndex);
+    // 사진이 아직 안 온 칸도 지금 보고 있는 사진이 어느 것인지 표시해야 한다.
+    document.querySelectorAll('#detail-gallery .gallery-thumb').forEach((thumb, index) => {
+        const active = index === detailImageIndex;
+        thumb.classList.toggle('is-active', active);
+        thumb.setAttribute('aria-current', active ? 'true' : 'false');
+        thumb.querySelector('.gallery-img')?.classList.toggle('active', active);
     });
+}
+
+/* 상세 아래 썸네일 줄. 사진은 한 장씩 따로 도착하는데, 도착 전에는 크기를
+   몰라 칸이 회색으로 비거나 앞서 본 사진이 남았다. 그래서 로딩 칸을 먼저
+   세우고 사진이 오는 대로 그 칸만 바꾼다.
+
+   innerHTML +=로 한 장씩 이어 붙이면 붙일 때마다 줄 전체가 다시 만들어져,
+   먼저 받기 시작한 사진까지 버리고 새로 요청한다. 노드로 한 번에 만든다. */
+function renderDetailGallery(gallery, images) {
+    gallery.replaceChildren(...images.map((src, index) => createGalleryThumb(src, index)));
+}
+
+function createGalleryThumb(src, index) {
+    const thumb = document.createElement('button');
+    thumb.type = 'button';
+    thumb.className = 'gallery-thumb';
+    thumb.dataset.state = 'loading';
+    thumb.setAttribute('aria-label', `${index + 1}번 사진 보기`);
+    thumb.setAttribute('aria-busy', 'true');
+    thumb.addEventListener('click', () => {
+        detailImageIndex = index;
+        updateDetailImage();
+    });
+
+    const slot = document.createElement('span');
+    slot.className = 'gallery-thumb-slot';
+    slot.setAttribute('aria-hidden', 'true');
+    slot.innerHTML = '<span class="notice-loading-spinner"></span>';
+
+    const image = document.createElement('img');
+    image.className = 'gallery-img';
+    image.alt = '';
+    image.decoding = 'async';
+
+    // 큰 사진과 같은 30초. 그때까지 안 오면 스피너만 멈춘다. 늦게라도 오면
+    // 그대로 보여준다. 썸네일은 다시 시도 버튼을 둘 자리가 없다.
+    const timer = window.setTimeout(() => settle('error'), 30000);
+    function settle(state) {
+        if (thumb.dataset.state === 'ready') return;
+        window.clearTimeout(timer);
+        thumb.dataset.state = state;
+        thumb.setAttribute('aria-busy', 'false');
+    }
+    image.addEventListener('load', () => settle(image.naturalWidth > 0 ? 'ready' : 'error'));
+    image.addEventListener('error', () => settle('error'));
+    image.src = src;
+
+    thumb.append(slot, image);
+    return thumb;
 }
 
 // 상세 화면의 "크게 보기" 버튼 전용 진입점. 버튼을 눌렀다는 뜻이 분명할 때만 연다.
@@ -2997,10 +3050,7 @@ async function openDetail(idStr) {
         detailImageIndex = 0;
         hero.hidden = false;
         if (notice.images.length > 1) {
-            notice.images.forEach((src, idx) => {
-                gallery.innerHTML += `<button class="gallery-thumb" type="button" aria-label="${idx + 1}번 사진 보기"
-                    onclick="detailImageIndex=${idx}; updateDetailImage()"><img src="${escapeHtml(src)}" class="gallery-img" alt=""></button>`;
-            });
+            renderDetailGallery(gallery, notice.images);
             gallery.style.display = 'flex';
         } else {
             gallery.style.display = 'none';

@@ -1295,11 +1295,35 @@ body.notice-dragging .notice-hover-preview { display: none !important; }
 .original-text-content a { color: var(--primary); text-decoration: none; font-weight: 600; border-bottom: 1px solid transparent; }
 .original-text-content a:hover { border-bottom-color: var(--primary); }
 
-.gallery-container { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 14px; margin-bottom: 22px; }
+/* overflow-x가 걸리면 칸 밖으로 나가는 테두리가 잘린다. 선택 표시(2px + 간격 2px)가
+   들어갈 만큼 위·양옆에 여유를 둔다. */
+.gallery-container { display: flex; gap: 12px; overflow-x: auto; padding: 4px 4px 14px; margin-bottom: 22px; }
 .gallery-thumb { flex: 0 0 auto; padding: 0; background: transparent; border: 2px solid transparent; cursor: pointer; }
 .gallery-img { display: block; height: 120px; object-fit: cover; border: 1px solid var(--border); transition: opacity 0.15s; }
 .gallery-img.active { outline: 2px solid var(--primary); outline-offset: 2px; }
 .gallery-img:hover { opacity: 0.85; }
+/* 사진이 도착하기 전 칸. 학생회 포스터가 1080×1350(4:5)이라 96×120으로 잡아
+   사진이 와도 너비가 흔들리지 않는다. 옅은 바탕은 큰 사진 로딩 화면과 맞췄고,
+   스피너가 방패 한가운데 얹히면 얼굴처럼 읽혀 엠블럼 아래로 내렸다. */
+.gallery-thumb-slot {
+    display: grid;
+    place-items: end center;
+    width: 96px;
+    height: 120px;
+    padding-bottom: 12px;
+    border: 1px solid var(--border);
+    background: #f2f4f8 url('../icons/gallery-thumb-loading.jpg') center / cover no-repeat;
+}
+.gallery-thumb-slot .notice-loading-spinner { width: 16px; height: 16px; }
+.gallery-thumb.is-active .gallery-thumb-slot { outline: 2px solid var(--primary); outline-offset: 2px; }
+.gallery-thumb:not([data-state="ready"]) .gallery-img,
+.gallery-thumb[data-state="ready"] .gallery-thumb-slot { display: none; }
+.gallery-thumb[data-state="error"] .notice-loading-spinner { display: none; }
+.gallery-thumb[data-state="ready"] .gallery-img { animation: gallery-thumb-arrive 0.18s ease-out; }
+@keyframes gallery-thumb-arrive { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+    .gallery-thumb[data-state="ready"] .gallery-img { animation: none; }
+}
 .detail-actions {
     text-align: right; border-top: 1px solid var(--border); padding-top: 24px;
     display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap;
