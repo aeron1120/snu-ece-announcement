@@ -1464,7 +1464,8 @@ test('PWA manifest and service worker include install and push contracts', async
     const worker = await readFile('service-worker.js', 'utf8');
 
     assert.equal(manifest.display, 'standalone');
-    assert.match(manifest.icons[0].src, /app-icon\.svg$/);
+    assert.deepEqual(manifest.icons.map(icon => icon.sizes), ['192x192', '512x512']);
+    assert.ok(manifest.icons.every(icon => icon.type === 'image/png' && icon.purpose.includes('maskable')));
     assert.match(worker, /addEventListener\('push'/);
     assert.match(worker, /showNotification/);
     assert.match(worker, /notificationclick/);

@@ -204,3 +204,19 @@ git diff --check
 ```
 
 `tests/automation-e2e.test.js`는 임시 JSON 저장소와 고정 HTML/Gemini/Web Push 응답으로 수집, 비공개 검수, 승인, 공개, 알림 1회 전송, 중복 차단, 카테고리 추천까지 한 흐름으로 검증합니다. 실제 Cloudflare·Render·Supabase·브라우저 푸시를 사용하는 스테이징 스모크 테스트는 위의 배포 전 체크리스트에 따라 별도로 실행해야 합니다.
+
+## 외부 아이콘과 공유 이미지
+
+남색·흰색·금색 로고를 브라우저 탭, 홈 화면, 푸시 알림, 링크 공유에 사용합니다.
+
+- 브라우저 탭: `icons/favicon.svg`, `favicon.ico` (작은 크기용 ECE 모노그램)
+- 홈 화면/PWA: `icons/app-icon-192.png`, `icons/app-icon-512.png`
+- iPhone 홈 화면: `icons/apple-touch-icon.png`
+- Google OAuth 앱 로고 업로드용: `icons/app-icon-512.png`
+- 고해상도 원본 PNG: `icons/app-icon-1024.png`
+- 카카오톡 등 링크 공유: `icons/social-preview.png` (1200 × 630)
+
+원본은 `icons/app-icon.svg`와 `icons/favicon.svg`입니다. 글자는 경로로 변환되어 기기의 글꼴에 영향을 받지 않습니다.
+기존 워드마크의 색상·전기 회로 장식을 이어가며, 글자 윤곽에는 Google Fonts의 Anton과 Nanum Myeongjo ExtraBold를 사용했습니다.
+원본을 수정한 뒤 `npm run prepare:icons`와 `npm run prepare:public`을 실행하면 배포 파일이 갱신됩니다.
+Google Cloud 콘솔의 앱 로고는 별도 설정이므로 준비된 512px PNG를 직접 업로드해야 합니다.

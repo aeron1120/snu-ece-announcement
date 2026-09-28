@@ -57,7 +57,7 @@ self.addEventListener('push', event => {
     }
     event.waitUntil(self.registration.showNotification(data.title || 'SNU ECE 공지', {
         body: data.body || '새 공지가 등록되었습니다.',
-        icon: '/icons/app-icon.svg',
+        icon: '/icons/app-icon-192.png',
         badge: '/icons/badge-icon.svg',
         tag: data.tag || undefined,
         data: { url: data.url || '/' }

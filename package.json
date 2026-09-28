@@ -14,7 +14,8 @@
     "migrate:categories": "node scripts/migrate-notice-categories.mjs --apply",
     "backfill:categories:dry-run": "node scripts/backfill-notice-categories.mjs",
     "backfill:categories": "node scripts/backfill-notice-categories.mjs --apply",
-    "reclassify:local": "node scripts/reclassify-local-notices.mjs"
+    "reclassify:local": "node scripts/reclassify-local-notices.mjs",
+    "prepare:icons": "node scripts/prepare-icons.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.8",
