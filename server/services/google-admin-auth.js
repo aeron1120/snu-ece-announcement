@@ -95,7 +95,9 @@ export function createGoogleAdminAuthRouter({ onLogin, onMemberLogin, limiter })
         }).toString();
         res.redirect(302, url.href);
     });
-    router.get('/api/auth/google/callback', limiter, async (req, res) => {
+    // The start route limits admission. A single-use, browser-bound callback must
+    // still finish when other users on the same IP exhaust that admission budget.
+    router.get('/api/auth/google/callback', async (req, res) => {
         const state = typeof req.query.state === 'string' ? req.query.state : '';
         const attempt = attempts.get(state);
         if (!attempt || attempt.expiresAt <= Date.now()

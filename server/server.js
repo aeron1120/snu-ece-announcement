@@ -247,6 +247,13 @@ const authenticationLimiter = rateLimit({
     legacyHeaders: false,
     message: { error: '인증 시도가 너무 많습니다. 잠시 후 다시 시도해주세요.' }
 });
+// Campus users share public IPs. OAuth admission has its own short-window budget.
+const googleLoginLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    limit: 120,
+    standardHeaders: 'draft-8',
+    legacyHeaders: false
+});
 const subscriptionLimiter = rateLimit({
     windowMs: 10 * 60 * 1000,
     limit: 10,
@@ -395,7 +402,7 @@ const memberAuth = createMemberAuth({
 });
 app.use(memberAuth.router);
 app.use(createGoogleAdminAuthRouter({
-    limiter: authenticationLimiter,
+    limiter: googleLoginLimiter,
     async onMemberLogin(req, res, identity) {
         const status = await memberAuth.onLogin(req, res, identity);
         // Switching to a member account must revoke the previous admin identity.
@@ -3573,6 +3580,8 @@ function resetAdminLoginAttempts() {
     authenticationLimiter.resetKey?.('::ffff:127.0.0.1');
     authenticationLimiter.resetKey?.('127.0.0.1');
     authenticationLimiter.store?.resetAll?.();
+    googleLoginLimiter.resetKey?.('::ffff:127.0.0.1');
+    googleLoginLimiter.resetKey?.('127.0.0.1');
 }
 
 export {

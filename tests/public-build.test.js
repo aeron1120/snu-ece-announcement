@@ -2698,6 +2698,20 @@ test('service guide sections and footer tutorial targets have clear boundaries',
     assert.match(css, /\.footer-sync-content\s*\{[^}]*display:\s*inline-flex[^}]*padding:\s*5px 8px/);
 });
 
+test('beta analytics includes the member session on cross-origin requests', async () => {
+    const app = await readFile('js/core.js', 'utf8');
+    let request;
+    const context = {
+        betaAnalyticsSessionId: () => 'test-browser-id',
+        buildApiUrl: path => `https://api.example.test${path}`,
+        location: { pathname: '/' },
+        fetch: (url, options) => { request = { url, options }; return Promise.resolve(); }
+    };
+    runInNewContext(`${readNamedFunction(app, 'trackBetaEvent')}; trackBetaEvent('page_view');`, context);
+    assert.equal(request.url, 'https://api.example.test/api/analytics/events');
+    assert.equal(request.options.credentials, 'include');
+});
+
 test('beta ratings appear only after the third and thirteenth notice opens', async () => {
     const html = await readFile('index.html', 'utf8');
     const app = await readFile('js/core.js', 'utf8');

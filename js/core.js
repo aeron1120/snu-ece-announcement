@@ -142,7 +142,7 @@ function trackBetaEvent(type, rating = null) {
         pagePath: location.pathname
     });
     fetch(buildApiUrl('/api/analytics/events'), {
-        method: 'POST', keepalive: true,
+        method: 'POST', keepalive: true, credentials: 'include',
         headers: { 'Content-Type': 'application/json' }, body: payload
     }).catch(() => {});
 }

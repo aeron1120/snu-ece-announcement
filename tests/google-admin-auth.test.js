@@ -12,6 +12,21 @@ async function startServer(t) {
     return `http://127.0.0.1:${server.address().port}`;
 }
 
+test('school users sharing an IP can start and finish more than five OAuth flows', async t => {
+    const base = await startServer(t);
+    await beginGoogleLogin(t, base);
+    for (let i = 0; i < 12; i++) {
+        const start = await fetch(`${base}/api/auth/google?purpose=member`, { redirect: 'manual' });
+        assert.equal(start.status, 302, `shared-IP login ${i + 1}`);
+        const state = new URL(start.headers.get('location')).searchParams.get('state');
+        const cookie = start.headers.getSetCookie().find(value => value.startsWith('ece_google_oauth=')).split(';')[0];
+        const callback = await fetch(`${base}/api/auth/google/callback?state=${state}&error=access_denied`, {
+            headers: { Cookie: cookie }, redirect: 'manual'
+        });
+        assert.equal(callback.status, 302, `browser-bound callback ${i + 1}`);
+    }
+});
+
 for (const email of ADMIN_EMAILS) {
     test(`Google login grants full access to ${email} and logout revokes it`, async t => {
         const base = await startServer(t);
