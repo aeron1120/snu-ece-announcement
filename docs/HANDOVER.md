@@ -2,13 +2,13 @@
 
 ## 서비스 개요
 
-SNU ECE 공지방은 학과 공지와 학생회 공지를 모아 보여 주는 웹 서비스입니다. 공지 관리자는 공지 검수·수정·게시를, 배너 관리자는 홍보 배너와 홍보 신청을, 마스터 관리자는 모든 기능과 운영 설정을 담당합니다.
+SNU ECE 공지방은 학과 공지와 학생회 공지를 모아 보여 주는 웹 서비스입니다. 등록된 세 서울대학교 Google 계정은 전체 관리자 권한으로 공지 검수·게시, 배너 관리, 운영 설정을 담당합니다.
 
 ## 시작과 배포
 
 로컬 개발은 `npm install` 뒤 `npm start`로 실행합니다. 정적 파일을 바꾼 뒤에는 반드시 `npm run prepare:public`을 실행합니다. 이 명령은 원본 HTML·CSS·JS·아이콘을 `public/`으로 복사하므로, `public/` 안의 파일은 직접 수정하지 않습니다.
 
-배포 환경 변수는 최소한 `SUPER_ADMIN_TOKEN`, `NOTICE_ADMIN_TOKEN`, `BANNER_ADMIN_PASSWORD`가 필요합니다. Supabase를 쓰는 운영 환경은 `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`도 설정하고 `server/sql/supabase-schema.sql`을 적용합니다. 데이터베이스 스키마를 적용하지 않으면 새 베타 분석 테이블이 없어 보고서 생성이 실패할 수 있습니다.
+관리자 로그인에는 `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`, `FRONTEND_ORIGIN`이 필요합니다. 정확한 URL은 [Google 로그인 설정](GOOGLE_LOGIN.md)을 참고하세요. Supabase를 쓰는 운영 환경은 `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`도 설정하고 `server/sql/supabase-schema.sql`을 적용합니다. 데이터베이스 스키마를 적용하지 않으면 새 베타 분석 테이블이 없어 보고서 생성이 실패할 수 있습니다.
 
 ## 베타 분석과 월간 보고
 
@@ -28,4 +28,4 @@ SNU ECE 공지방은 학과 공지와 학생회 공지를 모아 보여 주는 �
 
 분석 화면만 실패하면 먼저 서버 로그와 `beta_analytics_events` 테이블 존재 여부를 확인합니다. 파일 저장 모드에서는 `server/data/beta-analytics.json`에 데이터가 생깁니다. 이 파일에는 해시와 이벤트만 있으므로 직접 수정하지 말고, 필요 시 백업 후 원인을 확인합니다.
 
-공지·배너·관리자 로그인 장애는 환경 변수와 권한 토큰 설정을 우선 확인합니다. 비밀번호를 바꾸면 기존 관리자 세션은 만료되는 것이 정상입니다. 개인정보나 비밀값은 문의·공지·커밋·보고서에 절대 남기지 않습니다.
+관리자 로그인 장애는 Google OAuth 환경 변수, 리디렉션 URI, 허용된 학교 계정 여부를 우선 확인합니다. 기존 비밀번호·헤더 토큰 로그인은 제거되었습니다. 서버를 재시작하면 관리자 세션이 만료됩니다. 개인정보나 비밀값은 문의·공지·커밋·보고서에 절대 남기지 않습니다.

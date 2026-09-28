@@ -18,31 +18,10 @@
         <section class="login-card" aria-labelledby="admin-login-title">
             <p class="login-eyebrow">ADMIN ACCESS</p>
             <h1 id="admin-login-title">관리자 로그인</h1>
-            <p>직책을 고르고 해당 비밀번호를 입력하세요.<br>직책에 맞는 화면만 열립니다.</p>
-            <form id="admin-login-form" novalidate>
-                <fieldset class="role-picker">
-                    <legend>직책</legend>
-                    <label class="role-option">
-                        <input type="radio" name="admin-role" value="notice" checked>
-                        <span class="role-name">공지 관리자</span>
-                        <span class="role-desc">검수 대기 · 공지 추가하기 · 공지 목록</span>
-                    </label>
-                    <label class="role-option">
-                        <input type="radio" name="admin-role" value="banner">
-                        <span class="role-name">배너 관리자</span>
-                        <span class="role-desc">배너 관리 · 배너 문의</span>
-                    </label>
-                    <label class="role-option">
-                        <input type="radio" name="admin-role" value="master">
-                        <span class="role-name">마스터 관리자</span>
-                        <span class="role-desc">모든 화면 · 문의함 · 관리자 설정</span>
-                    </label>
-                </fieldset>
-                <label for="admin-login-password">비밀번호</label>
-                <input type="password" id="admin-login-password" value="" autocomplete="current-password"
-                       data-1p-ignore data-lpignore="true" required autofocus>
+            <p>등록된 서울대학교 Google 계정으로 로그인하세요.</p>
+            <form id="admin-login-form">
                 <p id="admin-login-error" role="alert" aria-live="polite"></p>
-                <button type="submit">로그인</button>
+                <button type="submit">Google 계정으로 로그인</button>
             </form>
             <a class="login-back" href="./index.html">‹ 공지방으로 돌아가기</a>
         </section>

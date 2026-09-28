@@ -6,12 +6,8 @@ import { promises as fs } from 'fs';
 import { createClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
 import cron from 'node-cron';
-import {
-    createCredentialHash,
-    isLegacyCredentialHash,
-    legacyHashToken,
-    verifyCredential
-} from './services/credential-hash.js';
+import { createCredentialHash, legacyHashToken } from './services/credential-hash.js';
+import { createGoogleAdminAuthRouter, getGoogleAuthConfig, isAdminEmail, readCookie } from './services/google-admin-auth.js';
 import { buildKakaoBackfillDrafts } from './services/kakao-backfill.js';
 import { createOcrService } from './services/ocr-service.js';
 import {
@@ -54,8 +50,6 @@ const feedbackFilePath = path.join(__dirname, 'data', 'feedback.json');
 const analyticsFilePath = path.join(__dirname, 'data', 'beta-analytics.json');
 const bannerInquiryImageDir = path.join(__dirname, 'data', 'banner-inquiry-images');
 const thumbnailCacheDir = path.join(__dirname, 'data', 'thumbnail-cache');
-const SUPER_ADMIN_TOKEN = process.env.SUPER_ADMIN_TOKEN || process.env.ADMIN_TOKEN || '';
-const NOTICE_ADMIN_TOKEN = process.env.NOTICE_ADMIN_TOKEN || '';
 const SUPABASE_URL = process.env.SUPABASE_URL || '';
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 const SUPABASE_NOTICES_TABLE = process.env.SUPABASE_NOTICES_TABLE || 'notices';
@@ -149,7 +143,6 @@ function initializeNotificationWorker() {
     notificationWorkerTimer.unref?.();
 }
 let bannerStorageMode = useSupabase ? 'supabase' : 'file';
-const initialNoticeAdminToken = NOTICE_ADMIN_TOKEN;
 
 // 실사용 서비스이므로 가짜 공지를 시드하지 않는다. 첫 공지는 관리자가 직접 등록한다.
 const defaultNotices = [];
@@ -236,122 +229,11 @@ const defaultBannerInfo = {
 const defaultSecuritySettings = {
     adminInfo: { ...defaultAdminInfo },
     bannerInfo: { ...defaultBannerInfo },
-    adminTokenHash: createCredentialHash(initialNoticeAdminToken),
-    // 배너·마스터 관리자도 공지 관리자와 같은 방식으로 해시만 보관한다.
-    bannerTokenHash: createCredentialHash(process.env.BANNER_ADMIN_PASSWORD || ''),
-    masterTokenHash: createCredentialHash(process.env.SUPER_ADMIN_TOKEN || process.env.ADMIN_TOKEN || '')
+    adminTokenHash: createCredentialHash(''),
+    // 과거 DB 스키마 호환용 빈 값이다. 이 해시들은 인증에 사용하지 않는다.
+    bannerTokenHash: createCredentialHash(''),
+    masterTokenHash: createCredentialHash('')
 };
-
-/* 관리자 역할.
-   master  — 모든 화면. 배너를 보려고 비밀번호를 또 넣지 않는다.
-   notice  — 검수 대기 · 공지 추가하기 · 공지 목록.
-   banner  — 배너 관리(배너 문의 포함). */
-const ADMIN_ROLES = Object.freeze(['master', 'notice', 'banner']);
-
-function roleCredentialHash(settings, role) {
-    const safe = settings || defaultSecuritySettings;
-    if (role === 'notice') return safe.adminTokenHash || defaultSecuritySettings.adminTokenHash;
-    if (role === 'banner') return safe.bannerTokenHash || defaultSecuritySettings.bannerTokenHash;
-    if (role === 'master') return safe.masterTokenHash || defaultSecuritySettings.masterTokenHash;
-    return '';
-}
-
-const ROLE_HASH_FIELD = Object.freeze({
-    notice: 'adminTokenHash',
-    banner: 'bannerTokenHash',
-    master: 'masterTokenHash'
-});
-
-/* 이미 저장된 비밀번호는 salt 없는 sha256이다. 그 평문을 알 수 있는 순간은
-   로그인에 성공한 때뿐이므로, 그 자리에서 scrypt로 다시 적는다. 이렇게 하지
-   않으면 관리자가 비밀번호를 직접 바꾸기 전까지 옛 해시가 그대로 남는다.
-
-   저장에 실패해도 로그인은 그대로 진행한다 — 해시를 못 바꾼 것이 관리자를
-   밖에 세워 둘 이유는 되지 않는다. 다음 로그인에 다시 시도한다. */
-async function upgradeLegacyCredential(settings, role, password) {
-    const field = ROLE_HASH_FIELD[role];
-    if (!field || !isLegacyCredentialHash(roleCredentialHash(settings, role))) return settings;
-
-    try {
-        return await saveSecuritySettings({ ...settings, [field]: createCredentialHash(password) });
-    } catch (error) {
-        console.error('비밀번호 해시 형식 갱신 실패:', error?.message || error);
-        return settings;
-    }
-}
-
-// 마스터는 다른 두 역할의 권한을 모두 품는다.
-function roleSatisfies(role, required) {
-    if (!role) return false;
-    if (role === 'master') return true;
-    return role === required;
-}
-
-/* 로그인 실패 잠금.
-   같은 곳에서 다섯 번 틀리면 10분 동안 더 시도할 수 없다. 초당 요청 수만
-   재는 rate limit과 달리, 천천히 하나씩 찔러보는 시도까지 막는 게 목적이다.
-   성공하면 기록을 지운다. */
-const ADMIN_LOGIN_MAX_ATTEMPTS = 5;
-const ADMIN_LOGIN_LOCK_MS = 10 * 60 * 1000;
-const adminLoginAttempts = new Map();
-
-function loginAttemptKey(req) {
-    return String(req.ip || req.socket?.remoteAddress || 'unknown');
-}
-
-function getAdminLoginLock(req) {
-    const key = loginAttemptKey(req);
-    const record = adminLoginAttempts.get(key);
-    if (!record) return null;
-    if (record.lockedUntil && record.lockedUntil > Date.now()) {
-        return { key, retryAfterMs: record.lockedUntil - Date.now() };
-    }
-    // 잠금이 풀렸으면 실패 기록도 함께 비운다.
-    if (record.lockedUntil && record.lockedUntil <= Date.now()) {
-        adminLoginAttempts.delete(key);
-    }
-    return null;
-}
-
-function recordAdminLoginFailure(req) {
-    const key = loginAttemptKey(req);
-    const record = adminLoginAttempts.get(key) || { count: 0, lockedUntil: 0 };
-    record.count += 1;
-    if (record.count >= ADMIN_LOGIN_MAX_ATTEMPTS) {
-        record.lockedUntil = Date.now() + ADMIN_LOGIN_LOCK_MS;
-        record.count = 0;
-    }
-    adminLoginAttempts.set(key, record);
-    return record;
-}
-
-function clearAdminLoginFailures(req) {
-    adminLoginAttempts.delete(loginAttemptKey(req));
-}
-
-/* 세션 쿠키는 저장된 해시와 문자열만 맞대보면 끝나지만, 헤더 토큰은 요청마다
-   scrypt를 다시 돌린다. 그 계산이 일부러 비싸다는 점이 곧 공격 표면이라 —
-   틀린 토큰을 계속 던지는 것만으로 CPU를 태울 수 있다 — 로그인 화면과 같은
-   잠금을 함께 건다. 잠겨 있으면 해시를 계산하기 전에 돌려보낸다. */
-function verifyHeaderToken(req, token, ...expectedHashes) {
-    if (!token || getAdminLoginLock(req)) return false;
-
-    if (expectedHashes.some(hash => verifyCredential(token, hash))) {
-        clearAdminLoginFailures(req);
-        return true;
-    }
-
-    recordAdminLoginFailure(req);
-    return false;
-}
-
-// 오래된 기록이 메모리에 계속 쌓이지 않게 이따금 치운다.
-setInterval(() => {
-    const now = Date.now();
-    for (const [key, record] of adminLoginAttempts) {
-        if (!record.lockedUntil || record.lockedUntil <= now) adminLoginAttempts.delete(key);
-    }
-}, ADMIN_LOGIN_LOCK_MS).unref?.();
 
 app.disable('x-powered-by');
 app.set('trust proxy', 1);
@@ -427,7 +309,7 @@ app.use((req, res, next) => {
     } else {
         res.header('Access-Control-Allow-Origin', '*');
     }
-    res.header('Access-Control-Allow-Headers', 'Content-Type, x-admin-token, x-super-admin-token, x-banner-token, x-crawl-secret, x-subscription-token');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, x-crawl-secret, x-subscription-token');
     // 여기 빠진 메서드는 브라우저가 프리플라이트에서 막아 서버까지 오지도 않는다.
     // 공지 숨김이 PATCH다.
     res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
@@ -437,15 +319,6 @@ app.use((req, res, next) => {
     }
     next();
 });
-
-function readCookie(req, name) {
-    const cookieHeader = String(req.headers.cookie || '');
-    for (const pair of cookieHeader.split(';')) {
-        const [rawName, ...rawValue] = pair.trim().split('=');
-        if (rawName === name) return decodeURIComponent(rawValue.join('='));
-    }
-    return '';
-}
 
 function getAdminSession(req) {
     const sessionId = readCookie(req, ADMIN_SESSION_COOKIE);
@@ -469,27 +342,24 @@ function adminSessionCookiePolicy() {
 }
 
 function setAdminSessionCookie(res, sessionId) {
-    res.setHeader(
+    res.append(
         'Set-Cookie',
         `${ADMIN_SESSION_COOKIE}=${encodeURIComponent(sessionId)}; HttpOnly; ${adminSessionCookiePolicy()}; Path=/; Max-Age=${Math.floor(ADMIN_SESSION_TTL_MS / 1000)}`
     );
 }
 
 function clearAdminSessionCookie(res) {
-    res.setHeader(
+    res.append(
         'Set-Cookie',
         `${ADMIN_SESSION_COOKIE}=; HttpOnly; ${adminSessionCookiePolicy()}; Path=/; Max-Age=0`
     );
 }
 
-/* 세션이 살아 있고, 그 세션이 들고 있는 자격 증명이 지금 저장된 값과
-   같은지 본다. 비밀번호를 바꾸면 이전 세션은 자동으로 끊긴다. */
+// Only a Google-verified, allowlisted account can own an admin session.
 async function resolveAdminSession(req) {
     const session = getAdminSession(req);
     if (!session) return null;
-    const settings = await getSecuritySettings();
-    const expectedHash = roleCredentialHash(settings, session.role);
-    if (!expectedHash || session.credentialHash !== expectedHash) {
+    if (session.provider !== 'google' || !session.subject || !isAdminEmail(session.email)) {
         adminSessions.delete(session.id);
         return null;
     }
@@ -500,63 +370,45 @@ async function hasValidAdminSession(req) {
     return Boolean(await resolveAdminSession(req));
 }
 
-app.post('/api/admin/session', authenticationLimiter, async (req, res) => {
-    try {
-        // 잠겨 있으면 비밀번호가 맞아도 열어 주지 않는다.
-        const lock = getAdminLoginLock(req);
-        if (lock) {
-            const seconds = Math.ceil(lock.retryAfterMs / 1000);
-            res.setHeader('Retry-After', String(seconds));
-            return res.status(429).json({
-                error: `비밀번호를 ${ADMIN_LOGIN_MAX_ATTEMPTS}회 이상 틀렸습니다. ${Math.ceil(seconds / 60)}분 뒤에 다시 시도해주세요.`,
-                lockedForSeconds: seconds
-            });
-        }
-
-        const password = String(req.body?.password || '').trim();
-        const requestedRole = String(req.body?.role || '').trim();
-        const settings = await getSecuritySettings();
-
-        // 역할을 지정하지 않으면 비밀번호가 맞는 역할을 찾아준다.
-        // 마스터를 먼저 보므로 같은 비밀번호를 쓰면 가장 높은 권한을 받는다.
-        const candidates = ADMIN_ROLES.includes(requestedRole) ? [requestedRole] : ADMIN_ROLES;
-        const matched = password
-            ? candidates.find(role => verifyCredential(password, roleCredentialHash(settings, role)))
-            : null;
-
-        if (!matched) {
-            const record = recordAdminLoginFailure(req);
-            if (record.lockedUntil > Date.now()) {
-                const seconds = Math.ceil((record.lockedUntil - Date.now()) / 1000);
-                res.setHeader('Retry-After', String(seconds));
-                return res.status(429).json({
-                    error: `비밀번호를 ${ADMIN_LOGIN_MAX_ATTEMPTS}회 틀렸습니다. ${Math.ceil(seconds / 60)}분 동안 로그인할 수 없습니다.`,
-                    lockedForSeconds: seconds
-                });
+app.use('/api', (req, res, next) => {
+    if (readCookie(req, ADMIN_SESSION_COOKIE)) {
+        res.set('Cache-Control', 'no-store');
+        if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method) && req.get('Origin')) {
+            const config = getGoogleAuthConfig();
+            const allowed = config ? [config.frontendOrigin, new URL(config.redirectUri).origin] : [];
+            if (!allowed.includes(req.get('Origin'))) {
+                return res.status(403).json({ error: '허용되지 않은 요청 출처입니다.' });
             }
-            const left = ADMIN_LOGIN_MAX_ATTEMPTS - record.count;
-            return res.status(401).json({
-                error: `관리자 인증 실패 (${left}회 더 틀리면 ${ADMIN_LOGIN_LOCK_MS / 60000}분 동안 잠깁니다)`,
-                attemptsLeft: left
-            });
         }
-
-        clearAdminLoginFailures(req);
-        // 평문을 손에 쥐고 있는 순간은 여기뿐이다. 옛 해시라면 지금 새 형식으로
-        // 옮긴다. 세션에는 옮긴 뒤의 해시를 담아야 방금 만든 세션이 곧바로
-        // 끊기지 않는다.
-        const current = await upgradeLegacyCredential(settings, matched, password);
+    }
+    next();
+});
+app.use('/api/admin/session', (req, res, next) => {
+    res.set('Cache-Control', 'no-store');
+    next();
+});
+app.use(createGoogleAdminAuthRouter({
+    limiter: authenticationLimiter,
+    onLogin(req, res, identity) {
+        const previous = readCookie(req, ADMIN_SESSION_COOKIE);
+        if (previous) adminSessions.delete(previous);
         const sessionId = crypto.randomBytes(32).toString('base64url');
         adminSessions.set(sessionId, {
-            role: matched,
-            credentialHash: roleCredentialHash(current, matched),
+            provider: 'google', role: 'master', ...identity,
             expiresAt: Date.now() + ADMIN_SESSION_TTL_MS
         });
         setAdminSessionCookie(res, sessionId);
-        res.status(201).json({ ok: true, role: matched, expiresIn: ADMIN_SESSION_TTL_MS / 1000 });
-    } catch (error) {
-        res.status(500).json({ error: error.message || '관리자 세션 생성 실패' });
     }
+}));
+setInterval(() => {
+    for (const [id, session] of adminSessions) {
+        if (session.expiresAt <= Date.now()) adminSessions.delete(id);
+    }
+}, 10 * 60 * 1000).unref();
+
+// The former password endpoint cannot mint sessions anymore.
+app.post('/api/admin/session', (req, res) => {
+    res.status(410).json({ error: 'Google 계정으로 로그인해주세요.' });
 });
 
 app.get('/api/admin/session', async (req, res) => {
@@ -565,7 +417,7 @@ app.get('/api/admin/session', async (req, res) => {
         if (!session) {
             return res.status(401).json({ authenticated: false });
         }
-        res.json({ authenticated: true, role: session.role });
+        res.json({ authenticated: true, role: session.role, email: session.email });
     } catch (error) {
         res.status(500).json({ error: error.message || '관리자 세션 확인 실패' });
     }
@@ -664,7 +516,7 @@ async function readSettingsFile() {
             // 그 값을 해시로 옮겨 두 방식이 같은 결과를 내게 한다. 여기서는 옛
             // 형식으로 옮긴다 — 설정은 요청마다 다시 읽으므로 이 자리에서
             // scrypt를 돌리면 공개 엔드포인트까지 느려진다. 로그인에 성공하면
-            // upgradeLegacyCredential이 새 형식으로 바꿔 준다.
+            // 이전 저장 형식과의 호환을 위해 읽지만 인증에는 사용하지 않는다.
             bannerTokenHash: String(
                 parsed?.bannerTokenHash
                 || (parsed?.bannerPassword ? legacyHashToken(parsed.bannerPassword) : '')
@@ -1000,9 +852,7 @@ function toNoticeSummary(row) {
     };
 }
 
-function getHeaderToken(req, headerName) {
-    return String(req.headers[headerName] || '').trim();
-}
+
 
 function toClientSettings(settings) {
     return {
@@ -1137,79 +987,17 @@ async function saveSecuritySettings(settings) {
     return normalized;
 }
 
-/* 필요한 역할을 가진 사람만 통과시킨다. 판단 근거는 로그인 세션이고,
-   헤더 토큰은 세션 없이 도는 스크립트를 위해 남겨 둔 보조 경로다.
-   마스터 세션은 어떤 역할을 요구하든 통과하므로, 배너를 보려고
-   비밀번호를 다시 넣을 일이 없다. */
-function requireAdminRole(requiredRole, failureMessage) {
-    return async function guard(req, res, next) {
-        try {
-            const settings = await getSecuritySettings();
-            const session = getAdminSession(req);
-
-            if (session) {
-                const expected = roleCredentialHash(settings, session.role);
-                if (expected && session.credentialHash === expected
-                    && roleSatisfies(session.role, requiredRole)) {
-                    req.adminRole = session.role;
-                    return next();
-                }
-                if (!expected || session.credentialHash !== expected) {
-                    adminSessions.delete(session.id);
-                }
-            }
-
-            // 헤더 토큰은 자기 역할 또는 마스터 비밀번호만 인정한다.
-            const headerName = requiredRole === 'banner'
-                ? 'x-banner-token'
-                : (requiredRole === 'master' ? 'x-super-admin-token' : 'x-admin-token');
-            const token = getHeaderToken(req, headerName);
-            if (verifyHeaderToken(
-                req,
-                token,
-                roleCredentialHash(settings, requiredRole),
-                roleCredentialHash(settings, 'master')
-            )) {
-                req.adminRole = requiredRole;
-                return next();
-            }
-
-            return res.status(401).json({ error: failureMessage });
-        } catch (error) {
-            res.status(500).json({ error: error.message || '관리자 인증 처리 실패' });
-        }
-    };
-}
-
-const requireNoticeAdmin = requireAdminRole('notice', '관리자 인증 실패');
-const requireBannerAdmin = requireAdminRole('banner', '배너 관리자 인증 실패');
-const requireSuperAdmin = requireAdminRole('master', '마스터 관리자 인증 실패');
-
-/* 로그인만 되어 있으면 통과시키고 역할은 req에 실어 보낸다.
-   무엇을 보여줄지는 각 엔드포인트가 역할을 보고 다시 거른다. */
+// All three approved Google accounts have full administrative access.
 async function requireAnyAdmin(req, res, next) {
-    try {
-        const session = await resolveAdminSession(req);
-        if (session) {
-            req.adminRole = session.role;
-            return next();
-        }
-        const settings = await getSecuritySettings();
-        for (const role of ADMIN_ROLES) {
-            const headerName = role === 'banner'
-                ? 'x-banner-token'
-                : (role === 'master' ? 'x-super-admin-token' : 'x-admin-token');
-            const token = getHeaderToken(req, headerName);
-            if (verifyHeaderToken(req, token, roleCredentialHash(settings, role))) {
-                req.adminRole = role;
-                return next();
-            }
-        }
-        return res.status(401).json({ error: '관리자 인증 실패' });
-    } catch (error) {
-        res.status(500).json({ error: error.message || '관리자 인증 처리 실패' });
-    }
+    const session = await resolveAdminSession(req);
+    if (!session) return res.status(401).json({ error: 'Google 관리자 로그인이 필요합니다.' });
+    req.adminRole = session.role;
+    req.adminEmail = session.email;
+    next();
 }
+const requireNoticeAdmin = requireAnyAdmin;
+const requireBannerAdmin = requireAnyAdmin;
+const requireSuperAdmin = requireAnyAdmin;
 
 // 문의함은 마스터만 전부 본다. 배너 관리자에게는 배너 문의만 보인다.
 function visibleFeedbackForRole(items, role) {
@@ -3222,19 +3010,8 @@ app.post('/api/super-admin/verify', requireSuperAdmin, (req, res) => {
     res.json({ ok: true });
 });
 
-app.post('/api/banner/verify', async (req, res) => {
-    try {
-        const inputPassword = String(req.body?.password || '').trim();
-        const settings = await getSecuritySettings();
-        const ok = verifyCredential(inputPassword, roleCredentialHash(settings, 'banner'));
-        if (!ok) {
-            return res.status(401).json({ error: '비밀번호가 올바르지 않습니다.' });
-        }
-
-        res.json({ ok: true });
-    } catch (error) {
-        res.status(500).json({ error: error.message || '배너 인증 실패' });
-    }
+app.post('/api/banner/verify', requireBannerAdmin, (req, res) => {
+    res.json({ ok: true });
 });
 
 app.put('/api/settings', requireSuperAdmin, async (req, res) => {
@@ -3253,34 +3030,8 @@ app.put('/api/settings', requireSuperAdmin, async (req, res) => {
     }
 });
 
-app.put('/api/settings/passwords', requireSuperAdmin, async (req, res) => {
-    try {
-        const newNoticeAdminToken = String(req.body?.newNoticeAdminToken || req.body?.newAdminToken || '').trim();
-        const newBannerPassword = String(req.body?.newBannerPassword || '').trim();
-        const newMasterPassword = String(req.body?.newMasterPassword || '').trim();
-
-        if (!newNoticeAdminToken && !newBannerPassword && !newMasterPassword) {
-            return res.status(400).json({ error: '변경할 비밀번호가 없습니다.' });
-        }
-
-        const current = await getSecuritySettings();
-        const next = {
-            ...current,
-            adminTokenHash: newNoticeAdminToken ? createCredentialHash(newNoticeAdminToken) : current.adminTokenHash,
-            bannerTokenHash: newBannerPassword ? createCredentialHash(newBannerPassword) : current.bannerTokenHash,
-            masterTokenHash: newMasterPassword ? createCredentialHash(newMasterPassword) : current.masterTokenHash
-        };
-
-        await saveSecuritySettings(next);
-        res.json({
-            ok: true,
-            noticeAdminTokenChanged: Boolean(newNoticeAdminToken),
-            bannerPasswordChanged: Boolean(newBannerPassword),
-            masterPasswordChanged: Boolean(newMasterPassword)
-        });
-    } catch (error) {
-        res.status(500).json({ error: error.message || '비밀번호 변경 실패' });
-    }
+app.put('/api/settings/passwords', requireSuperAdmin, (req, res) => {
+    res.status(410).json({ error: '비밀번호 로그인이 제거되었습니다.' });
 });
 
 app.get('/api/notices', async (req, res) => {
@@ -3796,11 +3547,8 @@ app.delete('/api/banner-slides/:id', requireBannerAdmin, async (req, res) => {
     }
 });
 
-/* 테스트가 로그인 제한을 되돌릴 수 있게 열어 둔다. 같은 IP를 여러 테스트가
-   공유하므로, 실패 기록이나 요청 수 제한이 남아 있으면 뒤따르는 테스트가
-   로그인하지 못한다. 둘 다 여기서 함께 비운다. */
+// Tests share an IP, so reset the authentication rate limiter between cases.
 function resetAdminLoginAttempts() {
-    adminLoginAttempts.clear();
     authenticationLimiter.resetKey?.('::ffff:127.0.0.1');
     authenticationLimiter.resetKey?.('127.0.0.1');
     authenticationLimiter.store?.resetAll?.();

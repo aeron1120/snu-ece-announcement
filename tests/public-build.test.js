@@ -983,8 +983,8 @@ test('admin AI work shows progress while login is isolated in a server-session p
     assert.doesNotMatch(saveFlow, /updateAiProgress\((84|95),/);
 
     assert.doesNotMatch(html, /id="admin-gate"|id="admin-gate-password"/);
-    assert.match(loginHtml, /id="admin-login-password"[^>]*value=""/);
-    assert.match(loginHtml, /autocomplete="current-password"/);
+    assert.doesNotMatch(loginHtml, /type="password"|name="admin-role"/);
+    assert.match(loginApp, /\/api\/auth\/google/);
     assert.match(loginApp, /\/api\/admin\/session/);
     assert.match(loginApp, /location\.replace\(getAdminWorkspaceUrl\(\)\)/);
     assert.doesNotMatch(admin, /sessionStorage\.getItem\('eceNoticeAdminToken'\)/);
@@ -2125,13 +2125,11 @@ test('the admin console is usable on a phone and keeps AI editing in reach', asy
 
     // 로그인 화면도 폰에서 그대로 쓸 수 있어야 한다.
     assert.match(loginCss, /@media \(max-width: 520px\)/);
-    assert.match(loginCss, /input:not\(\[type="radio"\]\)\s*\{[^}]*font-size:\s*16px/);
+    assert.match(loginCss, /button\s*\{[^}]*min-height:\s*52px;[^}]*font-size:\s*16px/);
 
-    // 직책을 고르는 자리가 로그인 화면에 있다.
     const loginHtml = await readFile('admin-login.html', 'utf8');
-    for (const role of ['notice', 'banner', 'master']) {
-        assert.match(loginHtml, new RegExp(`name="admin-role" value="${role}"`));
-    }
+    assert.match(loginHtml, /Google 계정으로 로그인/);
+    assert.doesNotMatch(loginHtml, /name="admin-role"/);
 
     // 역할별로 열리는 탭이 코드에 못박혀 있다.
     assert.match(admin, /master: \['review', 'backfill', 'compose', 'notices', 'banner', 'banner-inquiry', 'feedback', 'analytics', 'settings'\]/);
@@ -2716,7 +2714,9 @@ test('beta ratings appear only after the third and thirteenth notice opens', asy
     assert.doesNotMatch(readNamedFunction(app, 'submitFeedback'), /rating|beta-rating/);
 });
 
-test('admin role radios do not inherit the rectangular text-input chrome', async () => {
-    const css = await readFile('css/admin-login.css', 'utf8');
-    assert.match(css, /\.role-option input\s*\{[^}]*min-height:\s*0;[^}]*padding:\s*0;[^}]*border:\s*0;[^}]*background:\s*transparent;[^}]*box-shadow:\s*none;/s);
+test('Google login replaces the role and password controls', async () => {
+    const html = await readFile('admin-login.html', 'utf8');
+    const admin = await readFile('admin.html', 'utf8');
+    assert.doesNotMatch(html, /role-picker|type="password"/);
+    assert.doesNotMatch(admin, /edit-admin-pwd|edit-banner-pwd|edit-master-pwd/);
 });

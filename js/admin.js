@@ -3007,10 +3007,6 @@ function saveAdminInfo() {
         phone: document.getElementById('edit-banner-admin-phone').value.trim(),
         kakao: document.getElementById('edit-banner-admin-kakao').value.trim()
     };
-    const newAdminPwd = document.getElementById('edit-admin-pwd').value.trim();
-    const newBannerPwd = document.getElementById('edit-banner-pwd').value.trim();
-    const newMasterPwd = document.getElementById('edit-master-pwd')?.value.trim() || '';
-
     apiRequest('/api/settings', {
         method: 'PUT',
         headers: getSuperAdminHeaders(),
@@ -3028,34 +3024,7 @@ function saveAdminInfo() {
                 kakao: result?.bannerInfo?.kakao || nextBannerInfo.kakao || bannerAdminInfo.kakao
             };
 
-            const pwdChanged = [];
-            if (newAdminPwd || newBannerPwd || newMasterPwd) {
-                await apiRequest('/api/settings/passwords', {
-                    method: 'PUT',
-                    headers: getSuperAdminHeaders(),
-                    body: JSON.stringify({
-                        newNoticeAdminToken: newAdminPwd || undefined,
-                        newBannerPassword: newBannerPwd || undefined,
-                        newMasterPassword: newMasterPwd || undefined
-                    })
-                });
-
-                if (newAdminPwd) {
-                    noticeAdminAuthToken = newAdminPwd;
-                    pwdChanged.push('공지 관리자 비밀번호');
-                }
-                if (newBannerPwd) pwdChanged.push('배너 관리자 비밀번호');
-                if (newMasterPwd) pwdChanged.push('마스터 관리자 비밀번호');
-            }
-
-            document.getElementById('edit-admin-pwd').value = '';
-            document.getElementById('edit-banner-pwd').value = '';
-            const masterBox = document.getElementById('edit-master-pwd');
-            if (masterBox) masterBox.value = '';
-            // 마스터 비밀번호를 바꾸면 지금 세션의 자격 증명이 달라져 끊긴다.
-            const needsRelogin = Boolean(newMasterPwd);
-            const pwdMsg = pwdChanged.length > 0 ? `\n✅ ${pwdChanged.join(', ')} 변경 완료` : '';
-            alert('관리자 설정이 업데이트되었습니다.' + pwdMsg);
+            alert('관리자 설정이 업데이트되었습니다.');
         })
         .catch(error => {
             alert(`관리자 설정 업데이트 실패: ${error.message}`);

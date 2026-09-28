@@ -34,6 +34,11 @@
 
 카테고리는 학사·기회·설문·행사 넷 중 하나로 항상 채워집니다. Gemini가 고른 값이 우선이고, 모델이 비워 보내거나 분석이 실패했거나 관리자가 카테고리 없이 등록한 공지는 `server/services/notice-classifier.js`의 규칙 분류기가 제목·키워드·본문으로 하나를 정합니다(단서가 없으면 행사). 이미 저장된 미분류 공지도 읽을 때 같은 규칙으로 채워 내보내므로 화면과 앱에 빈 카테고리가 나오지 않습니다. 저장값까지 맞추려면 `npm run backfill:categories:dry-run`으로 확인한 뒤 `npm run backfill:categories`를 실행합니다.
 
+## 관리자 로그인
+
+관리자 로그인은 등록된 세 서울대학교 Google 계정만 허용합니다. 기존 비밀번호와 헤더 토큰은 사용할 수 없습니다.
+Google 콘솔 등록 URL, Render 환경 변수, 로컬 개발 방법은 [Google 로그인 설정](docs/GOOGLE_LOGIN.md)을 참고하세요.
+
 ## 로컬 실행
 
 ```bash
@@ -108,7 +113,7 @@ npm run prepare:public
 - `FRONTEND_ORIGIN`: 실제 Cloudflare Pages origin
 - `PUBLIC_SITE_URL`: 공지별 카카오톡 링크를 만들 공개 사이트 주소
 - `KAKAO_NOTICE_WEBHOOK_URL`: 신청·학사 공지 게시 이벤트를 받을 봇 중계 서버 주소
-- `SUPER_ADMIN_TOKEN`, `NOTICE_ADMIN_TOKEN`, `BANNER_ADMIN_PASSWORD`: 서로 다른 긴 난수
+- `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`: [Google 로그인 설정](docs/GOOGLE_LOGIN.md) 참고
 - `CRAWL_TRIGGER_SECRET`: 32자 이상 난수
 - `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`
 - `GEMINI_API_KEY`

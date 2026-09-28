@@ -1,9 +1,9 @@
+import { loginWithGoogle } from './fixtures/google-auth-helper.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import crypto from 'node:crypto';
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { app, resetAdminLoginAttempts, toNoticeSummary } from '../server/server.js';
+import { app, toNoticeSummary } from '../server/server.js';
 
 test('notice summaries expose card metadata without heavy detail fields', () => {
     const summary = toNoticeSummary({
@@ -168,14 +168,6 @@ test('summary mismatch reports are anonymous and enter the admin feedback inbox'
 });
 
 test('admin pages require a short-lived HttpOnly server session', async t => {
-    const settingsPath = path.join(process.cwd(), 'server', 'data', 'settings.json');
-    const originalSettings = await readFile(settingsPath, 'utf8');
-    const settings = JSON.parse(originalSettings);
-    const password = 'test-admin-session-password';
-    settings.adminTokenHash = crypto.createHash('sha256').update(password).digest('hex');
-    await writeFile(settingsPath, JSON.stringify(settings, null, 2), 'utf8');
-    t.after(() => writeFile(settingsPath, originalSettings, 'utf8'));
-
     const server = await new Promise(resolve => {
         const listening = app.listen(0, () => resolve(listening));
     });
@@ -190,19 +182,9 @@ test('admin pages require a short-lived HttpOnly server session', async t => {
     assert.equal(blockedWorkspace.status, 302);
     assert.equal(blockedWorkspace.headers.get('location'), '/admin');
 
-    const login = await fetch(`${baseUrl}/api/admin/session`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password })
-    });
-    assert.equal(login.status, 201);
-    const setCookie = login.headers.get('set-cookie') || '';
-    assert.match(setCookie, /ece_admin_session=/);
-    assert.match(setCookie, /HttpOnly/i);
-    // 로컬은 API가 프런트를 함께 서빙하는 동일 출처라 Lax로 충분하다.
-    // 배포(NODE_ENV=production)에서만 교차 사이트용 None으로 바뀐다.
-    assert.match(setCookie, /SameSite=Lax/i);
-    const cookie = setCookie.split(';')[0];
+    const { cookie, setCookie } = await loginWithGoogle(t, baseUrl);
+    assert.match(setCookie, /HttpOnly/);
+    assert.match(setCookie, /SameSite=Lax/);
 
     const workspace = await fetch(`${baseUrl}/admin/workspace`, {
         headers: { Cookie: cookie },
@@ -216,7 +198,7 @@ test('admin pages require a short-lived HttpOnly server session', async t => {
     });
     assert.equal(session.status, 200);
     // 세션은 어떤 역할로 들어왔는지도 함께 알려준다.
-    assert.deepEqual(await session.json(), { authenticated: true, role: 'notice' });
+    assert.deepEqual(await session.json(), { authenticated: true, role: 'master', email: 'aeron1120@snu.ac.kr' });
 
     const protectedApi = await fetch(`${baseUrl}/api/admin/feedback`, {
         headers: { Cookie: cookie }
@@ -250,117 +232,7 @@ test('admin pages require a short-lived HttpOnly server session', async t => {
     assert.equal(logout.status, 204);
 });
 
-test('admin roles gate their own screens and master needs no second password', async t => {
-    const settingsPath = path.join(process.cwd(), 'server', 'data', 'settings.json');
-    const originalSettings = await readFile(settingsPath, 'utf8');
-    const settings = JSON.parse(originalSettings);
-    const sha = value => crypto.createHash('sha256').update(value).digest('hex');
-    settings.adminTokenHash = sha('notice-role-password');
-    settings.bannerTokenHash = sha('banner-role-password');
-    settings.masterTokenHash = sha('master-role-password');
-    await writeFile(settingsPath, JSON.stringify(settings, null, 2), 'utf8');
-    t.after(() => writeFile(settingsPath, originalSettings, 'utf8'));
 
-    const server = await new Promise(resolve => {
-        const listening = app.listen(0, () => resolve(listening));
-    });
-    t.after(() => server.close());
-    const baseUrl = `http://127.0.0.1:${server.address().port}`;
-
-    async function loginAs(password) {
-        const response = await fetch(`${baseUrl}/api/admin/session`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ password })
-        });
-        assert.equal(response.status, 201);
-        const body = await response.json();
-        return { role: body.role, cookie: (response.headers.get('set-cookie') || '').split(';')[0] };
-    }
-
-    // 비밀번호만으로 역할이 정해진다.
-    const notice = await loginAs('notice-role-password');
-    const banner = await loginAs('banner-role-password');
-    const master = await loginAs('master-role-password');
-    assert.equal(notice.role, 'notice');
-    assert.equal(banner.role, 'banner');
-    assert.equal(master.role, 'master');
-
-    const call = (path, cookie) => fetch(`${baseUrl}${path}`, { headers: { Cookie: cookie } });
-
-    // 배너 관리자는 공지 화면에 들어가지 못한다.
-    assert.equal((await call('/api/admin/notices', banner.cookie)).status, 401);
-    // 공지 관리자는 배너 화면에 들어가지 못한다.
-    assert.equal((await call('/api/banner-slides/manage', notice.cookie)).status, 401);
-    // 마스터는 배너 비밀번호를 따로 넣지 않고도 배너를 연다.
-    assert.equal((await call('/api/banner-slides/manage', master.cookie)).status, 200);
-    assert.equal((await call('/api/admin/notices', master.cookie)).status, 200);
-
-    // 문의함은 마스터만 전부 본다. 배너 관리자에게는 배너 문의만 보인다.
-    const masterInbox = await (await call('/api/admin/feedback', master.cookie)).json();
-    const bannerInbox = await (await call('/api/admin/feedback', banner.cookie)).json();
-    const noticeInbox = await (await call('/api/admin/feedback', notice.cookie)).json();
-    assert.equal(masterInbox.role, 'master');
-    assert.ok(bannerInbox.feedback.every(item => item.category === 'banner'));
-    assert.equal(noticeInbox.feedback.length, 0);
-
-    // 마스터 전용 설정은 다른 역할이 건드리지 못한다.
-    assert.equal((await call('/api/admin/feedback', notice.cookie)).status, 200);
-    const blockedSettings = await fetch(`${baseUrl}/api/settings/passwords`, {
-        method: 'PUT',
-        headers: { Cookie: notice.cookie, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ newNoticeAdminToken: 'nope' })
-    });
-    assert.equal(blockedSettings.status, 401);
-});
-
-test('the admin session works when the frontend is on another site', async t => {
-    // Pages(정적)와 Render(API)는 서로 다른 사이트다. 브라우저가 세션 쿠키를
-    // 저장하고 다시 보내려면 세 가지가 모두 필요하다:
-    // 자격증명 허용 헤더, 구체적인 허용 출처, 그리고 SameSite=None.
-    const settingsPath = path.join(process.cwd(), 'server', 'data', 'settings.json');
-    const originalSettings = await readFile(settingsPath, 'utf8');
-    const settings = JSON.parse(originalSettings);
-    const password = 'cross-site-session-password';
-    settings.adminTokenHash = crypto.createHash('sha256').update(password).digest('hex');
-    await writeFile(settingsPath, JSON.stringify(settings, null, 2), 'utf8');
-    t.after(() => writeFile(settingsPath, originalSettings, 'utf8'));
-
-    const frontendOrigin = 'https://frontend.example';
-    const previousOrigin = process.env.FRONTEND_ORIGIN;
-    const previousNodeEnv = process.env.NODE_ENV;
-    process.env.FRONTEND_ORIGIN = frontendOrigin;
-    process.env.NODE_ENV = 'production';
-    t.after(() => {
-        if (previousOrigin === undefined) delete process.env.FRONTEND_ORIGIN;
-        else process.env.FRONTEND_ORIGIN = previousOrigin;
-        if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
-        else process.env.NODE_ENV = previousNodeEnv;
-    });
-
-    const server = await new Promise(resolve => {
-        const listening = app.listen(0, () => resolve(listening));
-    });
-    t.after(() => server.close());
-    const baseUrl = `http://127.0.0.1:${server.address().port}`;
-
-    const response = await fetch(`${baseUrl}/api/admin/session`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Origin: frontendOrigin },
-        body: JSON.stringify({ password })
-    });
-    assert.equal(response.status, 201);
-
-    // 자격증명을 실은 요청은 와일드카드 출처로는 통과하지 못한다.
-    assert.equal(response.headers.get('access-control-allow-origin'), frontendOrigin);
-    assert.equal(response.headers.get('access-control-allow-credentials'), 'true');
-
-    // SameSite=Strict면 교차 사이트 요청에 쿠키가 실리지 않는다.
-    const cookie = response.headers.get('set-cookie') || '';
-    assert.match(cookie, /SameSite=None/);
-    assert.match(cookie, /Secure/);
-    assert.match(cookie, /HttpOnly/);
-});
 
 test('credentials stay off while any origin is allowed', async t => {
     // FRONTEND_ORIGIN이 없으면 서버는 모든 출처를 허용한다. 그 상태에서
@@ -413,79 +285,19 @@ test('the preflight allows every method the API actually serves', async t => {
     }
 });
 
-test('five wrong passwords lock admin login for ten minutes', async t => {
-    const settingsPath = path.join(process.cwd(), 'server', 'data', 'settings.json');
-    const originalSettings = await readFile(settingsPath, 'utf8');
-    const settings = JSON.parse(originalSettings);
-    const password = 'lockout-probe-password';
-    settings.adminTokenHash = crypto.createHash('sha256').update(password).digest('hex');
-    await writeFile(settingsPath, JSON.stringify(settings, null, 2), 'utf8');
-    t.after(() => writeFile(settingsPath, originalSettings, 'utf8'));
-    // 잠금은 IP 단위라 남겨 두면 뒤따르는 테스트가 로그인하지 못한다.
-    resetAdminLoginAttempts();
-    t.after(() => resetAdminLoginAttempts());
-
-    const server = await new Promise(resolve => {
-        const listening = app.listen(0, () => resolve(listening));
-    });
-    t.after(() => server.close());
-    const baseUrl = `http://127.0.0.1:${server.address().port}`;
-
-    const attempt = body => fetch(`${baseUrl}/api/admin/session`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-    });
-
-    // 네 번까지는 그냥 실패하고, 남은 횟수를 알려준다.
-    for (let index = 1; index <= 4; index += 1) {
-        const response = await attempt({ password: `wrong-${index}` });
-        assert.equal(response.status, 401);
-        const body = await response.json();
-        assert.equal(body.attemptsLeft, 5 - index);
-    }
-
-    // 다섯 번째에 잠긴다.
-    const locked = await attempt({ password: 'wrong-5' });
-    assert.equal(locked.status, 429);
-    const lockedBody = await locked.json();
-    assert.ok(lockedBody.lockedForSeconds > 0);
-    assert.ok(lockedBody.lockedForSeconds <= 600);
-    assert.match(locked.headers.get('retry-after') || '', /^\d+$/);
-
-    // 잠긴 동안에는 맞는 비밀번호도 통하지 않는다.
-    const blocked = await attempt({ password });
-    assert.equal(blocked.status, 429);
-});
 
 test('approved banners wait in staging until an admin picks the slot they replace', async t => {
     const bannerPath = path.join(process.cwd(), 'server', 'data', 'banner-slides.json');
     const originalBanners = await readFile(bannerPath, 'utf8');
     t.after(() => writeFile(bannerPath, originalBanners, 'utf8'));
 
-    const settingsPath = path.join(process.cwd(), 'server', 'data', 'settings.json');
-    const originalSettings = await readFile(settingsPath, 'utf8');
-    const settings = JSON.parse(originalSettings);
-    const password = 'staging-flow-password';
-    settings.bannerTokenHash = crypto.createHash('sha256').update(password).digest('hex');
-    await writeFile(settingsPath, JSON.stringify(settings, null, 2), 'utf8');
-    t.after(() => writeFile(settingsPath, originalSettings, 'utf8'));
-    resetAdminLoginAttempts();
-    t.after(() => resetAdminLoginAttempts());
-
     const server = await new Promise(resolve => {
         const listening = app.listen(0, () => resolve(listening));
     });
     t.after(() => server.close());
     const baseUrl = `http://127.0.0.1:${server.address().port}`;
 
-    const login = await fetch(`${baseUrl}/api/admin/session`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password, role: 'banner' })
-    });
-    assert.equal(login.status, 201, `배너 관리자 로그인 실패: ${await login.clone().text()}`);
-    const cookie = (login.headers.get('set-cookie') || '').split(';')[0];
+    const { cookie } = await loginWithGoogle(t, baseUrl);
 
     // 승인된 신청은 곧바로 레일에 오르지 않고 임시 자리에서 기다린다.
     const created = await fetch(`${baseUrl}/api/banner-slides`, {
