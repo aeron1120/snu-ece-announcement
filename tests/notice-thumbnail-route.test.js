@@ -49,7 +49,7 @@ test('notice thumbnail route serves WebP with cache validation', async t => {
     assert.equal(response.headers.get('content-type'), 'image/webp');
     assert.equal(
         response.headers.get('cache-control'),
-        'public, max-age=31536000, immutable'
+        'no-store'
     );
     const etag = response.headers.get('etag');
     assert.match(etag, /^"[a-f0-9]{64}"$/);

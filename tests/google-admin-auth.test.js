@@ -49,7 +49,7 @@ test('OAuth binds state to the browser, uses PKCE, and rejects replays', async t
     const base = await startServer(t);
     const attempt = await beginGoogleLogin(t, base, { edit: '//attacker.test' });
     assert.equal(attempt.url.origin, 'https://accounts.google.com');
-    assert.equal(attempt.url.searchParams.get('scope'), 'openid email');
+    assert.equal(attempt.url.searchParams.get('scope'), 'openid email profile');
     assert.equal(attempt.url.searchParams.get('code_challenge_method'), 'S256');
     assert.ok(attempt.url.searchParams.get('code_challenge').length >= 43);
     assert.ok(!attempt.url.href.includes('test-secret'));

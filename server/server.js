@@ -8,6 +8,8 @@ import crypto from 'crypto';
 import cron from 'node-cron';
 import { createCredentialHash, legacyHashToken } from './services/credential-hash.js';
 import { createGoogleAdminAuthRouter, getGoogleAuthConfig, isAdminEmail, readCookie } from './services/google-admin-auth.js';
+import { createMemberStore } from './storage/member-store.js';
+import { createMemberAuth } from './services/member-auth.js';
 import { buildKakaoBackfillDrafts } from './services/kakao-backfill.js';
 import { createOcrService } from './services/ocr-service.js';
 import {
@@ -387,9 +389,22 @@ app.use('/api/admin/session', (req, res, next) => {
     res.set('Cache-Control', 'no-store');
     next();
 });
+const memberAuth = createMemberAuth({
+    store: createMemberStore({ supabase, filePath: path.join(__dirname, 'data', 'members.json') }),
+    resolveAdminSession
+});
+app.use(memberAuth.router);
 app.use(createGoogleAdminAuthRouter({
     limiter: authenticationLimiter,
+    async onMemberLogin(req, res, identity) {
+        const status = await memberAuth.onLogin(req, res, identity);
+        // Switching to a member account must revoke the previous admin identity.
+        adminSessions.delete(readCookie(req, ADMIN_SESSION_COOKIE));
+        clearAdminSessionCookie(res);
+        return status;
+    },
     onLogin(req, res, identity) {
+        memberAuth.clearSession(req, res);
         const previous = readCookie(req, ADMIN_SESSION_COOKIE);
         if (previous) adminSessions.delete(previous);
         const sessionId = crypto.randomBytes(32).toString('base64url');
@@ -457,6 +472,12 @@ app.get(['/admin/workspace', '/admin.html'], async (req, res) => {
     }
 });
 
+// Public health and crawler endpoints keep their own service authentication.
+// Admin endpoints retain their stricter, three-account authorization below.
+app.use('/api', (req, res, next) => {
+    if (/^\/(?:admin(?:\/|$)|super-admin(?:\/|$)|internal(?:\/|$)|auth(?:\/|$)|member(?:\/|$)|health$)/.test(req.path)) return next();
+    return memberAuth.requireMember(req, res, next);
+});
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
 async function ensureNoticesFile() {
@@ -3131,7 +3152,7 @@ app.get('/api/notices/:id/attachments/:index', async (req, res) => {
             'Content-Disposition',
             `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`
         );
-        res.setHeader('Cache-Control', 'private, max-age=300');
+        res.setHeader('Cache-Control', 'no-store');
         const length = upstream.headers.get('content-length');
         if (length) res.setHeader('Content-Length', length);
 

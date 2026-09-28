@@ -411,6 +411,10 @@ async function apiRequest(path, options = {}) {
 
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
+        if (document.body.dataset.page === 'public' && ['MEMBER_LOGIN_REQUIRED', 'MEMBER_APPROVAL_REQUIRED'].includes(data?.code)) {
+            document.documentElement.removeAttribute('data-member-ready');
+            location.replace(`/login.html?next=${encodeURIComponent(location.pathname + location.search + location.hash)}`);
+        }
         const requestError = new Error(data?.error || `요청 실패 (${response.status})`);
         requestError.status = response.status;
         requestError.code = data?.code || '';
@@ -3055,7 +3059,7 @@ async function copyCurrentViewerImage(event) {
         button.textContent = '복사 중…';
     }
     try {
-        const response = await fetch(src);
+        const response = await fetch(src, { credentials: 'include' });
         if (!response.ok) throw new Error(`이미지 응답 오류: ${response.status}`);
         const pngBlob = await imageBlobAsPng(await response.blob());
         await navigator.clipboard.write([
@@ -4281,6 +4285,7 @@ document.addEventListener('keydown', function(e) {
 // 공개 화면에서만 목록을 렌더한다. admin.html은 core.js의 유틸만 빌려 쓴다.
 document.addEventListener('DOMContentLoaded', async function () {
     if (document.body.dataset.page !== 'public') return;
+    if (!await window.memberReady) return;
 
     initializeBetaAnalytics();
     updateLayoutToggleLabel();

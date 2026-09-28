@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" id="viewport-meta" content="width=device-width, initial-scale=1.0">
     <title>SNU ECE 공지방</title>
+    <style>html:not([data-member-ready]) body { visibility: hidden; }</style>
 
     <!-- 카톡·메신저 링크 미리보기용. 이 페이지는 클라이언트 렌더링이라 크롤러가 공지별
          내용을 읽지 못하므로, 지금은 사이트 공통 미리보기만 제공한다.
@@ -134,6 +135,7 @@
     </div>
 
     <div class="header-actions">
+        <button type="button" id="member-signout">로그아웃</button>
         <button class="btn btn-outline mobile-mode-btn" id="view-mode-toggle" onclick="openDevicePreview()">모바일 모드</button>
     </div>
 </div>
@@ -661,6 +663,7 @@
 </div>
 
 <script defer src="./js/config.js"></script>
+<script defer src="./js/member-gate.js"></script>
 <script defer src="./js/core.js"></script>
 <script defer src="./js/desktop.js"></script>
 <script defer src="./js/mobile.js"></script>

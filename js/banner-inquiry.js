@@ -183,6 +183,7 @@ async function submitBannerInquiry(event) {
     setBannerInquiryStatus('학내 홍보 신청을 제출하고 있습니다.');
     try {
         const response = await fetch(`${bannerInquiryApiBase}/api/banner-inquiries`, {
+            credentials: 'include',
             method: 'POST',
             headers: { 'Content-Type': 'application/vnd.ece-banner+json' },
             body: JSON.stringify(payload)

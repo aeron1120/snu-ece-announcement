@@ -1,4 +1,4 @@
-const CACHE_NAME = 'ece-notices-v3';
+const CACHE_NAME = 'ece-notices-v4';
 // 공개 화면의 껍데기만 캐시한다. admin.html은 항상 네트워크에서 받아야 하므로 넣지 않는다.
 const APP_SHELL = [
     '/',
@@ -6,6 +6,7 @@ const APP_SHELL = [
     '/css/desktop.css',
     '/css/mobile.css',
     '/js/config.js',
+    '/js/member-gate.js',
     '/js/core.js',
     '/js/desktop.js',
     '/js/mobile.js'

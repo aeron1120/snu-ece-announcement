@@ -25,7 +25,7 @@ export function createNoticeThumbnailRouter({
             if (result.kind !== 'webp') return res.redirect(302, defaultUrl);
 
             res.set({
-                'Cache-Control': 'public, max-age=31536000, immutable',
+                'Cache-Control': 'no-store',
                 ETag: result.etag
             });
             if (req.get('if-none-match') === result.etag) {

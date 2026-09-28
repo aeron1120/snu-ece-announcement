@@ -79,6 +79,8 @@ test('public notice API is paginated, has detail lookup, and hides Express signa
     t.after(() => server.close());
     const address = server.address();
     const baseUrl = `http://127.0.0.1:${address.port}`;
+    const { cookie } = await loginWithGoogle(t, baseUrl);
+    const fetch = (url, options = {}) => globalThis.fetch(url, { ...options, headers: { ...options.headers, Cookie: cookie } });
 
     const defaultListResponse = await fetch(`${baseUrl}/api/notices`);
     assert.equal(defaultListResponse.status, 200);
@@ -136,7 +138,7 @@ test('public notice API is paginated, has detail lookup, and hides Express signa
     assert.match((await longPromotion.json()).error, /최대 14일/);
 });
 
-test('summary mismatch reports are anonymous and enter the admin feedback inbox', async t => {
+test('member summary mismatch reports do not store identity in the feedback inbox', async t => {
     const feedbackPath = path.join(process.cwd(), 'server', 'data', 'feedback.json');
     const originalFeedback = await readFile(feedbackPath, 'utf8').catch(() => '[]');
     t.after(() => writeFile(feedbackPath, originalFeedback, 'utf8'));
@@ -147,6 +149,8 @@ test('summary mismatch reports are anonymous and enter the admin feedback inbox'
     t.after(() => server.close());
     const baseUrl = `http://127.0.0.1:${server.address().port}`;
 
+    const { cookie } = await loginWithGoogle(t, baseUrl);
+    const fetch = (url, options = {}) => globalThis.fetch(url, { ...options, headers: { ...options.headers, Cookie: cookie } });
     const listResponse = await fetch(`${baseUrl}/api/notices?limit=1`);
     const list = await listResponse.json();
     const notice = list.notices[0];
@@ -313,7 +317,7 @@ test('approved banners wait in staging until an admin picks the slot they replac
     const stagedId = (await created.json()).slide.id;
 
     // 공개 화면에는 나오지 않는다.
-    const publicSlides = (await (await fetch(`${baseUrl}/api/banner-slides`)).json()).slides;
+    const publicSlides = (await (await fetch(`${baseUrl}/api/banner-slides`, { headers: { Cookie: cookie } })).json()).slides;
     assert.ok(publicSlides.every(slide => slide.placement !== 'staging'));
     assert.ok(publicSlides.every(slide => Number(slide.id) !== Number(stagedId)));
 

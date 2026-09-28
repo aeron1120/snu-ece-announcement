@@ -1,0 +1,17 @@
+body { font-family: Pretendard, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: radial-gradient(ellipse at top left, #e2e9fa, transparent 60%), #f5f7fb; }
+.login-shell { width: min(480px, calc(100% - 32px)); padding: 32px 0; }
+.login-brand img { width: 48px; height: 48px; border-radius: 14px; }
+.login-card { border-radius: 24px; padding: 36px; }
+h1 { line-height: 1.4; letter-spacing: -.04em; }
+button { width: 100%; border-radius: 12px; }
+#login-message { color: #334c7b; font-size: 14px; }
+.login-card > .login-note { font-size: 12px; margin: 16px 0 8px; }
+#member-actions { display: grid; gap: 10px; margin-top: 20px; }
+#member-actions[hidden], [hidden] { display: none; }
+.secondary { background: white; color: var(--navy); }
+.secondary:hover { background: #eef2fb; }
+dl { padding: 16px; background: #f4f6fb; border-radius: 12px; overflow-wrap: anywhere; }
+dt { font-size: 12px; color: var(--sub); }
+dd { margin: 4px 0 12px; font-size: 14px; }
+dd:last-child { margin-bottom: 0; }
+@media (max-width: 520px) { .login-card { padding: 28px 24px; } .login-shell { padding-top: 16px; } }

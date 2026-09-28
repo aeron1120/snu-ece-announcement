@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex, nofollow">
+    <title>구성원 승인 · SNU ECE 공지방</title>
+    <link rel="icon" href="/icons/favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="./css/service-guide.css">
+    <link rel="stylesheet" href="./css/members.css">
+</head>
+<body>
+<main class="guide-shell">
+    <a class="guide-back" href="./admin.html">‹ 관리자 화면</a>
+    <p class="guide-kicker">ECE MEMBERS</p>
+    <h1>구성원 승인</h1>
+    <p>학부 학생·대학원생·교수·담당 교직원임을 확인한 계정을 승인하세요. 계정 표시 이름은 소속 증명 자료가 아닙니다.</p>
+    <p id="members-status" role="status" aria-live="polite">로그인을 확인하고 있습니다.</p>
+    <label>이름·이메일 검색 <input id="member-search" type="search"></label>
+    <button id="members-reload" type="button">새로고침</button>
+    <div id="members-list"></div>
+</main>
+<script src="./js/config.js"></script>
+<script src="./js/members.js"></script>
+</body>
+</html>

@@ -120,10 +120,11 @@ test('a reminder goes out marked as one, and does not overwrite the original ale
     assert.equal(sent.length, 2);
     const [original, reminder] = sent;
 
-    assert.equal(original.payload.title, '수강신청 안내');
+    assert.equal(original.payload.title, 'SNU ECE 새 공지');
+    assert.equal(original.payload.body, '공지방에 로그인해 내용을 확인하세요.');
     assert.equal(original.payload.tag, `notice-${notice.id}`);
 
-    assert.equal(reminder.payload.title, '[마감 임박] 수강신청 안내');
+    assert.equal(reminder.payload.title, 'SNU ECE 마감 알림');
     // 태그가 같으면 브라우저가 원래 알림을 조용히 갈아치운다.
     assert.equal(reminder.payload.tag, `notice-${notice.id}-r${job.id}`);
     assert.notEqual(reminder.payload.tag, original.payload.tag);

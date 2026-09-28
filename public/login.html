@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>로그인 · SNU ECE 공지방</title>
+    <meta name="robots" content="noindex, nofollow">
+    <link rel="icon" href="/icons/favicon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+    <link rel="stylesheet" href="./css/admin-login.css">
+    <link rel="stylesheet" href="./css/member-login.css">
+</head>
+<body>
+    <main class="login-shell">
+        <div class="login-brand"><img src="./icons/app-icon-192.png" alt=""><span>SNU ECE 공지방</span></div>
+        <section class="login-card" aria-labelledby="login-title">
+            <p class="login-eyebrow">OUR ECE, ONE PLACE</p>
+            <h1 id="login-title">우리 학부 소식,<br>한곳에서 만나요.</h1>
+            <p>서울대학교 전기·정보공학부 학생·대학원생과 교수·담당 교직원을 위한 공지방입니다.</p>
+            <p id="login-message" role="status" aria-live="polite">로그인 상태를 확인하고 있습니다.</p>
+            <dl id="member-profile" hidden></dl>
+            <button id="google-login" type="button">Google로 계속하기</button>
+            <p class="login-note">@snu.ac.kr 계정으로 로그인하세요.<br>처음 이용하는 구성원은 관리자의 소속 확인 후 입장할 수 있습니다.</p>
+            <p class="login-note">학교 Google 계정이 없는 교직원은 <a href="./operator.html">운영자 안내</a>를 확인해주세요. 현재는 Google 계정으로만 로그인할 수 있습니다.</p>
+            <div id="member-actions" hidden>
+                <button id="check-approval" type="button">승인 상태 새로고침</button>
+                <button id="member-logout" type="button" class="secondary">로그아웃</button>
+            </div>
+            <a class="login-back" href="./privacy.html">개인정보처리방침</a>
+            <span aria-hidden="true"> · </span><a class="login-back" href="./terms.html">이용약관</a>
+        </section>
+    </main>
+    <script src="./js/config.js"></script>
+    <script src="./js/member-login.js"></script>
+</body>
+</html>

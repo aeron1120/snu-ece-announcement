@@ -1,0 +1,8 @@
+#members-list { display: grid; gap: 16px; margin-top: 24px; }
+.member-card { border: 1px solid #dce2ec; border-radius: 14px; padding: 20px; overflow-wrap: anywhere; }
+.member-card h2 { font-size: 18px; margin-top: 0; }
+.member-card p { margin: 6px 0; }
+.member-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+button, input { font: inherit; padding: 10px 14px; border: 1px solid #ccd4e3; border-radius: 8px; background: white; }
+button { cursor: pointer; color: #173f8f; }
+button:disabled { cursor: default; opacity: .5; }

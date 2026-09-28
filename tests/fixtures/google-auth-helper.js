@@ -3,7 +3,7 @@ import { OAuth2Client } from 'google-auth-library';
 import { resetAdminLoginAttempts } from '../../server/server.js';
 
 // Mock only Google's network boundary; exercise our real state/cookie/session routes.
-export async function beginGoogleLogin(t, baseUrl, { edit = '', production = false } = {}) {
+export async function beginGoogleLogin(t, baseUrl, { edit = '', production = false, purpose = 'admin', next = '/' } = {}) {
     resetAdminLoginAttempts();
     const env = {
         GOOGLE_CLIENT_ID: 'test-client.apps.googleusercontent.com',
@@ -20,7 +20,7 @@ export async function beginGoogleLogin(t, baseUrl, { edit = '', production = fal
             else process.env[key] = value;
         }
     });
-    const start = await fetch(`${baseUrl}/api/auth/google?edit=${encodeURIComponent(edit)}`, { redirect: 'manual' });
+    const start = await fetch(`${baseUrl}/api/auth/google?edit=${encodeURIComponent(edit)}&purpose=${purpose}&next=${encodeURIComponent(next)}`, { redirect: 'manual' });
     assert.equal(start.status, 302);
     const url = new URL(start.headers.get('location'));
     const cookie = start.headers.getSetCookie().find(value => value.startsWith('ece_google_oauth=')).split(';')[0];

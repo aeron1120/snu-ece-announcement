@@ -45,7 +45,7 @@ export function getGoogleAuthConfig(env = process.env) {
 }
 
 // Authorization codes, PKCE verifiers and Google tokens stay on the API server.
-export function createGoogleAdminAuthRouter({ onLogin, limiter }) {
+export function createGoogleAdminAuthRouter({ onLogin, onMemberLogin, limiter }) {
     const router = Router();
     const attempts = new Map();
     const ttl = 10 * 60 * 1000;
@@ -79,6 +79,9 @@ export function createGoogleAdminAuthRouter({ onLogin, limiter }) {
         }
         attempts.set(state, {
             binding, nonce, verifier, config,
+            purpose: req.query.purpose === 'member' ? 'member' : 'admin',
+            next: typeof req.query.next === 'string' && /^\/(?:index\.html|banner-inquiry(?:\.html)?)?(?:[?#]|$)/.test(req.query.next)
+                ? req.query.next.slice(0, 2000) : '/',
             edit: typeof req.query.edit === 'string' ? req.query.edit.slice(0, 100) : '',
             expiresAt: Date.now() + ttl
         });
@@ -86,7 +89,7 @@ export function createGoogleAdminAuthRouter({ onLogin, limiter }) {
         const url = new URL('https://accounts.google.com/o/oauth2/v2/auth');
         url.search = new URLSearchParams({
             client_id: config.clientId, redirect_uri: config.redirectUri,
-            response_type: 'code', scope: 'openid email', prompt: 'select_account',
+            response_type: 'code', scope: 'openid email profile', prompt: 'select_account', hd: 'snu.ac.kr',
             state, nonce, code_challenge_method: 'S256',
             code_challenge: crypto.createHash('sha256').update(verifier).digest('base64url')
         }).toString();
@@ -103,8 +106,9 @@ export function createGoogleAdminAuthRouter({ onLogin, limiter }) {
         const { config } = attempt;
         cookie(res, '', config, 0);
         const failure = reason => {
-            const url = new URL('/admin-login.html', config.frontendOrigin);
+            const url = new URL(attempt.purpose === 'member' ? '/login.html' : '/admin-login.html', config.frontendOrigin);
             url.searchParams.set('error', reason);
+            if (attempt.purpose === 'member') url.searchParams.set('next', attempt.next);
             if (attempt.edit) url.searchParams.set('edit', attempt.edit);
             return res.redirect(302, url.href);
         };
@@ -122,8 +126,16 @@ export function createGoogleAdminAuthRouter({ onLogin, limiter }) {
             const payload = ticket.getPayload();
             if (!payload?.sub || payload.nonce !== attempt.nonce
                 || payload.email_verified !== true || payload.hd !== 'snu.ac.kr'
-                || !isAdminEmail(payload.email)) return failure('not_allowed');
-            onLogin(req, res, { email: payload.email.toLowerCase(), subject: payload.sub });
+                || typeof payload.email !== 'string' || !/^[^@]+@snu\.ac\.kr$/i.test(payload.email)
+                || (attempt.purpose === 'admin' && !isAdminEmail(payload.email))) return failure('not_allowed');
+            const identity = { email: payload.email.toLowerCase(), subject: payload.sub, name: payload.name || '' };
+            if (isAdminEmail(identity.email)) await onLogin(req, res, identity);
+            if (attempt.purpose === 'member') {
+                const status = isAdminEmail(identity.email) ? 'approved' : await onMemberLogin(req, res, identity);
+                const destination = new URL(status === 'approved' ? attempt.next : '/login.html', config.frontendOrigin);
+                if (status !== 'approved') destination.searchParams.set('next', attempt.next);
+                return res.redirect(302, destination.href);
+            }
             const workspace = new URL('/admin.html', config.frontendOrigin);
             if (attempt.edit) workspace.searchParams.set('edit', attempt.edit);
             return res.redirect(302, workspace.href);
