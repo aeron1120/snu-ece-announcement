@@ -1015,7 +1015,7 @@ async function saveSecuritySettings(settings) {
     return normalized;
 }
 
-// All three approved Google accounts have full administrative access.
+// Google accounts in the server environment allowlist have full administrative access.
 async function requireAnyAdmin(req, res, next) {
     const session = await resolveAdminSession(req);
     if (!session) return res.status(401).json({ error: 'Google 관리자 로그인이 필요합니다.' });

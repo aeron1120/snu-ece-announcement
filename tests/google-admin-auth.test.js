@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { app } from '../server/server.js';
-import { ADMIN_EMAILS, getGoogleAuthConfig } from '../server/services/google-admin-auth.js';
-import { beginGoogleLogin, loginWithGoogle, mockGoogleIdentity } from './fixtures/google-auth-helper.js';
+import { getGoogleAuthConfig } from '../server/services/google-admin-auth.js';
+import { TEST_ADMIN_EMAILS, beginGoogleLogin, loginWithGoogle, mockGoogleIdentity } from './fixtures/google-auth-helper.js';
 
 async function startServer(t) {
     const server = await new Promise(resolve => {
@@ -27,7 +27,7 @@ test('school users sharing an IP can start and finish more than five OAuth flows
     }
 });
 
-for (const email of ADMIN_EMAILS) {
+for (const email of TEST_ADMIN_EMAILS) {
     test(`Google login grants full access to ${email} and logout revokes it`, async t => {
         const base = await startServer(t);
         const { cookie, response, setCookie } = await loginWithGoogle(t, base, { payload: { email }, edit: '42' });
@@ -46,7 +46,7 @@ for (const email of ADMIN_EMAILS) {
 }
 
 for (const payload of [
-    { email: 'other@snu.ac.kr' }, { email: 'aeron1120@snu.ac.kr.attacker.test' },
+    { email: 'other@snu.ac.kr' }, { email: 'test-admin@snu.ac.kr.attacker.test' },
     { email_verified: false }, { hd: undefined }, { hd: 'attacker.test' },
     { nonce: 'wrong-nonce' }, { sub: '' }
 ]) {
@@ -76,6 +76,20 @@ test('OAuth binds state to the browser, uses PKCE, and rejects replays', async t
     const success = await fetch(attempt.callback, { headers: { Cookie: attempt.cookie }, redirect: 'manual' });
     assert.equal(new URL(success.headers.get('location')).origin, base);
     assert.equal((await fetch(attempt.callback, { headers: { Cookie: attempt.cookie }, redirect: 'manual' })).status, 400);
+});
+
+test('an unset admin list rejects login and removing an admin revokes existing access', async t => {
+    const base = await startServer(t);
+    const { cookie } = await loginWithGoogle(t, base);
+    delete process.env.ADMIN_EMAILS;
+    assert.equal((await fetch(`${base}/api/admin/notices`, { headers: { Cookie: cookie } })).status, 401);
+
+    const attempt = await beginGoogleLogin(t, base);
+    delete process.env.ADMIN_EMAILS;
+    mockGoogleIdentity(t, attempt);
+    const result = await fetch(attempt.callback, { headers: { Cookie: attempt.cookie }, redirect: 'manual' });
+    assert.equal(result.headers.get('location'), `${base}/admin-login.html?error=not_allowed`);
+    assert.ok(result.headers.getSetCookie().every(value => !value.startsWith('ece_admin_session=')));
 });
 
 test('invalid Google tokens never create a session', async t => {

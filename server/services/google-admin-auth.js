@@ -2,14 +2,13 @@ import crypto from 'node:crypto';
 import { Router } from 'express';
 import { OAuth2Client } from 'google-auth-library';
 
-export const ADMIN_EMAILS = Object.freeze([
-    'aeron1120@snu.ac.kr',
-    'legojmon@snu.ac.kr',
-    'minjunchoi@snu.ac.kr'
-]);
-
-export function isAdminEmail(email) {
-    return typeof email === 'string' && ADMIN_EMAILS.includes(email.toLowerCase());
+export function isAdminEmail(email, env = process.env) {
+    if (typeof email !== 'string' || !/^[^@\s,*]+@snu\.ac\.kr$/i.test(email)) return false;
+    // No built-in accounts: an unset or empty list never grants administrator access.
+    const admins = String(env.ADMIN_EMAILS || '').split(/[,\r\n]+/)
+        .map(value => value.trim().toLowerCase())
+        .filter(value => /^[^@\s,*]+@snu\.ac\.kr$/.test(value));
+    return admins.includes(email.toLowerCase());
 }
 
 export function readCookie(req, name) {

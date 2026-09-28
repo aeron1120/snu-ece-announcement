@@ -202,7 +202,7 @@ test('admin pages require a short-lived HttpOnly server session', async t => {
     });
     assert.equal(session.status, 200);
     // 세션은 어떤 역할로 들어왔는지도 함께 알려준다.
-    assert.deepEqual(await session.json(), { authenticated: true, role: 'master', email: 'aeron1120@snu.ac.kr' });
+    assert.deepEqual(await session.json(), { authenticated: true, role: 'master', email: 'test-admin@snu.ac.kr' });
 
     const protectedApi = await fetch(`${baseUrl}/api/admin/feedback`, {
         headers: { Cookie: cookie }

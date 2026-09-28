@@ -22,7 +22,7 @@ test('stored legacy passwords and tokens cannot authenticate any admin route', a
     const base = `http://127.0.0.1:${server.address().port}`;
     const login = await fetch(`${base}/api/admin/session`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password, role: 'master', email: 'aeron1120@snu.ac.kr' })
+        body: JSON.stringify({ password, role: 'master', email: 'test-admin@snu.ac.kr' })
     });
     assert.equal(login.status, 410);
     assert.equal(login.headers.get('set-cookie'), null);

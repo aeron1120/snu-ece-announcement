@@ -2533,9 +2533,9 @@ test('the operator page names who runs the site and the footer points at it', as
     assert.match(operator, /최재원/);
     // 학부 공식 서비스로 오해받으면 안 된다.
     assert.match(operator, /비공식/);
-    // 학교 메일은 공개하되 개인 휴대폰 번호는 싣지 않는다.
-    assert.match(operator, /mailto:aeron1120@snu\.ac\.kr/);
-    assert.match(operator, /mailto:legojmon@snu\.ac\.kr/);
+    // 개인 이메일 대신 서비스의 문의 화면을 안내한다.
+    assert.doesNotMatch(operator, /mailto:|[A-Za-z0-9._%+-]+@snu\.ac\.kr/);
+    assert.match(operator, /href="\.\/index\.html">공지 목록<\/a> 화면의 ‘일반 문의하기’/);
     assert.doesNotMatch(operator, /010-\d{4}-\d{4}/);
 
     // 권한이 셋으로 나뉘어 있다는 것이 한눈에 보여야 한다.

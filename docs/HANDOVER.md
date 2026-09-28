@@ -2,13 +2,13 @@
 
 ## 서비스 개요
 
-SNU ECE 공지방은 학과 공지와 학생회 공지를 모아 보여 주는 웹 서비스입니다. 등록된 세 서울대학교 Google 계정은 전체 관리자 권한으로 공지 검수·게시, 배너 관리, 운영 설정을 담당합니다.
+SNU ECE 공지방은 학과 공지와 학생회 공지를 모아 보여 주는 웹 서비스입니다. Render의 `ADMIN_EMAILS`에 등록된 서울대학교 Google 계정은 전체 관리자 권한으로 공지 검수·게시, 배너 관리, 운영 설정을 담당합니다.
 
 ## 시작과 배포
 
 로컬 개발은 `npm install` 뒤 `npm start`로 실행합니다. 정적 파일을 바꾼 뒤에는 반드시 `npm run prepare:public`을 실행합니다. 이 명령은 원본 HTML·CSS·JS·아이콘을 `public/`으로 복사하므로, `public/` 안의 파일은 직접 수정하지 않습니다.
 
-관리자 로그인에는 `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`, `FRONTEND_ORIGIN`이 필요합니다. 정확한 URL은 [Google 로그인 설정](GOOGLE_LOGIN.md)을 참고하세요. Supabase를 쓰는 운영 환경은 `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`도 설정하고 `server/sql/supabase-schema.sql`을 적용합니다. 데이터베이스 스키마를 적용하지 않으면 새 베타 분석 테이블이 없어 보고서 생성이 실패할 수 있습니다.
+관리자 로그인에는 `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`, `FRONTEND_ORIGIN`, `ADMIN_EMAILS`가 필요합니다. 실제 관리자 이메일은 Render 환경변수 또는 로컬 `.env`에만 보관합니다. 정확한 URL은 [Google 로그인 설정](GOOGLE_LOGIN.md)을 참고하세요. Supabase를 쓰는 운영 환경은 `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`도 설정하고 `server/sql/supabase-schema.sql`을 적용합니다. 데이터베이스 스키마를 적용하지 않으면 새 베타 분석 테이블이 없어 보고서 생성이 실패할 수 있습니다.
 
 ## 베타 분석과 월간 보고
 

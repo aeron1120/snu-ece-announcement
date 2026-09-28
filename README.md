@@ -36,7 +36,7 @@
 
 ## 관리자 로그인
 
-관리자 로그인은 등록된 세 서울대학교 Google 계정만 허용합니다. 기존 비밀번호와 헤더 토큰은 사용할 수 없습니다.
+관리자 로그인은 Render의 `ADMIN_EMAILS`에 등록된 서울대학교 Google 계정만 허용합니다. 실제 관리자 주소는 환경변수에만 저장합니다. 기존 비밀번호와 헤더 토큰은 사용할 수 없습니다.
 Google 콘솔 등록 URL, Render 환경 변수, 로컬 개발 방법은 [Google 로그인 설정](docs/GOOGLE_LOGIN.md)을 참고하세요.
 
 ## 로컬 실행
@@ -113,7 +113,7 @@ npm run prepare:public
 - `FRONTEND_ORIGIN`: 실제 Cloudflare Pages origin
 - `PUBLIC_SITE_URL`: 공지별 카카오톡 링크를 만들 공개 사이트 주소
 - `KAKAO_NOTICE_WEBHOOK_URL`: 신청·학사 공지 게시 이벤트를 받을 봇 중계 서버 주소
-- `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`: [Google 로그인 설정](docs/GOOGLE_LOGIN.md) 참고
+- `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`, `ADMIN_EMAILS`: [Google 로그인 설정](docs/GOOGLE_LOGIN.md) 참고
 - `CRAWL_TRIGGER_SECRET`: 32자 이상 난수
 - `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`
 - `GEMINI_API_KEY`
