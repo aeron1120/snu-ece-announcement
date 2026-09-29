@@ -12,8 +12,13 @@
             const article = document.createElement('article'); article.className = 'member-card';
             const title = document.createElement('h2'); title.textContent = member.email;
             const profile = document.createElement('p'); profile.textContent = member.profile?.rawName || '표시 이름 없음';
-            const state = document.createElement('p'); state.textContent = labels[member.status];
+            const state = document.createElement('p'); state.textContent = member.admin ? '관리자 · 승인 불필요' : labels[member.status];
             const review = document.createElement('p');
+            if (member.admin) {
+                review.textContent = '관리자 계정은 별도 승인 없이 공지방을 이용할 수 있습니다.';
+                article.append(title, profile, state, review); list.append(article);
+                continue;
+            }
             review.textContent = member.reviewed_by ? `처리: ${member.reviewed_by} · ${new Date(member.reviewed_at).toLocaleString('ko-KR')}` : '아직 관리자 검토 기록이 없습니다.';
             const actions = document.createElement('div'); actions.className = 'member-actions';
             for (const [value, label] of [['approved', '소속 확인 후 승인'], ['denied', '접근 차단'], ['pending', '대기로 변경']]) {
@@ -26,9 +31,15 @@
                             method: 'PATCH', credentials: 'include', headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ status: value })
                         });
-                        if (!response.ok) throw new Error();
+                        if (response.status === 401) { location.replace('/admin-login.html'); return; }
+                        if (!response.ok) {
+                            const result = await response.json().catch(() => ({}));
+                            status.textContent = result.error || '변경하지 못했습니다. 잠시 후 다시 시도해주세요.';
+                            render();
+                            return;
+                        }
                         await load();
-                    } catch { status.textContent = '변경하지 못했습니다. 로그인 상태를 확인하고 다시 시도해주세요.'; render(); }
+                    } catch { status.textContent = '변경하지 못했습니다. 서버 연결을 확인하고 다시 시도해주세요.'; render(); }
                 });
                 actions.append(button);
             }

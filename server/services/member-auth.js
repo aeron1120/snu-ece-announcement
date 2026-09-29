@@ -69,7 +69,14 @@ export function createMemberAuth({ store, resolveAdminSession }) {
         next();
     });
     router.get('/api/admin/members', async (req, res) => {
-        try { res.json({ members: await store.list() }); }
+        try {
+            const members = (await store.list()).map(member => {
+                const admin = isAdminEmail(member.email);
+                // Show effective access without changing the stored membership decision.
+                return { ...member, admin, status: admin ? 'approved' : member.status };
+            });
+            res.json({ members });
+        }
         catch { res.status(503).json({ error: '구성원 목록을 불러오지 못했습니다.' }); }
     });
     router.patch('/api/admin/members/:email', async (req, res) => {
