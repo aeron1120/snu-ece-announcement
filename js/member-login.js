@@ -18,12 +18,20 @@
     async function check() {
         try {
             const response = await fetch(`${api}/api/member/session`, { credentials: 'include', cache: 'no-store' });
+            if (!response.ok && response.status !== 401) throw new Error();
+            const session = await response.json();
+            const open = session.temporaryPublicAccess === true;
+            document.getElementById('login-policy').textContent = open
+                ? '대회 심사를 위해 임시 개방 중입니다. 일반 Google 계정으로 로그인하면 별도 승인 없이 이용할 수 있습니다.'
+                : '@snu.ac.kr 계정으로 로그인하세요. 처음 이용하는 구성원은 관리자의 소속 확인 후 입장할 수 있습니다.';
+            document.getElementById('school-account-help').hidden = open;
+            errors.not_allowed = open ? '이메일이 인증된 Google 계정으로 다시 로그인해주세요.'
+                : '서울대학교에서 관리하는 @snu.ac.kr Google 계정으로 로그인해주세요.';
             if (response.status === 401) {
-                message.textContent = errors[params.get('error')] || '학교 계정으로 로그인하고 공지방에 입장하세요.';
+                message.textContent = errors[params.get('error')] || (open
+                    ? 'Google 계정으로 로그인하고 공지방에 입장하세요.' : '학교 계정으로 로그인하고 공지방에 입장하세요.');
                 return;
             }
-            if (!response.ok) throw new Error();
-            const session = await response.json();
             if (session.status === 'approved' && !params.has('error')) { location.replace(next); return; }
             message.textContent = session.status === 'approved' ? (errors[params.get('error')] || '이미 로그인되어 있습니다. 승인 상태 새로고침을 눌러 공지방에 입장하세요.') : session.status === 'denied'
                 ? '이 계정의 이용이 승인되지 않았습니다. 학부 관련 구성원이라면 공지방 관리자에게 소속 확인을 요청해주세요.'

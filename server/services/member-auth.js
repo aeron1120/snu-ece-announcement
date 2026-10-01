@@ -3,6 +3,7 @@ import { Router } from 'express';
 import { readCookie, getGoogleAuthConfig, isAdminEmail } from './google-admin-auth.js';
 import { parseSnuProfile } from './snu-profile.js';
 import { ECE_STAFF } from '../config/ece-staff.js';
+import { isTemporaryPublicAccessEnabled, effectiveMemberStatus } from './member-access-policy.js';
 
 const COOKIE = 'ece_member_session';
 const TTL = 8 * 60 * 60 * 1000;
@@ -23,19 +24,21 @@ export function createMemberAuth({ store, resolveAdminSession }) {
         const id = readCookie(req, COOKIE);
         const session = sessions.get(id);
         if (!session || session.expiresAt <= Date.now()) { sessions.delete(id); return null; }
+        if (!isTemporaryPublicAccessEnabled() && !session.snuAccount) { sessions.delete(id); return null; }
         const member = await store.get(session.email);
         if (!member || member.subject !== session.subject) return null;
-        return { email: member.email, status: member.status, profile: member.profile, admin: false };
+        return { email: member.email, status: effectiveMemberStatus(member), profile: member.profile, admin: false };
     }
     async function onLogin(req, res, identity) {
         const member = await store.register({ email: identity.email, subject: identity.subject,
             profile: parseSnuProfile(identity.name) },
-        ECE_STAFF.some(row => row.email === identity.email) || isAdminEmail(identity.email) ? 'approved' : 'pending');
+        identity.snuAccount && (ECE_STAFF.some(row => row.email === identity.email) || isAdminEmail(identity.email)) ? 'approved' : 'pending');
         sessions.delete(readCookie(req, COOKIE));
         const id = crypto.randomBytes(32).toString('base64url');
-        sessions.set(id, { email: identity.email, subject: identity.subject, expiresAt: Date.now() + TTL });
+        sessions.set(id, { email: identity.email, subject: identity.subject, snuAccount: identity.snuAccount,
+            expiresAt: Date.now() + TTL });
         cookie(res, id);
-        return member.status;
+        return effectiveMemberStatus(member);
     }
     router.use(['/api/member', '/api/admin/members'], (req, res, next) => {
         res.set('Cache-Control', 'no-store');
@@ -52,8 +55,9 @@ export function createMemberAuth({ store, resolveAdminSession }) {
     router.get('/api/member/session', async (req, res) => {
         try {
             const member = await resolve(req);
-            if (!member) return res.status(401).json({ authenticated: false });
-            res.json({ authenticated: true, ...member });
+            const temporaryPublicAccess = isTemporaryPublicAccessEnabled();
+            if (!member) return res.status(401).json({ authenticated: false, temporaryPublicAccess });
+            res.json({ authenticated: true, temporaryPublicAccess, ...member });
         } catch { res.status(503).json({ error: '소속 확인 서비스를 사용할 수 없습니다.' }); }
     });
     function clearSession(req, res) {
@@ -93,7 +97,8 @@ export function createMemberAuth({ store, resolveAdminSession }) {
         res.set('Cache-Control', 'no-store');
         try {
             const member = await resolve(req);
-            if (!member) return res.status(401).json({ code: 'MEMBER_LOGIN_REQUIRED', error: '서울대학교 계정으로 로그인해주세요.' });
+            if (!member) return res.status(401).json({ code: 'MEMBER_LOGIN_REQUIRED', error: isTemporaryPublicAccessEnabled()
+                ? 'Google 계정으로 로그인해주세요.' : '서울대학교 계정으로 로그인해주세요.' });
             if (member.status !== 'approved') return res.status(403).json({ code: 'MEMBER_APPROVAL_REQUIRED', error: '전기정보공학부 소속 확인이 필요합니다.' });
             req.member = member;
             next();

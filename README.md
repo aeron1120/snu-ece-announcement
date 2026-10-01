@@ -114,6 +114,7 @@ npm run prepare:public
 - `PUBLIC_SITE_URL`: 공지별 카카오톡 링크를 만들 공개 사이트 주소
 - `KAKAO_NOTICE_WEBHOOK_URL`: 신청·학사 공지 게시 이벤트를 받을 봇 중계 서버 주소
 - `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`, `ADMIN_EMAILS`: [Google 로그인 설정](docs/GOOGLE_LOGIN.md) 참고
+- `TEMPORARY_PUBLIC_ACCESS`: 대회 기간에만 `true`로 설정하면 일반 Google 계정도 승인 대기 없이 이용할 수 있습니다. `false` 또는 삭제 후 재배포하면 기존 SNU 계정·소속 승인 제한으로 복구됩니다.
 - `CRAWL_TRIGGER_SECRET`: 32자 이상 난수
 - `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`
 - `GEMINI_API_KEY`

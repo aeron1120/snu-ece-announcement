@@ -50,6 +50,31 @@ DB의 과거 해시 열은 기존 스키마와의 호환을 위해 보존하지�
 
 ## 배포 및 확인
 
+### 대회 기간 임시 개방과 복구
+
+서버 환경 변수 `TEMPORARY_PUBLIC_ACCESS`로 일반 Google 계정의 공지방 이용을 임시 허용합니다.
+기본값은 꺼짐이며, 정확히 `true`일 때만 켜집니다. 프런트에 별도 설정을 넣을 필요는 없습니다.
+
+1. Supabase를 사용한다면 먼저 SQL Editor에서 갱신된 `server/sql/ece-members.sql`을 실행합니다.
+   기존 테이블에도 다시 실행해야 합니다. 기존 SNU 전용 이메일 제약을 일반 이메일 형식 제약으로 교체하며,
+   회원 데이터·승인 기록·RLS는 유지합니다. 이 단계를 생략하면 외부 계정 등록이 실패합니다.
+2. 이 변경이 포함된 API 서버와 Pages 프런트를 배포합니다.
+3. Render 서버의 Environment에서 `TEMPORARY_PUBLIC_ACCESS=true`를 저장하고 재배포합니다.
+4. `/api/member/session`의 응답에 `temporaryPublicAccess: true`가 표시되는지 확인합니다.
+   로그인하지 않았다면 HTTP 401은 정상입니다. 로그인 화면에는 임시 개방 안내가 표시됩니다.
+5. 일반 Google 계정으로 로그인해 공지 열람을 확인합니다. 학교 소속 승인 대기 계정도 임시 이용할 수 있고,
+   관리자가 차단한 계정은 계속 차단됩니다. 관리자 권한은 기존 학교 계정 허용 목록으로만 부여합니다.
+6. 대회가 끝나면 Render에서 `TEMPORARY_PUBLIC_ACCESS=false`로 변경하거나 변수를 삭제하고 재배포합니다.
+   응답의 `temporaryPublicAccess: false`, 외부 계정 로그인 거부, SNU 계정의 기존 소속 승인 절차를 확인합니다.
+
+임시 이용은 DB의 승인 상태를 변경하지 않습니다. 개방을 끄면 외부 계정은 기존 로그인 세션으로도
+접근할 수 없으며, 학교 계정은 원래 저장된 승인 상태를 따릅니다. SQL 제약은 되돌릴 필요가 없습니다.
+접근 제한은 서버에서 적용하며, 외부 계정 기록은 보존합니다. 복구 날짜를 자동 예약하지는 않습니다.
+Google OAuth 앱 자체가 조직 내부 사용자만 허용하도록 설정되어 있다면 외부 Google 계정은 Google 단계에서
+차단되므로 해당 앱의 대상 사용자 설정도 확인해야 합니다.
+
+### 일반 배포
+
 1. Supabase 사용 시 먼저 `server/sql/ece-members.sql`을 실행합니다. 파일 모드는 `server/data/members.json`을 사용합니다. 이 파일은 개인정보를 포함하므로 Git에 올리지 않으며, 운영 시 영속 디스크가 필요합니다.
 2. Render에 환경 변수를 설정하고 Google 로그인이 포함된 브랜치를 API 서버에 배포합니다. 기존 하드코딩 버전에서 전환할 때는 반드시 `ADMIN_EMAILS`를 먼저 설정해 관리자 접근을 유지합니다.
 3. 같은 버전의 프런트를 Cloudflare Pages에 배포합니다 (`npm run prepare:public`, 출력 `public`).

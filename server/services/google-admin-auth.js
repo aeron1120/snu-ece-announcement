@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import { Router } from 'express';
 import { OAuth2Client } from 'google-auth-library';
+import { isTemporaryPublicAccessEnabled, isSnuGoogleAccount } from './member-access-policy.js';
 
 export function isAdminEmail(email, env = process.env) {
     if (typeof email !== 'string' || !/^[^@\s,*]+@snu\.ac\.kr$/i.test(email)) return false;
@@ -92,6 +93,7 @@ export function createGoogleAdminAuthRouter({ onLogin, onMemberLogin, limiter })
             state, nonce, code_challenge_method: 'S256',
             code_challenge: crypto.createHash('sha256').update(verifier).digest('base64url')
         }).toString();
+        if (req.query.purpose === 'member' && isTemporaryPublicAccessEnabled()) url.searchParams.delete('hd');
         res.redirect(302, url.href);
     });
     // The start route limits admission. A single-use, browser-bound callback must
@@ -126,13 +128,16 @@ export function createGoogleAdminAuthRouter({ onLogin, onMemberLogin, limiter })
             const ticket = await client.verifyIdToken({ idToken: tokens.id_token, audience: config.clientId });
             const payload = ticket.getPayload();
             if (!payload?.sub || payload.nonce !== attempt.nonce
-                || payload.email_verified !== true || payload.hd !== 'snu.ac.kr'
-                || typeof payload.email !== 'string' || !/^[^@]+@snu\.ac\.kr$/i.test(payload.email)
+                || payload.email_verified !== true
+                || typeof payload.email !== 'string' || !/^[^@\s]+@[^@\s]+$/.test(payload.email)
+                || ((!isTemporaryPublicAccessEnabled() || attempt.purpose === 'admin') && !isSnuGoogleAccount(payload))
                 || (attempt.purpose === 'admin' && !isAdminEmail(payload.email))) return failure('not_allowed');
-            const identity = { email: payload.email.toLowerCase(), subject: payload.sub, name: payload.name || '' };
-            if (isAdminEmail(identity.email)) await onLogin(req, res, identity);
+            const identity = { email: payload.email.toLowerCase(), subject: payload.sub, name: payload.name || '',
+                snuAccount: isSnuGoogleAccount(payload) };
+            const admin = identity.snuAccount && isAdminEmail(identity.email);
+            if (admin) await onLogin(req, res, identity);
             if (attempt.purpose === 'member') {
-                const status = isAdminEmail(identity.email) ? 'approved' : await onMemberLogin(req, res, identity);
+                const status = admin ? 'approved' : await onMemberLogin(req, res, identity);
                 const destination = new URL(status === 'approved' ? attempt.next : '/login.html', config.frontendOrigin);
                 if (status !== 'approved') destination.searchParams.set('next', attempt.next);
                 return res.redirect(302, destination.href);
