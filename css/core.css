@@ -714,6 +714,20 @@ body {
 .btn[disabled] { opacity: 0.45; cursor: not-allowed; }
 .btn[disabled]:hover { transform: none; box-shadow: none; }
 
+.mobile-mode-btn[hidden] { display: none !important; }
+.member-signout-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    min-height: 40px;
+    padding: 9px 14px;
+    font-family: inherit;
+    line-height: 20px;
+}
+.member-signout-btn svg { width: 17px; height: 17px; flex: 0 0 auto; }
+.member-signout-btn:hover { transform: none; box-shadow: none; }
+
 .filter-btn,
 .category-tab,
 .notice-pagination button,

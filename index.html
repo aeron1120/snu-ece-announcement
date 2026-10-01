@@ -135,8 +135,13 @@
     </div>
 
     <div class="header-actions">
-        <button type="button" id="member-signout">로그아웃</button>
-        <button class="btn btn-outline mobile-mode-btn" id="view-mode-toggle" onclick="openDevicePreview()">모바일 모드</button>
+        <button type="button" class="btn btn-outline member-signout-btn" id="member-signout">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+                <path d="M9 5H5v14h4M9 12h11m-4-4 4 4-4 4"/>
+            </svg>
+            <span>로그아웃</span>
+        </button>
+        <button type="button" class="btn btn-outline mobile-mode-btn" id="view-mode-toggle" onclick="openDevicePreview()" hidden>모바일 모드</button>
     </div>
 </div>
 

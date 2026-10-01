@@ -296,6 +296,7 @@ function updateLayoutToggleLabel() {
 // ========================================
 
 function openDevicePreview() {
+    if (document.getElementById('view-mode-toggle')?.hidden !== false) return;
     const preview = document.getElementById('device-preview');
     const iframe = document.getElementById('device-iframe');
     if (!preview || !iframe) return;
@@ -667,6 +668,8 @@ async function loadData() {
    sessionStorage 토큰이 아니라 세션 쿠키를 보는 이유는, 관리자 화면에서 공개
    화면을 새 탭으로 열면 sessionStorage가 따라오지 않기 때문이다. */
 async function applyAdminSession() {
+    const previewButton = document.getElementById('view-mode-toggle');
+    if (previewButton) previewButton.hidden = true;
     let session;
     try {
         session = await apiRequest('/api/admin/session', { method: 'GET' });
@@ -674,6 +677,8 @@ async function applyAdminSession() {
         return;
     }
     if (!session?.authenticated) return;
+
+    if (previewButton) previewButton.hidden = false;
 
     pointFooterLinkAtWorkspace();
     // 배너 관리자에게는 공지 권한이 없다.

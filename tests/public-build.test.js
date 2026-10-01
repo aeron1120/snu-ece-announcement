@@ -247,6 +247,44 @@ test('mobile mode opens a blurred phone preview instead of reflowing the desktop
     assert.match(html, /params\.get\('view'\)/);
 });
 
+test('mobile preview stays hidden until an administrator session is verified', async () => {
+    const { load } = await import('cheerio');
+    const html = load(await readFile('index.html', 'utf8'));
+    const app = await readFile('js/core.js', 'utf8');
+    const button = { hidden: html('#view-mode-toggle').attr('hidden') !== undefined };
+    assert.equal(button.hidden, true, 'no preview button should flash before session verification');
+    const preview = { hidden: true, style: {}, querySelector: () => null };
+    const iframe = { src: 'about:blank' };
+    let resolveSession;
+    const context = {
+        document: { getElementById: id => ({ 'view-mode-toggle': button, 'device-preview': preview, 'device-iframe': iframe })[id],
+            body: { style: {} } },
+        apiRequest: () => new Promise(resolve => { resolveSession = resolve; }),
+        pointFooterLinkAtWorkspace() {}, loadNoticeCardAdminExtension() {},
+        URL, location: { href: 'https://example.test/index.html' }
+    };
+    runInNewContext(`async ${readNamedFunction(app, 'applyAdminSession')}\n${readNamedFunction(app, 'openDevicePreview')}`, context);
+    const check = context.applyAdminSession();
+    context.openDevicePreview();
+    assert.equal(preview.hidden, true);
+    assert.equal(iframe.src, 'about:blank');
+    resolveSession({ authenticated: true, role: 'master' });
+    await check;
+    assert.equal(button.hidden, false);
+    context.openDevicePreview();
+    assert.equal(preview.hidden, false);
+    assert.equal(new URL(iframe.src).searchParams.get('view'), 'mobile');
+    for (const session of [{ authenticated: false }, null]) {
+        context.apiRequest = async () => session;
+        await context.applyAdminSession();
+        assert.equal(button.hidden, true);
+    }
+    button.hidden = false;
+    context.apiRequest = async () => { throw new Error('session unavailable'); };
+    await context.applyAdminSession();
+    assert.equal(button.hidden, true);
+});
+
 test('result count appears only for an actual search or filter, and long rewards conveyor', async () => {
     const app = await readFile('js/core.js', 'utf8');
     const css = await readFile('css/core.css', 'utf8');
