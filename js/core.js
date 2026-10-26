@@ -92,7 +92,8 @@ const NOTICE_CATEGORY_ORDER = Object.freeze([
     'academic',
     'opportunity',
     'survey',
-    'community'
+    'community',
+    'other'
 ]);
 
 /* '관련' 공지는 학부 홈페이지에서 자동으로 모아 온 원문 공지다.

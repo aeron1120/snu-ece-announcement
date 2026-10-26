@@ -214,7 +214,7 @@ test('a failed analysis says why in the log instead of vanishing', async () => {
 
 test('crawler assigns a category even when analysis is unavailable', async () => {
     // 분석이 실패한 공지가 category null로 검수함에 쌓이고, 승인한 뒤에도
-    // 어느 탭에도 안 잡혔다. 규칙 분류기가 넷 중 하나를 달아 준다.
+    // 어느 탭에도 안 잡혔다. 규칙 분류기가 다섯 중 하나를 달아 준다.
     const { CANONICAL_NOTICE_CATEGORIES } = await import('../server/config/notice-categories.js');
     const directory = await mkdtemp(path.join(tmpdir(), 'ece-crawler-category-'));
     const store = createAutomationStore({

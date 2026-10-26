@@ -1,4 +1,4 @@
-/* 공지를 학사·기회·설문·행사 넷 중 하나로 반드시 배정하는 규칙 분류기.
+/* 공지를 학사·기회·설문·행사·기타 중 하나로 배정하는 규칙 분류기.
 
    카테고리는 Gemini가 고르는 것이 원칙이다. 그런데 모델이 existingCategoryIds를
    비워 보내거나, 분석 자체가 실패하거나, 관리자가 카테고리 없이 손으로 올리면
@@ -6,12 +6,11 @@
    운영 데이터를 세어 보니 공개 공지의 절반이 그랬다.
 
    이 모듈은 모델의 판단이 있으면 그것을 그대로 쓰고, 없을 때만 제목·키워드·
-   본문의 단서로 점수를 매겨 하나를 고른다. 아무 단서도 없으면 캠퍼스 생활 전반을
-   뜻하는 행사(COMMUNITY)로 둔다. 네 카테고리의 정의상 행사가 "놓쳐도 학사상
-   불이익이 없는 나머지 전부"이기 때문이다. */
+   본문의 단서로 점수를 매겨 하나를 고른다. 시설·출입 통제 같은 일반 안내와
+   다른 분류의 단서가 없는 공지는 기타(OTHER)로 둔다. */
 import { CANONICAL_NOTICE_CATEGORIES } from '../config/notice-categories.js';
 
-export const DEFAULT_NOTICE_CATEGORY = 'COMMUNITY';
+export const DEFAULT_NOTICE_CATEGORY = 'OTHER';
 
 /* 예전 스키마의 키와 slug. '혜택'은 기회와 갈라지지 않아 없앴고, 제휴·할인은
    카테고리 정의대로 행사(캠퍼스 생활)로 간다. */
@@ -31,10 +30,10 @@ const KEY_BY_SLUG = new Map(CANONICAL_NOTICE_CATEGORIES.map(category => [categor
 const KEY_BY_NAME = new Map(CANONICAL_NOTICE_CATEGORIES.map(category => [category.name, category.key]));
 const SLUG_BY_KEY = new Map(CANONICAL_NOTICE_CATEGORIES.map(category => [category.key, category.slug]));
 
-/* 동점일 때의 우선순위. 학사는 놓치면 불이익이 있으니 가장 먼저, 행사는
-   나머지 전부를 받는 칸이니 가장 나중이다. 설문은 아래 결정 규칙이 먼저
+/* 동점일 때의 우선순위. 학사는 놓치면 불이익이 있으니 가장 먼저, 기타는
+   다른 분류에 해당하지 않는 공지를 받으니 가장 나중이다. 설문은 아래 결정 규칙이 먼저
    잡아가므로 여기까지 오는 일이 드물다. */
-const TIE_ORDER = Object.freeze(['ACADEMIC', 'OPPORTUNITY', 'SURVEY', 'COMMUNITY']);
+const TIE_ORDER = Object.freeze(['ACADEMIC', 'OPPORTUNITY', 'SURVEY', 'COMMUNITY', 'OTHER']);
 
 /* 제목은 본문보다 훨씬 믿을 만하다. 본문은 인사말·계좌·링크가 절반이라
    단어 하나가 우연히 걸리기 쉬우니 가중치를 낮게 둔다. */
@@ -100,16 +99,16 @@ const RULES = Object.freeze([
         pattern: /모집|지원\s*자격|신청\s*자격/
     },
 
-    /* 행사. 학생 자치, 학내 행사, 시설·교통, 제휴·할인. 캠퍼스 생활 전반. */
+    /* 행사. 학생 자치, 학내 행사, 제휴·할인. */
     {
         key: 'COMMUNITY',
         weight: 4,
-        pattern: /축제|행사|제휴|할인|쿠폰|장터|셔틀|정전|단수|출입\s*통제|공사|휴관|폐쇄|학생회비|총회|대의원|대표자\s*회의|선거|투표|의안|회칙|자치|공동구매|공구\b/
+        pattern: /축제|행사|제휴|할인|쿠폰|장터|학생회비|총회|대의원|대표자\s*회의|선거|투표|의안|회칙|자치|공동구매|공구\b/
     },
     {
         key: 'COMMUNITY',
         weight: 3,
-        pattern: /집행부|집행위원|운영위원|부스|포토|강연|특강|세미나|워크숍|워크샵|토크|콘서트|공연|전시|캠페인|설명회|간담회|홈커밍|동문|기념품|증정|나눔|간식|굿즈|시설|강의실|열람실|주차|교통|버스|캠퍼스|운영\s*시간|이용\s*(?:안내|제한|시간)|점검|홈페이지|사이트|앱\b|시범\s*운영|공지방|분실물|식당|카페|기숙사|생활관|보건|상담|도서관|체육|동아리|소모임|엠티|앨범|촬영|인권|안전|복지|환경\s*개선|이벤트|부대행사|세션|네트워킹/i
+        pattern: /집행부|집행위원|운영위원|부스|포토|강연|특강|세미나|워크숍|워크샵|토크|콘서트|공연|전시|캠페인|설명회|간담회|홈커밍|동문|기념품|증정|나눔|간식|굿즈|체육|동아리|소모임|엠티|앨범|촬영|인권|복지|이벤트|부대행사|세션|네트워킹/i
     },
     {
         /* 학생회 공지는 주제가 뭐든 머리에 [학생회]가 붙는다. 약한 사전
@@ -117,6 +116,18 @@ const RULES = Object.freeze([
         key: 'COMMUNITY',
         weight: 1,
         pattern: /학생회|학우|학생\s*자치/
+    },
+
+    /* 기타. 시설·출입·교통·서비스 운영 등 일반 안내. */
+    {
+        key: 'OTHER',
+        weight: 4,
+        pattern: /셔틀|정전|단수|출입\s*(?:통제|제한|금지)|공사|휴관|폐쇄/
+    },
+    {
+        key: 'OTHER',
+        weight: 3,
+        pattern: /시설|강의실|열람실|주차|교통|버스|운영\s*시간|이용\s*(?:안내|제한|시간)|점검|홈페이지|사이트|앱\b|시범\s*운영|공지방|분실물|식당|카페|기숙사|생활관|보건|상담|도서관|안전|환경\s*개선/i
     }
 ]);
 

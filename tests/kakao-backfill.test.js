@@ -47,7 +47,7 @@ test('Kakao backfill classifies drafts and groups reminders within 30 days', () 
     assert.equal(result.drafts[1].threadMessages.length, 2);
 });
 
-test('Kakao category rules follow the four topic-only categories', () => {
+test('Kakao category rules follow the five topic-only categories', () => {
     const { classifyDraft, classifySender, extractDeadlineExpressions } = kakaoBackfillInternals;
     assert.equal(
         classifyDraft('장학금 신청', '3월 1일까지 폼으로 신청하세요'),
@@ -59,7 +59,9 @@ test('Kakao category rules follow the four topic-only categories', () => {
     // 선발이 없으면 설문, 있으면 기회로 갈린다.
     assert.equal(classifyDraft('사용자 조사 참여자 모집', '30분 인터뷰, 사례비 지급'), 'survey');
     assert.equal(classifyDraft('하계 인턴 모집', '서류 전형 후 면접'), 'opportunity');
-    assert.equal(classifyDraft('정전 안내', '내일 캠퍼스 출입 통제'), 'community');
+    assert.equal(classifyDraft('정전 안내', '내일 캠퍼스 출입 통제'), 'other');
+    assert.equal(classifyDraft('입학전형에 따른 건물 출입통제 안내', '입학고사 관계자 외 출입 금지'), 'other');
+    assert.equal(classifyDraft('일반 안내', '참고 바랍니다.'), 'other');
     assert.equal(classifyDraft('대의원 총회', '회칙 의결'), 'community');
     assert.equal(classifySender('서울대학교 공과대학 학생회'), '공과대학');
     assert.deepEqual(
@@ -73,10 +75,10 @@ test('Kakao drafts the rules cannot place still get a proposed category', () => 
     // 가져올 수 있었다. 공용 분류기가 제안하고 드롭다운에서 바꾸게 한다.
     const sample = [
         '--------------- 2025년 3월 9일 일요일 ---------------',
-        '[총학생회] [오전 9:46] [샤人AI: 선배에게 듣는 AI 현장 이야기]\n동문 선배들과 네트워킹하는 세션입니다.'
+        '[총학생회] [오전 9:46] [일반 안내]\n참고 바랍니다.'
     ].join('\r\n');
     const result = buildKakaoBackfillDrafts(sample);
-    assert.equal(result.drafts[0].categorySlug, 'community');
+    assert.equal(result.drafts[0].categorySlug, 'other');
     assert.equal(result.drafts[0].classificationStatus, 'fallback');
     assert.equal(result.stats.unclassifiedCount, 0);
 });

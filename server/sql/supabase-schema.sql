@@ -15,7 +15,7 @@ create table if not exists public.notices (
   -- 이쪽은 시각이 지나면 저절로 풀린다. 둘 중 하나만 참이어도 고정이다.
   pinned_until timestamptz,
   is_hidden boolean not null default false,
-  category text check (category is null or category in ('ACADEMIC', 'OPPORTUNITY', 'SURVEY', 'BENEFIT', 'COMMUNITY')),
+  category text check (category is null or category in ('ACADEMIC', 'OPPORTUNITY', 'SURVEY', 'BENEFIT', 'COMMUNITY', 'OTHER')),
   has_reward boolean not null default false,
   reward_note text,
   requires_action boolean not null default false,
@@ -338,7 +338,8 @@ values
   ('학사', 'academic', true),
   ('기회', 'opportunity', true),
   ('설문', 'survey', true),
-  ('행사', 'community', true)
+  ('행사', 'community', true),
+  ('기타', 'other', true)
 on conflict (slug) do update
 set name = excluded.name,
     is_active = true,
@@ -349,7 +350,14 @@ set name = excluded.name,
 -- 분류된 공지가 있어도 참조가 끊기지 않게 한다.
 update public.categories
 set is_active = false, updated_at = now()
-where slug not in ('academic', 'opportunity', 'survey', 'community');
+where slug not in ('academic', 'opportunity', 'survey', 'community', 'other');
+
+-- 기존 설치에도 기타 저장을 허용한다. 카테고리 ID는 그대로 유지한다.
+alter table public.notices drop constraint if exists notices_category_check;
+alter table public.notices add constraint notices_category_check
+  check (category is null or category in ('ACADEMIC', 'OPPORTUNITY', 'SURVEY', 'BENEFIT', 'COMMUNITY', 'OTHER'))
+  not valid;
+alter table public.notices validate constraint notices_category_check;
 
 create table if not exists public.category_aliases (
   id bigint generated always as identity primary key,
@@ -388,6 +396,7 @@ classified as (
   select
     id,
     case
+      when current_category = 'OTHER' then 'OTHER'
       when was_application and concat_ws(' ', title, content)
         ~* '(인턴|연구실|모집|공모전|경진대회|대회|장학|교환[[:space:]]*학생)'
         then 'OPPORTUNITY'
@@ -398,7 +407,7 @@ classified as (
       when was_academic then 'ACADEMIC'
       when was_benefit then 'BENEFIT'
       when was_community then 'COMMUNITY'
-      when current_category in ('ACADEMIC', 'OPPORTUNITY', 'SURVEY', 'BENEFIT', 'COMMUNITY')
+      when current_category in ('ACADEMIC', 'OPPORTUNITY', 'SURVEY', 'BENEFIT', 'COMMUNITY', 'OTHER')
         then current_category
       else null
     end as category
@@ -423,6 +432,7 @@ join public.categories c on c.slug = case n.category
   when 'OPPORTUNITY' then 'opportunity'
   when 'BENEFIT' then 'benefit'
   when 'COMMUNITY' then 'community'
+  when 'OTHER' then 'other'
 end
 where n.category is not null
 on conflict (notice_id, category_id) do nothing;
@@ -430,23 +440,6 @@ on conflict (notice_id, category_id) do nothing;
 -- 저장된 상태 열 대신 deadline 하나만 기준으로 진행중·마감임박·마감을 파생한다.
 update public.notices
 set expires_at = case when is_always_open then null else deadline_at end;
-
-do $$
-begin
-  if not exists (
-    select 1 from pg_constraint
-    where conname = 'notices_category_check'
-      and conrelid = 'public.notices'::regclass
-  ) then
-    alter table public.notices
-      add constraint notices_category_check
-      check (category is null or category in ('ACADEMIC', 'OPPORTUNITY', 'SURVEY', 'BENEFIT', 'COMMUNITY'))
-      not valid;
-  end if;
-end
-$$;
-
-alter table public.notices validate constraint notices_category_check;
 
 create table if not exists public.category_candidates (
   id bigint generated always as identity primary key,

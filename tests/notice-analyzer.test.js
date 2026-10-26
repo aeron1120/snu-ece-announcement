@@ -81,7 +81,7 @@ test('analyzer retries one schema-invalid response and returns corrected JSON', 
     assert.deepEqual(result.verifiedNumbers, ['2학기']);
     assert.match(requests[0].url, /gemini-test-model:generateContent/);
     assert.match(requests[0].body.contents[0].parts[0].text, /학사: 수강·학점·졸업·성적·전공진입/);
-    assert.match(requests[0].body.contents[0].parts[0].text, /네 카테고리 중 가장 핵심적인 하나만 선택/);
+    assert.match(requests[0].body.contents[0].parts[0].text, /다섯 카테고리 중 가장 핵심적인 하나만 선택/);
     assert.match(
         requests[1].body.contents[0].parts[0].text,
         /이전 응답이 스키마를 만족하지 못했습니다/

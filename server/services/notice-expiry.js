@@ -5,7 +5,8 @@ const CATEGORY_EXPIRY_PRIORITY = Object.freeze([
     'academic',
     'opportunity',
     'survey',
-    'community'
+    'community',
+    'other'
 ]);
 
 function isDateOnly(value) {

@@ -51,7 +51,7 @@ export function createEceCrawler({
         }
     }
 
-    /* 분석이 실패했거나 모델이 카테고리를 비워 보낸 공지도 넷 중 하나를
+    /* 분석이 실패했거나 모델이 카테고리를 비워 보낸 공지도 다섯 중 하나를
        달고 검수함에 들어간다. 비워 두면 승인 뒤에도 어느 탭에도 안 잡힌다. */
     function withFallbackCategory(analysis, detail, categories) {
         if (analysis.category) return analysis;
