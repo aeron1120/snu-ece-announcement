@@ -24,8 +24,13 @@ export const CANONICAL_NOTICE_CATEGORIES = Object.freeze([
         key: 'COMMUNITY',
         name: '행사',
         slug: 'community',
-        // 놓쳐도 학사상 불이익이 없는 캠퍼스 생활 전반. 제휴·할인도 여기 든다.
-        definition: '학생 자치, 학내 행사, 시설·출입·교통, 제휴·할인처럼 캠퍼스 생활에 관한 공지'
+        definition: '학생 자치, 축제·강연·세미나 등 학내 행사, 제휴·할인에 관한 공지'
+    }),
+    Object.freeze({
+        key: 'OTHER',
+        name: '기타',
+        slug: 'other',
+        definition: '시설·출입 통제·교통·서비스 운영 등 일반 안내와 학사·기회·설문·행사에 해당하지 않는 공지'
     })
 ]);
 

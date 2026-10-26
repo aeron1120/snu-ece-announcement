@@ -32,7 +32,7 @@
 
 자동 수집 공지는 즉시 공개되지 않습니다. 항상 `pending_review` 상태로 들어오며, 관리자가 원문·대상·요약·키워드·카테고리를 검수해 승인한 경우에만 공개되고 알림 작업이 생성됩니다.
 
-카테고리는 학사·기회·설문·행사 넷 중 하나로 항상 채워집니다. Gemini가 고른 값이 우선이고, 모델이 비워 보내거나 분석이 실패했거나 관리자가 카테고리 없이 등록한 공지는 `server/services/notice-classifier.js`의 규칙 분류기가 제목·키워드·본문으로 하나를 정합니다(단서가 없으면 행사). 이미 저장된 미분류 공지도 읽을 때 같은 규칙으로 채워 내보내므로 화면과 앱에 빈 카테고리가 나오지 않습니다. 저장값까지 맞추려면 `npm run backfill:categories:dry-run`으로 확인한 뒤 `npm run backfill:categories`를 실행합니다.
+카테고리는 학사·기회·설문·행사·기타 다섯 중 하나로 항상 채워집니다. Gemini가 고른 값이 우선이고, 모델이 비워 보내거나 분석이 실패했거나 관리자가 카테고리 없이 등록한 공지는 `server/services/notice-classifier.js`의 규칙 분류기가 제목·키워드·본문으로 하나를 정합니다(시설·출입 통제 같은 일반 안내나 단서가 없는 공지는 기타). 이미 저장된 미분류 공지도 읽을 때 같은 규칙으로 채워 내보내므로 화면과 앱에 빈 카테고리가 나오지 않습니다. 저장값까지 맞추려면 `npm run backfill:categories:dry-run`으로 확인한 뒤 `npm run backfill:categories`를 실행합니다.
 
 ## 관리자 로그인
 
@@ -92,6 +92,11 @@ npm run prepare:public
 7. 최근 60일 동안 5개 이상의 공지에서 평균 신뢰도 0.75 이상으로 반복된 키워드를 카테고리 후보로 추천합니다. 생성·병합·보류·반려 결정은 관리자만 수행합니다.
 
 ## Supabase 준비
+
+이미 운영 중인 DB에 `기타` 분류만 추가할 때는 배포 전에 SQL Editor에서
+[20261012-add-other-notice-category.sql](server/sql/migrations/20261012-add-other-notice-category.sql)을 실행합니다.
+이 스크립트는 `OTHER` 저장을 허용하고 `기타` 항목을 추가하며, 기존 공지의 분류와 카테고리 ID를 보존합니다.
+파일 저장 모드에서는 서버가 카테고리 목록을 읽을 때 자동으로 추가됩니다.
 
 1. Supabase 프로젝트를 생성합니다.
 2. SQL Editor에서 [server/sql/supabase-schema.sql](server/sql/supabase-schema.sql)을 전체 실행합니다.

@@ -160,7 +160,7 @@ test('admin review routes require auth and publish or reject pending notices', a
     assert.equal((await fixture.store.listNotificationJobs()).length, 1);
 });
 
-test('topic taxonomy stays fixed at four and keyword candidate screens are gone', async t => {
+test('topic taxonomy stays fixed at five and keyword candidate screens are gone', async t => {
     const fixture = await createTestServer();
     t.after(() => fixture.server.close());
     for (let index = 1; index <= 5; index += 1) {
@@ -189,12 +189,12 @@ test('topic taxonomy stays fixed at four and keyword candidate screens are gone'
         assert.equal(response.status, 404);
     }
 
-    // 키워드가 아무리 쌓여도 공개 분류는 넷으로 고정이다.
+    // 키워드가 아무리 쌓여도 공개 분류는 다섯으로 고정이다.
     const categoriesResponse = await fetch(`${fixture.baseUrl}/api/categories`);
     assert.equal(categoriesResponse.status, 200);
     const categories = (await categoriesResponse.json()).categories;
     assert.deepEqual(
         categories.map(category => category.slug),
-        ['academic', 'opportunity', 'survey', 'community']
+        ['academic', 'opportunity', 'survey', 'community', 'other']
     );
 });

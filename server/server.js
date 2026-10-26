@@ -731,7 +731,7 @@ function normalizeNoticeInput(body = {}) {
     const rewardNote = String(body.rewardNote || body.surveyReward || '').trim().slice(0, 120) || null;
     const hasReward = body.hasReward === true || body.hasReward === 'true' || Boolean(rewardNote);
     const requiresAction = body.requiresAction === true || body.requiresAction === 'true';
-    // 예전 키('BENEFIT')나 slug로 와도 현재 넷 중 하나로 맞춘다. 비어 있으면
+    // 예전 키('BENEFIT')나 slug로 와도 현재 다섯 중 하나로 맞춘다. 비어 있으면
     // 저장 직전에 규칙 분류기가 채운다 — 카테고리 없는 공지는 만들지 않는다.
     const category = normalizeCategoryKey(body.category);
     const aiSummary = Array.isArray(body.aiSummary)
@@ -1382,7 +1382,7 @@ async function addNoticeLifecycle(rows) {
     ]));
     return rows.map(row => {
         const notice = toClientNotice(row);
-        /* 저장값이 비었거나 예전 키('BENEFIT')인 공지도 읽을 때 넷 중 하나로
+        /* 저장값이 비었거나 예전 키('BENEFIT')인 공지도 읽을 때 다섯 중 하나로
            채워 내보낸다. 백필 스크립트를 돌리기 전에도 모든 공지가 어느 탭엔가
            잡히고, 앱도 category를 항상 받는다. 이미 맞는 값은 그대로 둔다. */
         const resolvedCategory = ensureNoticeCategory(notice, categories);
@@ -1556,7 +1556,7 @@ async function prepareNoticeStoragePayload(payload, { createdAt = new Date().toI
         Number(category.id),
         category.slug
     ]));
-    /* 저장되는 공지는 반드시 넷 중 하나를 단다. 관리자가 고른 키가 있으면
+    /* 저장되는 공지는 반드시 다섯 중 하나를 단다. 관리자가 고른 키가 있으면
        그것, 없으면 고른 카테고리 id의 키, 그것도 없으면 제목·본문으로 정한다.
        categoryIds도 같은 곳을 가리키게 맞춘다 — 목록의 탭은 이것으로 거른다. */
     const resolved = ensureNoticeCategory({

@@ -31,7 +31,7 @@ test('automation configuration accepts complete crawl and push settings', () => 
     assert.equal(config.categories.minimumConfidence, 0.75);
 });
 
-test('JSON automation store supplies the four topic-only notice categories in order', async () => {
+test('JSON automation store supplies the five topic-only notice categories in order', async () => {
     const directory = await mkdtemp(path.join(tmpdir(), 'ece-category-store-'));
     const store = createAutomationStore({
         useSupabase: false,
@@ -43,20 +43,22 @@ test('JSON automation store supplies the four topic-only notice categories in or
 
     assert.deepEqual(
         categories.map(category => category.name),
-        ['학사', '기회', '설문', '행사']
+        ['학사', '기회', '설문', '행사', '기타']
     );
     assert.ok(categories.every(category => category.definition));
 
     const created = await store.createManualNotice({
-        title: '신청 공지',
-        content: '폼 제출',
+        title: '출입 통제 공지',
+        content: '17동 출입 통제 안내',
         target: '전체',
-        categoryIds: [categories[0].id]
+        category: 'OTHER',
+        categoryIds: [categories[4].id]
     });
-    assert.deepEqual(created.categoryIds, [categories[0].id]);
+    assert.equal(created.category, 'OTHER');
+    assert.deepEqual(created.categoryIds, [categories[4].id]);
     assert.deepEqual(
         (await store.listPublishedNotices())[0].categoryIds,
-        [categories[0].id]
+        [categories[4].id]
     );
 });
 

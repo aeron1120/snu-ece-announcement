@@ -13,37 +13,6 @@ const DEADLINE_PATTERNS = [
     /\bD-\d+\b/gi
 ];
 
-const CATEGORY_RULES = Object.freeze([
-    {
-        slug: 'academic',
-        patterns: [
-            /수강|학점|졸업|학사|복학|휴학|전과|다전공|교과|성적|계절학기|수업|시험|학적|전공\s*진입/
-        ]
-    },
-    {
-        // 선발 없이 참여해 응답하면 끝나는 것. 사례비가 붙어도 여기다.
-        slug: 'survey',
-        patterns: [
-            /설문|서베이|survey|인터뷰|면담|피험자|실험\s*참여|참여자\s*모집|응답자|사용자\s*조사|리서치|FGI|표본|설문지/i
-        ]
-    },
-    {
-        slug: 'opportunity',
-        patterns: [
-            /인턴|연구실|모집|공모전|경진대회|대회|장학|교환\s*학생|교환학생/
-        ]
-    },
-    {
-        /* 제휴·할인·물품도 여기로 온다. 예전에는 '혜택'이라는 칸이 따로
-           있었지만 기회와 갈라지지 않아 없앴다. 놓쳐도 학사상 불이익이 없는
-           캠퍼스 생활 소식이라는 점에서 결이 같다. */
-        slug: 'community',
-        patterns: [
-            /정전|단수|출입|통제|공사|휴관|폐쇄|셔틀|교통|주차|시설|캠퍼스|운영\s*시간|이용\s*제한|대의원|집행부|운영위원|학생회비|총회|회칙|선거|의결|자치|대표자|중앙운영위원|축제|행사|제휴|할인|쿠폰|기념품|증정|물품|간식|나눔/
-        ]
-    }
-]);
-
 function normalizeKakaoTime(dateContext, meridiem, hourText, minuteText) {
     if (!dateContext) return null;
     let hour = Number(hourText);
@@ -84,16 +53,7 @@ function extractDeadlineExpressions(body) {
 }
 
 function classifyDraft(title, body) {
-    const titleText = String(title || '');
-    const bodyLead = String(body || '').slice(0, 300);
-    for (const rule of CATEGORY_RULES) {
-        const sources = [titleText, bodyLead];
-        const matched = rule.requireAll
-            ? rule.patterns.every(pattern => sources.some(source => pattern.test(source)))
-            : rule.patterns.some(pattern => sources.some(source => pattern.test(source)));
-        if (matched) return rule.slug;
-    }
-    return null;
+    return categorySlugForKey(classifyNoticeCategory({ title, content: body }).key);
 }
 
 function classifySender(sender) {
@@ -224,12 +184,10 @@ export function buildKakaoBackfillDrafts(rawInput) {
             continue;
         }
 
-        /* 규칙에 안 걸린 메시지도 빈손으로 두지 않는다. 공용 분류기가 넷 중
+        /* 규칙에 안 걸린 메시지도 빈손으로 두지 않는다. 공용 분류기가 다섯 중
            하나를 제안하고, 관리자는 가져오기 전에 드롭다운에서 바꿀 수 있다. */
-        const ruleSlug = classifyDraft(message.title, message.body);
-        const categorySlug = ruleSlug || categorySlugForKey(
-            classifyNoticeCategory({ title: message.title, content: message.body }).key
-        );
+        const classification = classifyNoticeCategory({ title: message.title, content: message.body });
+        const categorySlug = categorySlugForKey(classification.key);
         const requiresAction = /신청|접수|지원|모집|등록|제출|설문|폼|참가/.test(
             `${message.title}\n${message.body}`
         );
@@ -250,7 +208,7 @@ export function buildKakaoBackfillDrafts(rawInput) {
             sender: message.sender,
             categorySlug,
             requiresAction,
-            classificationStatus: ruleSlug ? 'draft' : 'fallback',
+            classificationStatus: classification.source === 'default' ? 'fallback' : 'draft',
             urls: message.urls,
             deadlineExpressions: message.deadlineExpressions,
             imageAttachmentCount: message.imageAttachmentCount,

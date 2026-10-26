@@ -663,7 +663,7 @@ test('notice cards show when a notice is open, as a single day or a period', asy
     // 스키마를 다시 돌려도 카테고리가 옛 목록으로 되돌아가지 않아야 한다.
     assert.match(schema, /\('설문', 'survey', true\)/);
     assert.doesNotMatch(schema, /\('혜택', 'benefit', true\)/);
-    assert.match(schema, /slug not in \('academic', 'opportunity', 'survey', 'community'\)/);
+    assert.match(schema, /slug not in \('academic', 'opportunity', 'survey', 'community', 'other'\)/);
 });
 
 test('the contact modal is an anonymous feedback box, not admin contact info', async () => {
@@ -810,15 +810,15 @@ test('the compose form leads with content/photo/target, then AI fills date/subje
     assert.doesNotMatch(html, /class="panel-help"/);
 });
 
-test('public category tabs keep the four canonical topic categories, with related notices as a filter switch', async () => {
+test('public category tabs keep the five canonical topic categories, with related notices as a filter switch', async () => {
     const app = await readFile('js/core.js', 'utf8');
     const html = await readFile('index.html', 'utf8');
     const server = await readFile('server/server.js', 'utf8');
     const categoryConfig = await readFile('server/config/notice-categories.js', 'utf8');
     const orderSource = app.match(/const NOTICE_CATEGORY_ORDER = Object\.freeze\(\[[\s\S]*?\]\);/)?.[0] || '';
 
-    assert.match(orderSource, /'academic'[\s\S]*'opportunity'[\s\S]*'survey'[\s\S]*'community'/);
-    assert.match(categoryConfig, /ACADEMIC[\s\S]*OPPORTUNITY[\s\S]*SURVEY[\s\S]*COMMUNITY/);
+    assert.match(orderSource, /'academic'[\s\S]*'opportunity'[\s\S]*'survey'[\s\S]*'community'[\s\S]*'other'/);
+    assert.match(categoryConfig, /ACADEMIC[\s\S]*OPPORTUNITY[\s\S]*SURVEY[\s\S]*COMMUNITY[\s\S]*OTHER/);
     assert.match(server, /canonicalSlugs[\s\S]*categories\.filter/);
     assert.match(app, /function orderedNoticeCategories/);
 
@@ -846,7 +846,7 @@ test('manual Gemini analysis saves canonical category ids with the notice', asyn
     const server = await readFile('server/server.js', 'utf8');
     const schema = await readFile('server/sql/supabase-schema.sql', 'utf8');
 
-    assert.match(admin, /"categorySlugs":\["academic\|opportunity\|survey\|community 중 핵심 하나"\]/);
+    assert.match(admin, /"categorySlugs":\["academic\|opportunity\|survey\|community\|other 중 핵심 하나"\]/);
     assert.match(admin, /categorySlugs는 반드시 핵심 범주 하나만 선택/);
     assert.match(admin, /"hasReward":false/);
     assert.match(admin, /"requiresAction":false/);

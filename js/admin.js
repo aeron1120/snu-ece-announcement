@@ -674,7 +674,7 @@ function parseAnalysisJson(text) {
 }
 
 const NOTICE_ANALYSIS_CATEGORY_SLUGS = new Set([
-    'academic', 'opportunity', 'survey', 'community'
+    'academic', 'opportunity', 'survey', 'community', 'other'
 ]);
 
 // Gemini가 명시된 기간의 앞 날짜를 빠뜨리는 경우를 막는 교차 확인 장치.
@@ -787,7 +787,7 @@ function restoreAiModeChoice() {
 // 폼에 입력란이 없는 항목만 요구하는 짧은 프롬프트. 핵심내용·유형·마감일은 묻지 않는다.
 function buildSummaryOnlyPrompt(content) {
     return `다음 공지 원문을 읽고 JSON만 출력해. 코드블록·설명 없이 JSON 객체 하나만.
-형식: {"summary":["요약1","요약2","요약3"],"categorySlugs":["academic|opportunity|survey|community 중 핵심 하나"],"hasReward":false,"rewardNote":null,"requiresAction":false}
+형식: {"summary":["요약1","요약2","요약3"],"categorySlugs":["academic|opportunity|survey|community|other 중 핵심 하나"],"hasReward":false,"rewardNote":null,"requiresAction":false}
 - summary는 각 줄 명사형 종결의 3줄 요약.
 - 사진 없는 카드에서 2~3줄로 자연스럽게 나뉘도록, 긴 한 덩어리 대신 의미가 분명한 짧은 어절 묶음으로 작성.
 - 격식적인 보도자료 문체보다 학생이 빠르게 읽는 자연스럽고 캐주얼한 표현을 사용.
@@ -795,7 +795,8 @@ function buildSummaryOnlyPrompt(content) {
 - academic: 수강·학점·졸업·성적·전공진입에 직접 영향.
 - opportunity: 인턴·연구실·공모전·대회·장학·교환처럼 선발을 거쳐 자리나 자격을 얻는 것.
 - survey: 설문·인터뷰·실험 피험자·사용자 조사처럼 선발 없이 참여해 응답하면 끝나는 모집. 사례비나 기프티콘이 걸려 있어도 참여가 목적이면 여기다.
-- community: 학생 자치, 학내 행사, 시설·출입·교통, 제휴·할인 등 캠퍼스 생활.
+- community: 학생 자치, 축제·강연·세미나 등 학내 행사, 제휴·할인.
+- other: 시설·출입 통제·교통·서비스 운영 등 일반 안내와 다른 네 분류에 해당하지 않는 공지. 입학전형으로 인한 건물 출입 통제도 기타로 분류.
 - categorySlugs는 반드시 핵심 범주 하나만 선택.
 - 신청·제출·응답이 필요하면 requiresAction=true.
 - 상품·기프티콘·사례비·지원금·할인이 확인되면 hasReward=true와 rewardNote를 채움.
@@ -811,7 +812,7 @@ async function runNoticeAnalysis(content, onVerificationStart = null) {
     const mode = currentAiMode();
     const today = new Date().toISOString().slice(0, 10);
     const prompt = `다음 공지 원문을 분석해서 JSON만 출력해. 코드블록·설명 없이 JSON 객체 하나만.
-형식: {"deadline":"YYYY-MM-DD 또는 빈문자열","startDate":"YYYY-MM-DD 또는 빈문자열","subject":"포스터용 핵심 문구 10~28자","type":"${TITLE_KINDS.join('|')} 중 하나","summary":["요약1","요약2","요약3"],"categorySlugs":["academic|opportunity|survey|community 중 핵심 하나"],"hasReward":false,"rewardNote":null,"requiresAction":false}
+형식: {"deadline":"YYYY-MM-DD 또는 빈문자열","startDate":"YYYY-MM-DD 또는 빈문자열","subject":"포스터용 핵심 문구 10~28자","type":"${TITLE_KINDS.join('|')} 중 하나","summary":["요약1","요약2","요약3"],"categorySlugs":["academic|opportunity|survey|community|other 중 핵심 하나"],"hasReward":false,"rewardNote":null,"requiresAction":false}
 - 오늘 날짜는 ${today}. 마감일이 원문에 없거나 불명확하면 deadline은 빈문자열.
 - startDate는 접수·신청·수강신청·행사의 실제 시작일입니다. "8/12 18:00 ~ 9/17 24:00"처럼 기간이 명시되면 연도를 문맥과 오늘 날짜로 확정해 앞 날짜를 startDate, 뒤 날짜를 deadline에 반드시 넣습니다.
 - 게시일·작성일을 startDate로 쓰지 않습니다. 시작일의 근거가 원문에 없을 때만 빈 문자열로 둡니다.
@@ -824,7 +825,8 @@ async function runNoticeAnalysis(content, onVerificationStart = null) {
 - academic: 수강·학점·졸업·성적·전공진입에 직접 영향.
 - opportunity: 인턴·연구실·공모전·대회·장학·교환처럼 선발을 거쳐 자리나 자격을 얻는 것.
 - survey: 설문·인터뷰·실험 피험자·사용자 조사처럼 선발 없이 참여해 응답하면 끝나는 모집. 사례비나 기프티콘이 걸려 있어도 참여가 목적이면 여기다.
-- community: 학생 자치, 학내 행사, 시설·출입·교통, 제휴·할인 등 캠퍼스 생활.
+- community: 학생 자치, 축제·강연·세미나 등 학내 행사, 제휴·할인.
+- other: 시설·출입 통제·교통·서비스 운영 등 일반 안내와 다른 네 분류에 해당하지 않는 공지. 입학전형으로 인한 건물 출입 통제도 기타로 분류.
 - categorySlugs는 반드시 핵심 범주 하나만 선택.
 - 신청·제출·응답이 필요하면 requiresAction=true.
 - 상품·기프티콘·사례비·지원금·할인이 확인되면 hasReward=true와 rewardNote를 채움.
@@ -856,7 +858,8 @@ ${content}`;
 1. 날짜, 시각, 금액, 인원, 학점, 학기, 기간, 횟수, 비율, 연락처 등 주요 수치를 원문 그대로 대조합니다.
 2. 원문에 없는 수치나 조건이 summary에 추가됐으면 삭제하거나 바로잡습니다.
 3. startDate는 접수·신청·수강신청·행사의 시작일, deadline은 실제 신청·제출 마감일입니다. 원문에 기간이 있으면 앞 날짜와 뒤 날짜를 각각 YYYY-MM-DD로 반드시 대조합니다. 게시일은 startDate가 아닙니다.
-4. categorySlugs는 academic/opportunity/survey/community 중 핵심 하나만 고릅니다.
+4. categorySlugs는 academic/opportunity/survey/community/other 중 핵심 하나만 고릅니다.
+   시설·출입 통제·교통·서비스 운영 등 일반 안내나 어느 분류에도 해당하지 않으면 other입니다.
    기회와 설문은 선발이 있느냐로 가릅니다. 붙고 떨어지는 일이 있으면 기회,
    조건만 맞으면 참여로 끝나면 설문입니다.
 5. 신청·제출·응답은 requiresAction, 상품·지원·할인은 hasReward와 rewardNote로 다시 검증합니다.
